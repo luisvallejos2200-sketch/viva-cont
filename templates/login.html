@@ -244,22 +244,14 @@
       btn.style.pointerEvents = 'none';
     });
 
-    /* Precarga silenciosa de todos los assets del dashboard mientras el usuario escribe */
+    /* Precarga silenciosa de fuentes mientras el usuario escribe */
     window.addEventListener('load', function() {
-      var assets = [
-        '/static/css/styles.css',
-        '/static/css/outfit.css',
-        '/static/fontawesome/css/all.min.css',
+      var fonts = [
         '/static/fontawesome/webfonts/fa-solid-900.woff2',
         '/static/fontawesome/webfonts/fa-regular-400.woff2',
-        '/static/fontawesome/webfonts/fa-brands-400.woff2',
         '/static/fonts/outfit-latin.woff2',
-        '/static/fonts/outfit-latin-ext.woff2',
-        '/static/js/chart.min.js',
-        '/static/js/main.js',
-        '/static/js/xlsx.full.min.js',
       ];
-      assets.forEach(function(url) {
+      fonts.forEach(function(url) {
         var link = document.createElement('link');
         link.rel = 'prefetch';
         link.href = url;

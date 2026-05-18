@@ -828,93 +828,103 @@ def extract_bcp_soles(pdf_path: str, banco: str = "BCP SOLES") -> dict:
                 "transactions": []}
 
     debug_info = []
+    full_txt = ""  # extraído una sola vez, reutilizado por todas las estrategias
 
+    # Abrimos pdfplumber UNA SOLA VEZ y ejecutamos todas las estrategias dentro
     try:
         with pdfplumber.open(pdf_path) as pdf:
             num_pages = len(pdf.pages)
-            debug_info.append(f"PDF abierto: {num_pages} páginas")
+            debug_info.append(f"PDF: {num_pages} págs")
 
-            # ── Scotiabank Perú: texto completo primero ──────
+            # Extraer texto completo UNA VEZ para reutilizar en estrategias de texto
             try:
                 full_txt = "\n".join(
                     page.extract_text(x_tolerance=2, y_tolerance=2) or ""
                     for page in pdf.pages
                 )
-                txs_scot = _strategy_scotiabank(full_txt, banco, archivo)
-                debug_info.append(f"Estrategia Scotiabank: {len(txs_scot)} transacciones")
-                if len(txs_scot) >= 2:
-                    return {"transactions": txs_scot, "total": len(txs_scot), "strategy": "scotiabank"}
-            except Exception as e:
-                debug_info.append(f"Estrategia Scotiabank falló: {e}")
+            except Exception:
+                full_txt = ""
 
-            # ── Estrategia 1: Tablas ────────────────────────
+            # ── Scotiabank (texto ya extraído, sin costo extra) ──
+            try:
+                txs = _strategy_scotiabank(full_txt, banco, archivo)
+                debug_info.append(f"Scotiabank: {len(txs)}")
+                if len(txs) >= 2:
+                    return {"transactions": txs, "total": len(txs),
+                            "strategy": "scotiabank", "raw_text": full_txt}
+            except Exception as e:
+                debug_info.append(f"Scotiabank falló: {e}")
+
+            # ── Estrategia 1: Tablas ─────────────────────────
             try:
                 txs = _strategy_tables(pdf, banco, archivo)
-                debug_info.append(f"Estrategia tablas: {len(txs)} transacciones")
+                debug_info.append(f"Tables: {len(txs)}")
                 if len(txs) >= 2:
-                    return {"transactions": txs, "total": len(txs), "strategy": "tables"}
+                    return {"transactions": txs, "total": len(txs),
+                            "strategy": "tables", "raw_text": full_txt}
             except Exception as e:
-                debug_info.append(f"Estrategia tablas falló: {e}")
+                debug_info.append(f"Tables falló: {e}")
 
-            # ── Estrategia 2: Regex sobre texto ─────────────
+            # ── Estrategia 2: Regex sobre texto ──────────────
             try:
                 txs = _strategy_text_regex(pdf, banco, archivo)
-                debug_info.append(f"Estrategia regex: {len(txs)} transacciones")
+                debug_info.append(f"Regex: {len(txs)}")
                 if len(txs) >= 2:
-                    return {"transactions": txs, "total": len(txs), "strategy": "text_regex"}
+                    return {"transactions": txs, "total": len(txs),
+                            "strategy": "text_regex", "raw_text": full_txt}
             except Exception as e:
-                debug_info.append(f"Estrategia regex falló: {e}")
+                debug_info.append(f"Regex falló: {e}")
 
-            # ── Estrategia 3: Ventana deslizante ────────────
+            # ── Estrategia 3: Ventana deslizante ─────────────
             try:
                 txs = _strategy_sliding_window(pdf, banco, archivo)
-                debug_info.append(f"Estrategia ventana: {len(txs)} transacciones")
+                debug_info.append(f"Sliding: {len(txs)}")
                 if len(txs) >= 2:
-                    return {"transactions": txs, "total": len(txs), "strategy": "sliding_window"}
+                    return {"transactions": txs, "total": len(txs),
+                            "strategy": "sliding_window", "raw_text": full_txt}
             except Exception as e:
-                debug_info.append(f"Estrategia ventana falló: {e}")
+                debug_info.append(f"Sliding falló: {e}")
+
+            # ── Estrategia 5: Coordenadas X/Y (antes abría PDF de nuevo) ──
+            try:
+                txs = _strategy_coords(pdf, banco, archivo)
+                debug_info.append(f"Coords: {len(txs)}")
+                if len(txs) >= 2:
+                    txs = _infer_signs(txs)
+                    return {"transactions": txs, "total": len(txs),
+                            "strategy": "coords", "raw_text": full_txt}
+            except Exception as e:
+                debug_info.append(f"Coords falló: {e}")
+
+            # ── Estrategia 6: Cualquier línea fecha+número (antes abría PDF de nuevo) ──
+            try:
+                txs = _strategy_any_line(pdf, banco, archivo)
+                debug_info.append(f"Any_line: {len(txs)}")
+                if len(txs) >= 2:
+                    txs = _infer_signs(txs)
+                    return {"transactions": txs, "total": len(txs),
+                            "strategy": "any_line", "raw_text": full_txt}
+            except Exception as e:
+                debug_info.append(f"Any_line falló: {e}")
 
     except Exception as e:
-        debug_info.append(f"No se pudo abrir el PDF con pdfplumber: {e}")
+        debug_info.append(f"No se pudo abrir el PDF: {e}")
 
-    # ── Estrategia 4: pypdf ──────────────────────────────
+    # ── Estrategia 4: pypdf (librería distinta, fuera del bloque pdfplumber) ──
     try:
         txs = _strategy_pypdf(pdf_path, banco, archivo)
-        debug_info.append(f"Estrategia pypdf: {len(txs)} transacciones")
+        debug_info.append(f"pypdf: {len(txs)}")
         if len(txs) >= 2:
-            return {"transactions": txs, "total": len(txs), "strategy": "pypdf"}
+            return {"transactions": txs, "total": len(txs),
+                    "strategy": "pypdf", "raw_text": full_txt}
     except Exception as e:
-        debug_info.append(f"Estrategia pypdf falló: {e}")
+        debug_info.append(f"pypdf falló: {e}")
 
-    # ── Estrategia 5: Coordenadas X/Y ────────────────────
-    try:
-        with pdfplumber.open(pdf_path) as pdf:
-            txs = _strategy_coords(pdf, banco, archivo)
-            debug_info.append(f"Estrategia coords: {len(txs)} transacciones")
-            if len(txs) >= 2:
-                txs = _infer_signs(txs)
-                return {"transactions": txs, "total": len(txs), "strategy": "coords"}
-    except Exception as e:
-        debug_info.append(f"Estrategia coords falló: {e}")
-
-    # ── Estrategia 6: Cualquier línea con fecha+número ───
-    try:
-        with pdfplumber.open(pdf_path) as pdf:
-            txs = _strategy_any_line(pdf, banco, archivo)
-            debug_info.append(f"Estrategia any_line: {len(txs)} transacciones")
-            if len(txs) >= 2:
-                txs = _infer_signs(txs)
-                return {"transactions": txs, "total": len(txs), "strategy": "any_line"}
-    except Exception as e:
-        debug_info.append(f"Estrategia any_line falló: {e}")
-
-    # ── Sin resultados: devuelve debug para que el usuario pueda pegar el texto ──
     return {
-        "transactions": [],
-        "total": 0,
-        "strategy": "none",
-        "error": "No se pudieron extraer transacciones automáticamente. Usa la opción 'Pegar texto del PDF'.",
+        "transactions": [], "total": 0, "strategy": "none",
+        "error": "No se pudieron extraer transacciones. Usa la opción 'Pegar texto del PDF'.",
         "debug": " | ".join(debug_info),
+        "raw_text": full_txt,
     }
 
 

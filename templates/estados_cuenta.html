@@ -251,10 +251,12 @@ Ejemplo:
         </table>
       </div>
     </div>
-    <div class="modal-footer">
+    <div class="modal-footer" style="flex-wrap:wrap;gap:10px;">
+      <input type="text" id="periodoLabel" class="form-control"
+        style="max-width:230px;font-size:13px;" placeholder="Nombre del período (ej: Mayo 2026 · BCP)">
       <button class="btn btn-outline" onclick="closePreviewModal()">Descartar</button>
       <button class="btn btn-success" id="btnConfirmar" onclick="confirmarTransacciones()">
-        <i class="fa-solid fa-check"></i> Confirmar e importar
+        <i class="fa-solid fa-floppy-disk"></i> Guardar período
       </button>
     </div>
   </div>
@@ -583,12 +585,18 @@ function closePreviewModal() {
 async function confirmarTransacciones() {
   if (!pendingTxs.length) return;
   setLoading('btnConfirmar', true, 'Guardando...');
-  const res = await apiPost('/api/estados-cuenta/confirmar', { transactions: pendingTxs });
+  const periodoLabel = (document.getElementById('periodoLabel')?.value || '').trim();
+  const res = await apiPost('/api/estados-cuenta/confirmar', {
+    transactions: pendingTxs,
+    periodo_label: periodoLabel,
+  });
   setLoading('btnConfirmar', false);
   if (!res) return;
-  if (res.error) { showToast('error','Error', res.error); return; }
-  showToast('success','Importación exitosa', `${res.saved} transacciones guardadas`);
+  if (res.error) { showToast('error', 'Error', res.error); return; }
+  showToast('success', `Período guardado — ${res.saved} transacciones`, res.label || '');
   closePreviewModal();
+  document.getElementById('periodoLabel').value = '';
+  loadPeriodTabsEC();   // recargar tabs para mostrar el nuevo período
   loadTransacciones(1);
 }
 

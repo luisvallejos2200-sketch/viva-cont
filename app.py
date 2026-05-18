@@ -724,19 +724,13 @@ def api_upload_pdf():
             result = extract_bcp_soles(filepath, banco)
 
         transactions = result.get("transactions", [])
-        strategy     = result.get("strategy", "")
-        debug        = result.get("debug", "")
+        # raw_text ya viene embebido en el resultado — sin segunda apertura del PDF
+        raw_text = result.get("raw_text", "") or ""
 
         if not transactions:
-            raw_text = ""
-            if ext not in ALLOWED_EXCEL:
-                raw_text = extract_raw_text(filepath)
             return jsonify({
-                "success": False,
-                "transactions": [],
-                "total": 0,
-                "no_data": True,
-                "debug": debug,
+                "success": False, "transactions": [], "total": 0, "no_data": True,
+                "debug": result.get("debug", ""),
                 "raw_text": raw_text,
                 "message": result.get("error", "No se encontraron transacciones. Usa la opción 'Pegar texto del PDF'."),
             })
@@ -745,7 +739,7 @@ def api_upload_pdf():
             "success": True,
             "transactions": transactions,
             "total": len(transactions),
-            "strategy": strategy,
+            "strategy": result.get("strategy", ""),
             "preview": True,
         })
     finally:
@@ -809,6 +803,7 @@ def api_upload_texto():
 def api_confirmar_transacciones():
     data = request.get_json() or {}
     transactions = data.get("transactions", [])
+    periodo_label = (data.get("periodo_label") or "").strip()
 
     if not transactions:
         return jsonify({"error": "No hay transacciones para guardar"}), 400
@@ -816,16 +811,40 @@ def api_confirmar_transacciones():
     conn = get_connection()
     c = conn.cursor()
     inserted = 0
+
+    # Crear registro de período para que aparezca en las tabs
+    meses_list = sorted({tx.get("mes", "") for tx in transactions if tx.get("mes")})
+    mes_label  = meses_list[0] if len(meses_list) == 1 else (" - ".join(meses_list[:2]) if meses_list else "")
+    anio = 0
+    for tx in transactions:
+        f = str(tx.get("fecha_operacion") or "")
+        if len(f) >= 4 and f[:4].isdigit():
+            anio = int(f[:4]); break
+    banco_det = transactions[0].get("banco", "") if transactions else ""
+    label = periodo_label or f"{mes_label} {anio} · {banco_det}".strip(" ·") or "Importación"
+    total_ing = sum(float(tx.get("importe") or 0) for tx in transactions if float(tx.get("importe") or 0) > 0)
+    total_egr = abs(sum(float(tx.get("importe") or 0) for tx in transactions if float(tx.get("importe") or 0) < 0))
+
+    c.execute("""
+        INSERT INTO periodos_cargados
+        (cliente_id, label, mes, anio, banco, archivo, total_transacciones,
+         total_ingresos, total_egresos)
+        VALUES (?,?,?,?,?,?,?,?,?)
+    """, (cid(), label, mes_label, anio, banco_det, label, len(transactions),
+          round(total_ing, 2), round(total_egr, 2)))
+    periodo_id = c.lastrowid
+
     for tx in transactions:
         try:
             c.execute("""
                 INSERT INTO transacciones
-                (cliente_id, modulo, fecha_operacion, referencia, moneda, importe, num_operacion, periodo,
-                 banco, fecha, mes, descripcion, tipo, detalle, op, tipo_doc, ruc,
-                 cliente_proveedor, num_documento, saldo, doc_cont, comprobante, archivo_origen)
-                VALUES (?, 'banco',?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                (cliente_id, modulo, periodo_id, fecha_operacion, referencia, moneda, importe,
+                 num_operacion, periodo, banco, fecha, mes, descripcion, tipo, detalle, op,
+                 tipo_doc, ruc, cliente_proveedor, num_documento, saldo,
+                 doc_cont, comprobante, archivo_origen)
+                VALUES (?, 'banco',?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """, (
-                cid(),
+                cid(), periodo_id,
                 tx.get("fecha_operacion"), tx.get("referencia"), tx.get("moneda"),
                 tx.get("importe"), tx.get("num_operacion"), tx.get("periodo"),
                 tx.get("banco"), tx.get("fecha"), tx.get("mes"), tx.get("descripcion"),
@@ -840,7 +859,7 @@ def api_confirmar_transacciones():
 
     conn.commit()
     conn.close()
-    return jsonify({"success": True, "saved": inserted})
+    return jsonify({"success": True, "saved": inserted, "periodo_id": periodo_id, "label": label})
 
 
 @app.route("/api/estados-cuenta/transacciones")
@@ -1247,7 +1266,8 @@ def api_analisis_upload():
             result = extract_from_excel(filepath)
 
         txs = result.get("transactions", [])
-        raw_text = extract_raw_text(filepath) if ext == "pdf" else ""
+        # raw_text viene embebido — evitamos segunda apertura del PDF
+        raw_text = result.get("raw_text", "") or ""
     finally:
         try:
             os.remove(filepath)

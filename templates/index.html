@@ -18,6 +18,11 @@
   </div>
 </div>
 
+<!-- TABS DE PERÍODOS ERP -->
+<div id="periodTabsERP" style="display:none;margin-bottom:16px;">
+  <div id="periodTabsListERP" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;"></div>
+</div>
+
 <!-- KPI CARDS -->
 <div class="kpi-grid" id="kpiGrid">
   <div class="kpi-card" style="--kpi-color:#1aaa6b;--kpi-bg:rgba(26,170,107,.1)">
@@ -240,9 +245,44 @@
 {% block scripts %}
 <script>
 let chartFlujo = null, chartTipo = null;
+let _activeImportacionId = null;
+
+async function loadPeriodTabsERP() {
+  const rows = await apiGet('/api/importaciones');
+  if (!rows) return;
+
+  const wrap = document.getElementById('periodTabsERP');
+  const list = document.getElementById('periodTabsListERP');
+  if (!rows.length) { wrap.style.display = 'none'; return; }
+
+  wrap.style.display = 'block';
+  list.innerHTML = `
+    <button class="period-tab ${_activeImportacionId === null ? 'active' : ''}"
+      onclick="selectPeriodoERP(null, this)">
+      <i class="fa-solid fa-layer-group"></i> Consolidado
+      <span style="font-size:10px;opacity:.7">(todos)</span>
+    </button>
+    ${rows.map(r => `
+      <button class="period-tab ${_activeImportacionId === r.id ? 'active' : ''}"
+        onclick="selectPeriodoERP(${r.id}, this)">
+        <i class="fa-solid fa-file-excel"></i>
+        ${r.nombre_archivo.replace(/\.[^.]+$/, '')}
+        <span style="font-size:10px;opacity:.7">${r.registros_importados} reg</span>
+      </button>`).join('')}`;
+}
+
+function selectPeriodoERP(id, btn) {
+  _activeImportacionId = id;
+  document.querySelectorAll('#periodTabsListERP .period-tab').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  loadKPIs();
+}
 
 async function loadKPIs() {
-  const data = await apiGet('/api/dashboard/kpis');
+  const url = _activeImportacionId
+    ? `/api/dashboard/kpis?importacion_id=${_activeImportacionId}`
+    : '/api/dashboard/kpis';
+  const data = await apiGet(url);
   if (!data) return;
 
   // KPI values
@@ -416,6 +456,7 @@ async function confirmarErp() {
   if (res.error) { showToast('error', 'Error', res.error); return; }
   showToast('success', `Período guardado — ${res.saved} registros`, res.label || '');
   closeErpPreview();
+  await loadPeriodTabsERP();
   loadPlantillas();
   setTimeout(loadKPIs, 800);
 }
@@ -469,6 +510,7 @@ async function importarTemplate() {
   setTimeout(loadKPIs, 800);
 }
 
+loadPeriodTabsERP();
 loadKPIs();
 </script>
 {% endblock %}

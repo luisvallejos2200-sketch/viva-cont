@@ -569,48 +569,61 @@ def admin_usuarios():
 @app.route("/api/dashboard/kpis")
 @login_required
 def api_kpis():
+    _cid = cid()
+    importacion_id = request.args.get("importacion_id", type=int)
+
     conn = get_connection()
     c = conn.cursor()
 
-    _cid = cid()
-    c.execute("SELECT COALESCE(SUM(CASE WHEN importe > 0 THEN importe ELSE 0 END), 0) FROM transacciones WHERE modulo='erp' AND cliente_id=?", (_cid,))
+    # Determine period filter
+    archivo_filtro = None
+    if importacion_id:
+        row = conn.execute(
+            "SELECT nombre_archivo FROM importaciones WHERE id=? AND cliente_id=?",
+            (importacion_id, _cid)
+        ).fetchone()
+        if row:
+            archivo_filtro = row["nombre_archivo"]
+
+    base = "modulo='erp' AND cliente_id=?"
+    p = [_cid]
+    if archivo_filtro:
+        base += " AND archivo_origen=?"
+        p.append(archivo_filtro)
+
+    c.execute(f"SELECT COALESCE(SUM(CASE WHEN importe>0 THEN importe ELSE 0 END),0) FROM transacciones WHERE {base}", p)
     total_ingresos = c.fetchone()[0]
 
-    c.execute("SELECT COALESCE(SUM(CASE WHEN importe < 0 THEN ABS(importe) ELSE 0 END), 0) FROM transacciones WHERE modulo='erp' AND cliente_id=?", (_cid,))
+    c.execute(f"SELECT COALESCE(SUM(CASE WHEN importe<0 THEN ABS(importe) ELSE 0 END),0) FROM transacciones WHERE {base}", p)
     total_egresos = c.fetchone()[0]
 
-    c.execute("SELECT COUNT(*) FROM transacciones WHERE modulo='erp' AND cliente_id=?", (_cid,))
+    c.execute(f"SELECT COUNT(*) FROM transacciones WHERE {base}", p)
     total_transacciones = c.fetchone()[0]
 
-    c.execute("SELECT COUNT(*) FROM facturas WHERE estado != 'ANULADA' AND cliente_id=?", (_cid,))
+    c.execute("SELECT COUNT(*) FROM facturas WHERE estado!='ANULADA' AND cliente_id=?", (_cid,))
     total_facturas = c.fetchone()[0]
 
-    c.execute("SELECT COALESCE(SUM(total), 0) FROM facturas WHERE estado = 'EMITIDA' AND cliente_id=?", (_cid,))
+    c.execute("SELECT COALESCE(SUM(total),0) FROM facturas WHERE estado='EMITIDA' AND cliente_id=?", (_cid,))
     total_facturado = c.fetchone()[0]
 
-    c.execute("""
-        SELECT mes, SUM(CASE WHEN importe > 0 THEN importe ELSE 0 END) as ingresos,
-               SUM(CASE WHEN importe < 0 THEN ABS(importe) ELSE 0 END) as egresos
+    c.execute(f"""
+        SELECT mes, SUM(CASE WHEN importe>0 THEN importe ELSE 0 END) as ingresos,
+               SUM(CASE WHEN importe<0 THEN ABS(importe) ELSE 0 END) as egresos
         FROM transacciones
-        WHERE modulo='erp' AND mes != '' AND mes IS NOT NULL AND cliente_id=?
-        GROUP BY mes
-        ORDER BY MIN(fecha_operacion)
-        LIMIT 12
-    """, (_cid,))
+        WHERE {base} AND mes!='' AND mes IS NOT NULL
+        GROUP BY mes ORDER BY MIN(fecha_operacion) LIMIT 12
+    """, p)
     flujo_mensual = rows_to_list(c.fetchall())
 
-    c.execute("""
+    c.execute(f"""
         SELECT tipo, COUNT(*) as cantidad, SUM(ABS(importe)) as monto
         FROM transacciones
-        WHERE modulo='erp' AND tipo != '' AND tipo IS NOT NULL AND cliente_id=?
+        WHERE {base} AND tipo!='' AND tipo IS NOT NULL
         GROUP BY tipo
-    """, (_cid,))
+    """, p)
     por_tipo = rows_to_list(c.fetchall())
 
-    c.execute("""
-        SELECT * FROM transacciones WHERE modulo='erp' AND cliente_id=?
-        ORDER BY created_at DESC LIMIT 10
-    """, (_cid,))
+    c.execute(f"SELECT * FROM transacciones WHERE {base} ORDER BY created_at DESC LIMIT 10", p)
     ultimas = rows_to_list(c.fetchall())
 
     conn.close()

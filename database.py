@@ -267,12 +267,15 @@ def init_db():
         """, ('Luis Vallejos Rodriguez', 'vivacont@vivaempresasglobal.com',
               'luisvallejos', _fast_hash))
     else:
-        # Migrar hash lento (260000 iter) al hash rápido (50000 iter)
-        c.execute("""
-            UPDATE usuarios SET password_hash=?
-            WHERE username='luisvallejos' AND password_hash LIKE 'pbkdf2:sha256:%'
-            AND CAST(SUBSTR(password_hash, 14, INSTR(SUBSTR(password_hash,14),'$')-1) AS INTEGER) > 100000
-        """, (_fast_hash,))
+        # Migrar hash lento al hash rápido usando Python para parsear el formato
+        row = c.execute("SELECT password_hash FROM usuarios WHERE username='luisvallejos'").fetchone()
+        if row:
+            parts = row[0].split(':')  # pbkdf2:sha256:260000$salt$hash
+            if len(parts) >= 3:
+                iters = parts[2].split('$')[0]
+                if iters.isdigit() and int(iters) > 100000:
+                    c.execute("UPDATE usuarios SET password_hash=? WHERE username='luisvallejos'",
+                              (_fast_hash,))
 
     conn.commit()
     conn.close()

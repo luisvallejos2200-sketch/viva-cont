@@ -6,15 +6,15 @@
   <title>{% block title %}VIVA CONT{% endblock %} | Viva Consulting</title>
 
   <!-- Tipografía Outfit — 100% local, sin CDN -->
-  <link rel="stylesheet" href="/static/css/outfit.css" />
+  <link rel="stylesheet" href="/static/css/outfit.css?v={{ sv }}" />
   <!-- Font Awesome — local -->
-  <link rel="stylesheet" href="/static/fontawesome/css/all.min.css" />
+  <link rel="stylesheet" href="/static/fontawesome/css/all.min.css?v={{ sv }}" />
   <!-- Chart.js — local -->
-  <script src="/static/js/chart.min.js"></script>
+  <script src="/static/js/chart.min.js?v={{ sv }}"></script>
   <!-- SheetJS — local, diferido (solo exports Excel) -->
-  <script src="/static/js/xlsx.full.min.js" defer></script>
+  <script src="/static/js/xlsx.full.min.js?v={{ sv }}" defer></script>
 
-  <link rel="stylesheet" href="/static/css/styles.css" />
+  <link rel="stylesheet" href="/static/css/styles.css?v={{ sv }}" />
   {% block head %}{% endblock %}
 </head>
 <body>
@@ -174,7 +174,7 @@
   </div>
 </div>
 
-<script src="/static/js/main.js"></script>
+<script src="/static/js/main.js?v={{ sv }}"></script>
 {% block scripts %}{% endblock %}
 </body>
 </html>

@@ -48,6 +48,19 @@ app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 
 init_db()
 
+# Cache-busting version derived from git commit hash (set once at startup)
+import subprocess as _sp
+try:
+    _STATIC_VER = _sp.check_output(
+        ["git", "rev-parse", "--short", "HEAD"], stderr=_sp.DEVNULL, text=True
+    ).strip()
+except Exception:
+    _STATIC_VER = "1"
+
+@app.context_processor
+def inject_static_ver():
+    return {"sv": _STATIC_VER}
+
 
 @app.after_request
 def set_cache_headers(response):

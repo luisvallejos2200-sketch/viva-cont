@@ -101,6 +101,44 @@
 
 </div>
 
+<!-- PREVIEW MODAL ERP -->
+<div class="modal-overlay" id="erpPreviewModal" style="display:none;">
+  <div class="modal" style="max-width:820px;width:95%;">
+    <div class="modal-header">
+      <h3 class="modal-title"><i class="fa-solid fa-table"></i> Revisar datos — <span id="erpPreviewFileName"></span></h3>
+      <button class="modal-close" onclick="closeErpPreview()"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div class="modal-body" style="padding:0;">
+      <div style="padding:12px 16px;background:var(--surface2);border-bottom:1px solid var(--border);">
+        <span id="erpPreviewCount" style="font-size:13px;font-weight:600;"></span>
+        <span style="font-size:12px;color:var(--text-muted);margin-left:8px;">· Revisa y asigna un nombre al período antes de guardar</span>
+      </div>
+      <div class="table-wrap" style="max-height:340px;overflow-y:auto;">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Fecha</th>
+              <th>Descripción</th>
+              <th>Tipo</th>
+              <th>RUC</th>
+              <th class="text-right">Importe</th>
+            </tr>
+          </thead>
+          <tbody id="erpPreviewBody"></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="modal-footer" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+      <input type="text" id="erpPeriodoLabel" class="form-control"
+        style="max-width:240px;font-size:13px;" placeholder="Nombre del período (ej: Enero 2026)">
+      <button class="btn btn-success" id="btnConfirmarErp" onclick="confirmarErp()">
+        <i class="fa-solid fa-floppy-disk"></i> Guardar período
+      </button>
+      <button class="btn btn-outline" onclick="closeErpPreview()">Cancelar</button>
+    </div>
+  </div>
+</div>
+
 <!-- IMPORT PANEL + RECENT TRANSACTIONS -->
 <div class="grid-2" style="gap:20px;">
 
@@ -139,8 +177,7 @@
         </div>
         <p style="font-size:11px;color:var(--text-muted);margin-top:10px;">
           <i class="fa-solid fa-circle-info" style="color:var(--info)"></i>
-          Los datos importados aquí alimentan los KPIs del Dashboard. Para estados de cuenta bancarios usa
-          <a href="/analisis-bancario" style="color:var(--accent);">Análisis Bancario</a>.
+          Cada archivo importado se guarda como un período independiente.
         </p>
       </div>
 
@@ -315,6 +352,9 @@ function switchImportTab(btn, tabId) {
 }
 
 // Import Excel
+let _erpPendingTxs = [];
+let _erpPendingFile = '';
+
 initUploadZone('excelZone', 'excelInput', async (file) => {
   document.getElementById('excelProgress').style.display = 'block';
   document.getElementById('excelProgressText').textContent = `Procesando "${file.name}"...`;
@@ -325,15 +365,60 @@ initUploadZone('excelZone', 'excelInput', async (file) => {
     const data = await res.json();
     document.getElementById('excelProgress').style.display = 'none';
     if (data.error) { showToast('error','Error al importar', data.error); return; }
-    showToast('success', `"${data.nombre_archivo || file.name}" guardado`,
-      `${data.imported} de ${data.total} registros importados`);
-    loadPlantillas();
-    setTimeout(loadKPIs, 800);
+    if (!data.transactions?.length) { showToast('warning','Sin datos','No se encontraron transacciones en el archivo'); return; }
+    showErpPreview(data.transactions, data.nombre_archivo || file.name);
   } catch (e) {
     document.getElementById('excelProgress').style.display = 'none';
     showToast('error','Error', e.message);
   }
 });
+
+function showErpPreview(txs, filename) {
+  _erpPendingTxs = txs;
+  _erpPendingFile = filename;
+  document.getElementById('erpPreviewFileName').textContent = filename;
+  document.getElementById('erpPreviewCount').textContent = `${txs.length} registros encontrados`;
+  document.getElementById('erpPeriodoLabel').value = '';
+  const tbody = document.getElementById('erpPreviewBody');
+  tbody.innerHTML = txs.slice(0, 200).map(tx => {
+    const pos = parseFloat(tx.importe) >= 0;
+    return `<tr>
+      <td style="white-space:nowrap;font-size:12px">${tx.fecha_operacion || tx.fecha || '—'}</td>
+      <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px" title="${tx.descripcion||''}">${tx.descripcion || tx.referencia || '—'}</td>
+      <td>${badgeTipo(tx.tipo)}</td>
+      <td style="font-size:11px;color:var(--text-muted)">${tx.ruc||'—'}</td>
+      <td class="text-right mono ${pos?'amount-pos':'amount-neg'}" style="font-size:12px">${pos?'+':''}${fmtMoney(tx.importe)}</td>
+    </tr>`;
+  }).join('');
+  if (txs.length > 200) {
+    tbody.innerHTML += `<tr><td colspan="5" style="text-align:center;color:var(--text-muted);font-size:12px;padding:8px">... y ${txs.length - 200} registros más</td></tr>`;
+  }
+  document.getElementById('erpPreviewModal').style.display = 'flex';
+}
+
+function closeErpPreview() {
+  document.getElementById('erpPreviewModal').style.display = 'none';
+  _erpPendingTxs = [];
+  _erpPendingFile = '';
+}
+
+async function confirmarErp() {
+  if (!_erpPendingTxs.length) return;
+  setLoading('btnConfirmarErp', true, 'Guardando...');
+  const periodoLabel = (document.getElementById('erpPeriodoLabel')?.value || '').trim();
+  const res = await apiPost('/api/confirmar/excel', {
+    transactions: _erpPendingTxs,
+    periodo_label: periodoLabel,
+    nombre_archivo: _erpPendingFile,
+  });
+  setLoading('btnConfirmarErp', false);
+  if (!res) return;
+  if (res.error) { showToast('error', 'Error', res.error); return; }
+  showToast('success', `Período guardado — ${res.saved} registros`, res.label || '');
+  closeErpPreview();
+  loadPlantillas();
+  setTimeout(loadKPIs, 800);
+}
 
 async function loadPlantillas() {
   const container = document.getElementById('plantillasList');

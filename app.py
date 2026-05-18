@@ -634,6 +634,7 @@ def api_kpis():
 @app.route("/api/importar/excel", methods=["POST"])
 @login_required
 def api_importar_excel():
+    """Parse Excel and return transactions for preview — does NOT save to DB."""
     if "file" not in request.files:
         return jsonify({"error": "No se envió archivo"}), 400
     file = request.files["file"]
@@ -643,17 +644,48 @@ def api_importar_excel():
     filename = f"{uuid.uuid4()}_{file.filename}"
     filepath = os.path.join(UPLOAD_FOLDER, filename)
     file.save(filepath)
-
     result = extract_from_excel(filepath)
+    try:
+        os.remove(filepath)
+    except OSError:
+        pass
+
     if "error" in result:
         return jsonify({"error": result["error"]}), 500
 
+    return jsonify({
+        "success": True,
+        "transactions": result["transactions"],
+        "total": result["total"],
+        "nombre_archivo": file.filename,
+    })
+
+
+@app.route("/api/confirmar/excel", methods=["POST"])
+@login_required
+def api_confirmar_excel():
+    """Save previewed ERP transactions as a named period."""
+    data = request.get_json() or {}
+    transactions = data.get("transactions", [])
+    periodo_label = (data.get("periodo_label") or "").strip()
+    nombre_archivo = (data.get("nombre_archivo") or "Importación ERP").strip()
+
+    if not transactions:
+        return jsonify({"error": "No hay transacciones para guardar"}), 400
+
+    label = periodo_label or nombre_archivo
     _cid = cid()
     conn = get_connection()
     c = conn.cursor()
     inserted = 0
     try:
-        for tx in result["transactions"]:
+        c.execute("""
+            INSERT INTO importaciones (cliente_id, nombre_archivo, tipo_fuente, registros_importados, estado)
+            VALUES (?, ?, 'EXCEL', 0, 'COMPLETADO')
+        """, (_cid, nombre_archivo))
+        importacion_id = c.lastrowid
+
+        for tx in transactions:
             try:
                 c.execute("""
                     INSERT INTO transacciones
@@ -665,31 +697,24 @@ def api_importar_excel():
                 """, (
                     _cid,
                     tx.get("fecha_operacion"), tx.get("referencia"), tx.get("moneda"),
-                    tx.get("importe"), tx.get("num_operacion"), tx.get("periodo"),
+                    tx.get("importe"), tx.get("num_operacion"), label,
                     tx.get("banco"), tx.get("fecha"), tx.get("mes"), tx.get("descripcion"),
                     tx.get("tipo"), tx.get("detalle"), tx.get("op"), tx.get("tipo_doc"),
                     tx.get("ruc"), tx.get("cliente_proveedor"), tx.get("num_documento"),
                     tx.get("saldo"), tx.get("doc_cont"), tx.get("comprobante"),
-                    tx.get("archivo_origen"),
+                    nombre_archivo,
                 ))
                 inserted += 1
             except Exception:
                 continue
 
-        c.execute("""
-            INSERT INTO importaciones (cliente_id, nombre_archivo, tipo_fuente, registros_importados, estado)
-            VALUES (?, ?, 'EXCEL', ?, 'COMPLETADO')
-        """, (_cid, file.filename, inserted))
+        c.execute("UPDATE importaciones SET registros_importados=? WHERE id=?",
+                  (inserted, importacion_id))
         conn.commit()
     finally:
         conn.close()
-        try:
-            os.remove(filepath)
-        except OSError:
-            pass
 
-    return jsonify({"success": True, "imported": inserted, "total": result["total"],
-                    "nombre_archivo": file.filename})
+    return jsonify({"success": True, "saved": inserted, "label": label})
 
 
 @app.route("/api/importaciones", methods=["GET"])

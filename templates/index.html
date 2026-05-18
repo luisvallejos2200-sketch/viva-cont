@@ -117,8 +117,8 @@
         <button class="tab-btn" data-tab="tab-drive" onclick="switchImportTab(this,'tab-drive')">
           <i class="fa-brands fa-google-drive"></i> Google Drive
         </button>
-        <button class="tab-btn" data-tab="tab-template" onclick="switchImportTab(this,'tab-template')">
-          <i class="fa-solid fa-star"></i> Template Viva
+        <button class="tab-btn" data-tab="tab-template" onclick="switchImportTab(this,'tab-template');loadPlantillas()">
+          <i class="fa-solid fa-layer-group"></i> Plantillas
         </button>
       </div>
 
@@ -163,17 +163,12 @@
         </button>
       </div>
 
-      <!-- Tab Template Viva -->
+      <!-- Tab Plantillas -->
       <div class="tab-pane" id="tab-template">
-        <div style="text-align:center;padding:20px 0;">
-          <div style="font-size:48px;margin-bottom:12px;">📊</div>
-          <h4 style="font-size:15px;font-weight:700;margin-bottom:8px;">Template MODELO PLANTILLAS VIVA CONT</h4>
-          <p style="font-size:12px;color:var(--text-muted);margin-bottom:20px;">
-            Importa directamente el archivo Excel oficial con todos los datos del sistema
-          </p>
-          <button class="btn btn-accent" style="width:100%" onclick="importarTemplate()">
-            <i class="fa-solid fa-bolt"></i> Importar Template Viva Cont
-          </button>
+        <div id="plantillasList" style="min-height:60px;">
+          <div style="text-align:center;padding:16px 0;color:var(--text-muted);font-size:13px;">
+            <span class="spinner"></span> Cargando plantillas...
+          </div>
         </div>
       </div>
     </div>
@@ -330,14 +325,45 @@ initUploadZone('excelZone', 'excelInput', async (file) => {
     const data = await res.json();
     document.getElementById('excelProgress').style.display = 'none';
     if (data.error) { showToast('error','Error al importar', data.error); return; }
-    showToast('success','Importación completada',
-      `Se importaron ${data.imported} de ${data.total} registros`);
+    showToast('success', `"${data.nombre_archivo || file.name}" guardado`,
+      `${data.imported} de ${data.total} registros importados`);
+    loadPlantillas();
     setTimeout(loadKPIs, 800);
   } catch (e) {
     document.getElementById('excelProgress').style.display = 'none';
     showToast('error','Error', e.message);
   }
 });
+
+async function loadPlantillas() {
+  const container = document.getElementById('plantillasList');
+  if (!container) return;
+  const rows = await apiGet('/api/importaciones');
+  if (!rows) return;
+  if (!rows.length) {
+    container.innerHTML = `
+      <div style="text-align:center;padding:24px 0;color:var(--text-muted);">
+        <i class="fa-solid fa-folder-open" style="font-size:32px;margin-bottom:10px;display:block;opacity:.4"></i>
+        <p style="font-size:13px;">Aún no hay plantillas guardadas.</p>
+        <p style="font-size:12px;opacity:.7">Importa un archivo Excel desde la pestaña <b>Excel / ERP</b>.</p>
+      </div>`;
+    return;
+  }
+  const icons = { EXCEL:'fa-file-excel', DRIVE:'fa-brands fa-google-drive', PDF:'fa-file-pdf' };
+  const colors = { EXCEL:'#1a6b3c', DRIVE:'#1a73e8', PDF:'#e03c3c' };
+  container.innerHTML = `
+    <div style="display:flex;flex-direction:column;gap:8px;max-height:280px;overflow-y:auto;">
+      ${rows.map(r => `
+        <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--surface2);border-radius:var(--radius-xs);">
+          <i class="fa-solid ${icons[r.tipo_fuente]||'fa-file'}" style="color:${colors[r.tipo_fuente]||'var(--primary)'};font-size:18px;flex-shrink:0"></i>
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${r.nombre_archivo}">${r.nombre_archivo}</div>
+            <div style="font-size:11px;color:var(--text-muted)">${r.registros_importados} registros · ${r.created_at?.slice(0,10)||''}</div>
+          </div>
+          <span class="badge ${r.estado==='COMPLETADO'?'badge-success':'badge-warning'}" style="font-size:10px;flex-shrink:0">${r.estado}</span>
+        </div>`).join('')}
+    </div>`;
+}
 
 async function importarDrive() {
   const url = document.getElementById('driveUrl').value.trim();

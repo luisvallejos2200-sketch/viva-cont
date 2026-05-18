@@ -675,7 +675,23 @@ def api_importar_excel():
         except OSError:
             pass
 
-    return jsonify({"success": True, "imported": inserted, "total": result["total"]})
+    return jsonify({"success": True, "imported": inserted, "total": result["total"],
+                    "nombre_archivo": file.filename})
+
+
+@app.route("/api/importaciones", methods=["GET"])
+@login_required
+def api_listar_importaciones():
+    conn = get_connection()
+    try:
+        rows = conn.execute(
+            """SELECT id, nombre_archivo, tipo_fuente, registros_importados, estado, created_at
+               FROM importaciones WHERE cliente_id=? ORDER BY created_at DESC LIMIT 50""",
+            (cid(),)
+        ).fetchall()
+        return jsonify(rows_to_list(rows))
+    finally:
+        conn.close()
 
 
 @app.route("/api/importar/drive", methods=["POST"])

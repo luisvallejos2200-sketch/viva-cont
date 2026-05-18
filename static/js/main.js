@@ -182,7 +182,11 @@ function initUploadZone(zoneId, inputId, onFile) {
 
   zone.addEventListener('click', () => input.click());
   input.addEventListener('change', () => {
-    if (input.files[0]) onFile(input.files[0]);
+    if (input.files[0]) {
+      const file = input.files[0];
+      input.value = '';   // reset so same file can be re-uploaded
+      onFile(file);
+    }
   });
   zone.addEventListener('dragover', (e) => {
     e.preventDefault(); zone.classList.add('drag-over');

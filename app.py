@@ -745,6 +745,28 @@ def api_listar_importaciones():
         conn.close()
 
 
+@app.route("/api/importaciones/<int:imp_id>", methods=["DELETE"])
+@login_required
+def api_eliminar_importacion(imp_id):
+    _cid = cid()
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            "SELECT nombre_archivo FROM importaciones WHERE id=? AND cliente_id=?",
+            (imp_id, _cid)
+        ).fetchone()
+        if not row:
+            return jsonify({"error": "No encontrado"}), 404
+        nombre = row["nombre_archivo"]
+        conn.execute("DELETE FROM transacciones WHERE cliente_id=? AND modulo='erp' AND archivo_origen=?",
+                     (_cid, nombre))
+        conn.execute("DELETE FROM importaciones WHERE id=? AND cliente_id=?", (imp_id, _cid))
+        conn.commit()
+        return jsonify({"success": True})
+    finally:
+        conn.close()
+
+
 @app.route("/api/importar/drive", methods=["POST"])
 @login_required
 def api_importar_drive():

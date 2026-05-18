@@ -50,19 +50,18 @@ init_db()
 
 
 def _self_ping():
-    """Mantiene el proceso activo en Render free tier (evita cold starts)."""
-    _time.sleep(60)  # esperar 1 min antes del primer ping
+    """Mantiene el proceso activo en Render free tier (evita cold starts cada 15 min)."""
+    _time.sleep(30)  # dar tiempo a gunicorn para arrancar
     url = "https://vivacont.vivaempresasglobal.com/health"
     while True:
         try:
-            urllib.request.urlopen(url, timeout=10)
+            urllib.request.urlopen(url, timeout=8)
         except Exception:
             pass
-        _time.sleep(240)  # cada 4 minutos
+        _time.sleep(180)  # cada 3 minutos — bien por debajo del umbral de 15 min
 
 if os.environ.get("RENDER"):
-    t = threading.Thread(target=_self_ping, daemon=True)
-    t.start()
+    threading.Thread(target=_self_ping, daemon=True).start()
 
 
 def allowed_file(filename, allowed):

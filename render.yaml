@@ -4,8 +4,8 @@ services:
     runtime: python
     plan: free
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers 2 --timeout 120
-    healthCheckPath: /login
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers 1 --threads 4 --worker-class gthread --preload --timeout 120 --keep-alive 5
+    healthCheckPath: /health
     envVars:
       - key: SECRET_KEY
         generateValue: true
@@ -13,4 +13,4 @@ services:
         value: production
       - key: PYTHON_VERSION
         value: 3.11.0
-# multi-tenant v1
+# enterprise-audit v2

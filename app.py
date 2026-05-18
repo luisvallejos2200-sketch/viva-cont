@@ -49,6 +49,14 @@ app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 init_db()
 
 
+@app.after_request
+def set_cache_headers(response):
+    if "text/html" in response.content_type:
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+    return response
+
+
 def _self_ping():
     """Mantiene el proceso activo en Render free tier (evita cold starts cada 15 min)."""
     _time.sleep(30)  # dar tiempo a gunicorn para arrancar

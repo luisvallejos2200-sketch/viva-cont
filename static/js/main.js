@@ -293,12 +293,26 @@ function setLoading(btnId, loading, text = '') {
   /* ── Parse fetched HTML ── */
   function parsePage(html) {
     const doc = new DOMParser().parseFromString(html, 'text/html');
+    // Collect page-specific inline <style> blocks from <head> (from {% block head %})
+    const headStyles = [...doc.querySelectorAll('head style')].map(s => s.textContent);
     return {
       content:    doc.querySelector('.page-content')?.innerHTML || '',
       title:      doc.title,
       breadcrumb: doc.querySelector('.breadcrumb-current')?.textContent?.trim() || '',
       scripts:    [...doc.querySelectorAll('body script:not([src])')].map(s => s.textContent),
+      headStyles,
     };
+  }
+
+  /* ── Inject / replace page-specific head styles ── */
+  function applyHeadStyles(styles) {
+    document.querySelectorAll('style[data-spa]').forEach(el => el.remove());
+    styles.forEach(css => {
+      const el = document.createElement('style');
+      el.setAttribute('data-spa', '1');
+      el.textContent = css;
+      document.head.appendChild(el);
+    });
   }
 
   /* ── Destroy active Chart.js instances ── */
@@ -341,6 +355,8 @@ function setLoading(btnId, loading, text = '') {
       document.title = title;
       const bc = document.querySelector('.breadcrumb-current');
       if (bc) bc.textContent = breadcrumb;
+
+      applyHeadStyles(headStyles);
 
       document.querySelectorAll('.nav-item[href]').forEach(a => {
         a.classList.toggle('active', a.getAttribute('href') === url);

@@ -1,0 +1,1001 @@
+{% extends "base.html" %}
+{% block title %}Análisis de Estado de Cuenta{% endblock %}
+{% block breadcrumb %}Análisis Bancario{% endblock %}
+
+{% block head %}
+<style>
+/* ── Módulo Análisis Bancario ─────────────────────────────── */
+#uploadScreen { display:block; }
+#dashboardScreen { display:none; }
+
+/* ── Tabs de períodos ─────────────────────────────────────── */
+#periodTabsBar {
+  display:none; align-items:center; gap:8px; margin-bottom:20px;
+  flex-wrap:wrap;
+}
+#periodTabsList {
+  display:flex; gap:6px; flex-wrap:wrap; flex:1;
+}
+.period-tab {
+  padding:7px 14px; border-radius:20px; border:1.5px solid var(--border);
+  background:var(--surface2); font-size:12px; font-weight:600;
+  color:var(--text-muted); cursor:pointer; font-family:inherit;
+  transition:all var(--transition); white-space:nowrap;
+  display:inline-flex; align-items:center; gap:6px;
+}
+.period-tab:hover { border-color:var(--primary); color:var(--primary); }
+.period-tab.active {
+  background:var(--primary); border-color:var(--primary);
+  color:#fff; box-shadow:0 3px 10px rgba(26,60,110,.3);
+}
+
+.upload-hero {
+  max-width:680px; margin:60px auto 0;
+  text-align:center;
+}
+.upload-hero .hero-icon {
+  width:90px; height:90px;
+  background:linear-gradient(135deg,var(--primary),var(--primary-light));
+  border-radius:24px;
+  display:inline-flex; align-items:center; justify-content:center;
+  font-size:38px; color:#fff; margin-bottom:24px;
+  box-shadow:0 8px 24px rgba(26,60,110,.3);
+}
+.upload-hero h2 { font-size:26px; font-weight:800; color:var(--primary); margin-bottom:10px; }
+.upload-hero p  { font-size:14px; color:var(--text-muted); margin-bottom:32px; }
+
+.bank-selector {
+  display:grid; grid-template-columns:repeat(3,1fr); gap:12px;
+  margin-bottom:20px;
+}
+.bank-btn {
+  padding:14px; border:2px solid var(--border);
+  border-radius:var(--radius-sm); background:var(--surface2);
+  cursor:pointer; font-family:inherit; font-size:12.5px; font-weight:600;
+  color:var(--text); transition:all var(--transition);
+  display:flex; flex-direction:column; align-items:center; gap:6px;
+}
+.bank-btn i { font-size:20px; color:var(--primary-light); }
+.bank-btn:hover, .bank-btn.selected {
+  border-color:var(--primary); background:rgba(26,60,110,.06); color:var(--primary);
+}
+
+.upload-options {
+  display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-top:20px;
+}
+.upload-opt {
+  border:2px dashed var(--border); border-radius:var(--radius);
+  padding:28px 20px; text-align:center; cursor:pointer;
+  transition:all var(--transition); background:var(--surface2);
+}
+.upload-opt:hover { border-color:var(--primary); background:rgba(26,60,110,.04); }
+.upload-opt i { font-size:32px; margin-bottom:10px; display:block; }
+.upload-opt h4 { font-size:13.5px; font-weight:700; margin-bottom:6px; }
+.upload-opt p  { font-size:11.5px; color:var(--text-muted); }
+
+/* ── DASHBOARD ─────────────────────────────────────────── */
+.dash-header {
+  display:flex; align-items:center; justify-content:space-between;
+  flex-wrap:wrap; gap:12px; margin-bottom:22px;
+}
+.dash-file-badge {
+  display:flex; align-items:center; gap:10px;
+  padding:8px 16px;
+  background:rgba(26,60,110,.07);
+  border:1.5px solid rgba(26,60,110,.15);
+  border-radius:var(--radius-xs);
+  font-size:12.5px; font-weight:600; color:var(--primary);
+}
+.dash-file-badge i { font-size:16px; }
+
+/* KPI strip */
+.kpi-strip {
+  display:grid;
+  grid-template-columns:repeat(6,1fr);
+  gap:14px; margin-bottom:22px;
+}
+.kpi-strip .kpi-card { min-width:0; }
+.kpi-strip .kpi-value { font-size:20px; }
+
+/* Charts grid */
+.charts-grid-top {
+  display:grid; grid-template-columns:2fr 1fr; gap:18px; margin-bottom:18px;
+}
+.charts-grid-mid {
+  display:grid; grid-template-columns:1fr 1fr; gap:18px; margin-bottom:18px;
+}
+.charts-grid-bot {
+  display:grid; grid-template-columns:1fr 1fr 1fr; gap:18px; margin-bottom:18px;
+}
+
+/* Transaction preview */
+.tx-preview-wrap {
+  max-height:320px; overflow-y:auto;
+  border-radius:0 0 var(--radius) var(--radius);
+}
+
+/* Chart containers */
+.chart-container-sm { position:relative; height:220px; }
+.chart-container-md { position:relative; height:260px; }
+.chart-container-lg { position:relative; height:300px; }
+
+/* Horizontal bar custom */
+.hbar-item {
+  display:flex; align-items:center; gap:10px; margin-bottom:10px;
+}
+.hbar-label {
+  width:160px; font-size:11.5px; color:var(--text);
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; flex-shrink:0;
+}
+.hbar-track {
+  flex:1; height:8px; background:var(--surface2);
+  border-radius:99px; overflow:hidden;
+}
+.hbar-fill {
+  height:100%; border-radius:99px;
+  background:linear-gradient(90deg,var(--primary),var(--primary-light));
+  transition:width .6s ease;
+}
+.hbar-val { font-size:11px; font-weight:700; color:var(--text-muted); width:90px; text-align:right; flex-shrink:0; }
+
+/* Badge meses */
+.mes-chip {
+  display:inline-flex; align-items:center; gap:5px;
+  padding:4px 10px; border-radius:99px;
+  background:rgba(26,60,110,.07); color:var(--primary);
+  font-size:11px; font-weight:700; margin:2px;
+}
+
+@media (max-width:1100px) {
+  .kpi-strip { grid-template-columns:repeat(3,1fr); }
+  .charts-grid-top { grid-template-columns:1fr; }
+  .charts-grid-mid { grid-template-columns:1fr; }
+  .charts-grid-bot { grid-template-columns:1fr; }
+}
+@media (max-width:700px) {
+  .kpi-strip { grid-template-columns:repeat(2,1fr); }
+  .bank-selector { grid-template-columns:repeat(2,1fr); }
+  .upload-options { grid-template-columns:1fr; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+
+<!-- ══ BARRA DE PERÍODOS ════════════════════════════════════ -->
+<div id="periodTabsBar">
+  <div id="periodTabsList"></div>
+  <button class="btn btn-primary btn-sm" onclick="resetToUpload()" style="white-space:nowrap;">
+    <i class="fa-solid fa-plus"></i> Subir nuevo
+  </button>
+</div>
+
+<!-- ══ PANTALLA 1: UPLOAD ══════════════════════════════════ -->
+<div id="uploadScreen">
+  <div class="upload-hero">
+    <div class="hero-icon"><i class="fa-solid fa-chart-bar"></i></div>
+    <h2>Análisis de Estado de Cuenta Bancario</h2>
+    <p>Sube tu estado de cuenta en PDF o Excel y genera automáticamente un tablero completo con KPIs, gráficos de flujo, distribución de gastos, top proveedores y más.</p>
+
+    <!-- Selección de banco -->
+    <div style="text-align:left;margin-bottom:16px;">
+      <label class="form-label" style="font-size:11px;margin-bottom:10px;display:block;">SELECCIONA TU BANCO</label>
+      <div class="bank-selector">
+        <button class="bank-btn selected" data-banco="BCP SOLES" onclick="selectBanco(this)">
+          <i class="fa-solid fa-building-columns"></i> BCP SOLES
+        </button>
+        <button class="bank-btn" data-banco="BCP DOLARES" onclick="selectBanco(this)">
+          <i class="fa-solid fa-dollar-sign"></i> BCP DÓLARES
+        </button>
+        <button class="bank-btn" data-banco="BBVA" onclick="selectBanco(this)">
+          <i class="fa-solid fa-university"></i> BBVA
+        </button>
+        <button class="bank-btn" data-banco="INTERBANK" onclick="selectBanco(this)">
+          <i class="fa-solid fa-coins"></i> INTERBANK
+        </button>
+        <button class="bank-btn" data-banco="SCOTIABANK" onclick="selectBanco(this)">
+          <i class="fa-solid fa-piggy-bank"></i> SCOTIABANK
+        </button>
+        <button class="bank-btn" data-banco="OTRO" onclick="selectBanco(this)">
+          <i class="fa-solid fa-landmark"></i> OTRO
+        </button>
+      </div>
+    </div>
+
+    <!-- Opciones de importación -->
+    <div class="upload-options" style="grid-template-columns:1fr 1fr 1fr;">
+      <!-- PDF Upload -->
+      <div class="upload-opt" id="pdfDropZone" onclick="document.getElementById('pdfFileInput').click()">
+        <i class="fa-solid fa-file-pdf" style="color:#e03c3c;"></i>
+        <h4>Estado de Cuenta PDF</h4>
+        <p>Arrastra o selecciona el PDF bancario.</p>
+        <input type="file" id="pdfFileInput" accept=".pdf" style="display:none" />
+        <div id="pdfFileName" style="margin-top:8px;font-size:11px;color:var(--primary);font-weight:600;"></div>
+      </div>
+
+      <!-- Excel / Template -->
+      <div class="upload-opt" id="xlsxDropZone" onclick="document.getElementById('xlsxFileInput').click()">
+        <i class="fa-solid fa-file-excel" style="color:#1a6b3c;"></i>
+        <h4>Excel / Template Viva</h4>
+        <p>Archivo .xlsx con formato VIVA CONT o exportado de banca en línea.</p>
+        <input type="file" id="xlsxFileInput" accept=".xlsx,.xls,.csv" style="display:none" />
+        <div id="xlsxFileName" style="margin-top:8px;font-size:11px;color:var(--primary);font-weight:600;"></div>
+      </div>
+
+      <!-- Pegar texto -->
+      <div class="upload-opt" onclick="document.getElementById('pasteSection').style.display='block';this.style.borderColor='var(--primary)';">
+        <i class="fa-solid fa-paste" style="color:var(--primary);"></i>
+        <h4>Pegar Texto del PDF</h4>
+        <p>Copia todo el texto del PDF (Ctrl+A → Ctrl+C) y pégalo aquí.</p>
+      </div>
+    </div>
+
+    <!-- Sección pegar texto (oculta por defecto) -->
+    <div id="pasteSection" style="display:none;margin-top:14px;">
+      <textarea id="pasteTextAB" class="form-control" rows="8"
+        placeholder="Pega aquí el texto copiado del estado de cuenta...
+Ejemplo:
+03/11/2025  TRAN.CTAS.TERC.HK  250.00  5,100.82
+04/11/2025  TRANSF.BCO.HK  104.80  4,996.02
+06/11/2025  IMPUESTO ITF   0.20  4,995.62"
+        style="font-family:monospace;font-size:12px;resize:vertical;"></textarea>
+      <button class="btn btn-primary" style="width:100%;margin-top:10px;" onclick="procesarTextoAB()">
+        <i class="fa-solid fa-wand-magic-sparkles"></i> Analizar texto del estado de cuenta
+      </button>
+    </div>
+
+    <!-- Acción rápida: template principal -->
+    <div style="margin-top:14px;padding:14px;background:rgba(232,160,32,.08);border:1.5px solid rgba(232,160,32,.25);border-radius:var(--radius-sm);display:flex;align-items:center;justify-content:space-between;gap:12px;">
+      <div style="text-align:left;">
+        <div style="font-size:12.5px;font-weight:700;color:var(--text);">
+          <i class="fa-solid fa-star" style="color:var(--accent);"></i>
+          Usar Template MODELO PLANTILLAS VIVA CONT
+        </div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:2px;">Analiza directamente el archivo Excel principal ya configurado</div>
+      </div>
+      <button class="btn btn-accent btn-sm" onclick="analizarTemplate()">
+        <i class="fa-solid fa-bolt"></i> Analizar
+      </button>
+    </div>
+
+    <!-- Visor de texto diagnóstico (colapsable) -->
+    <div id="rawTextSection" style="display:none;margin-top:14px;">
+      <details style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px;">
+        <summary style="cursor:pointer;font-size:12px;font-weight:700;color:var(--text-muted);">
+          <i class="fa-solid fa-terminal"></i> Ver texto extraído del PDF (diagnóstico)
+        </summary>
+        <pre id="rawTextViewer" style="font-size:10.5px;color:#555;max-height:260px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;margin-top:10px;padding:8px;background:#f5f5f5;border-radius:4px;"></pre>
+        <button class="btn btn-sm btn-outline" style="margin-top:8px;" onclick="usarTextoDiag()">
+          <i class="fa-solid fa-wand-magic-sparkles"></i> Analizar este texto directamente
+        </button>
+      </details>
+    </div>
+
+    <!-- Loading -->
+    <div id="uploadLoading" style="display:none;margin-top:24px;">
+      <div style="display:flex;align-items:center;justify-content:center;gap:14px;padding:20px;background:var(--surface2);border-radius:var(--radius);border:1.5px solid var(--border);">
+        <span class="spinner" style="width:24px;height:24px;border-width:3px;"></span>
+        <div>
+          <div style="font-size:14px;font-weight:700;color:var(--text);" id="loadingTitle">Procesando archivo...</div>
+          <div style="font-size:12px;color:var(--text-muted);" id="loadingMsg">Extrayendo y analizando transacciones</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ PANTALLA 2: DASHBOARD DE ANÁLISIS ═════════════════ -->
+<div id="dashboardScreen">
+
+  <!-- Header del dashboard -->
+  <div class="dash-header">
+    <div>
+      <h1 class="page-title">
+        <i class="fa-solid fa-chart-bar" style="color:var(--accent)"></i>
+        Tablero de Análisis Bancario
+      </h1>
+      <p class="page-subtitle" id="dashSubtitle">Estado de cuenta procesado</p>
+    </div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+      <div class="dash-file-badge" id="dashFileBadge">
+        <i class="fa-solid fa-file-pdf"></i>
+        <span id="dashFileName">—</span>
+      </div>
+      <button class="btn btn-success btn-sm" onclick="guardarAlSistema()" id="btnGuardar">
+        <i class="fa-solid fa-database"></i> Guardar en el sistema
+      </button>
+      <button class="btn btn-outline btn-sm" onclick="resetToUpload()">
+        <i class="fa-solid fa-upload"></i> Nuevo análisis
+      </button>
+    </div>
+  </div>
+
+  <!-- ── KPI STRIP ─────────────────────────────────────── -->
+  <div class="kpi-strip">
+    <div class="kpi-card" style="--kpi-color:#1aaa6b;--kpi-bg:rgba(26,170,107,.1)">
+      <div class="kpi-header"><span class="kpi-label">Total Ingresos</span>
+        <span class="kpi-icon"><i class="fa-solid fa-arrow-trend-up"></i></span></div>
+      <div class="kpi-value positive" id="kpi-ing">—</div>
+      <div class="kpi-footer" style="font-size:10.5px;color:var(--text-muted)">Abonos del período</div>
+    </div>
+    <div class="kpi-card" style="--kpi-color:#e03c3c;--kpi-bg:rgba(224,60,60,.1)">
+      <div class="kpi-header"><span class="kpi-label">Total Egresos</span>
+        <span class="kpi-icon"><i class="fa-solid fa-arrow-trend-down"></i></span></div>
+      <div class="kpi-value negative" id="kpi-egr">—</div>
+      <div class="kpi-footer" style="font-size:10.5px;color:var(--text-muted)">Cargos del período</div>
+    </div>
+    <div class="kpi-card" style="--kpi-color:#1a3c6e;--kpi-bg:rgba(26,60,110,.1)">
+      <div class="kpi-header"><span class="kpi-label">Balance Neto</span>
+        <span class="kpi-icon"><i class="fa-solid fa-scale-balanced"></i></span></div>
+      <div class="kpi-value" id="kpi-bal">—</div>
+      <div class="kpi-footer" style="font-size:10.5px;color:var(--text-muted)">Ingresos – Egresos</div>
+    </div>
+    <div class="kpi-card" style="--kpi-color:#9c27b0;--kpi-bg:rgba(156,39,176,.1)">
+      <div class="kpi-header"><span class="kpi-label">Saldo Inicial</span>
+        <span class="kpi-icon"><i class="fa-solid fa-flag"></i></span></div>
+      <div class="kpi-value" id="kpi-si">—</div>
+      <div class="kpi-footer" style="font-size:10.5px;color:var(--text-muted)">Primera transacción</div>
+    </div>
+    <div class="kpi-card" style="--kpi-color:#e8a020;--kpi-bg:rgba(232,160,32,.1)">
+      <div class="kpi-header"><span class="kpi-label">Saldo Final</span>
+        <span class="kpi-icon"><i class="fa-solid fa-flag-checkered"></i></span></div>
+      <div class="kpi-value" id="kpi-sf">—</div>
+      <div class="kpi-footer" style="font-size:10.5px;color:var(--text-muted)">Última transacción</div>
+    </div>
+    <div class="kpi-card" style="--kpi-color:#2196f3;--kpi-bg:rgba(33,150,243,.1)">
+      <div class="kpi-header"><span class="kpi-label">N° Movimientos</span>
+        <span class="kpi-icon"><i class="fa-solid fa-list-ol"></i></span></div>
+      <div class="kpi-value" id="kpi-ntx">—</div>
+      <div class="kpi-footer" style="font-size:10.5px;color:var(--text-muted)">Transacciones totales</div>
+    </div>
+  </div>
+
+  <!-- ── FILA 1: Flujo de Saldo + Tipo de Transacción ─── -->
+  <div class="charts-grid-top">
+
+    <!-- Gráfico 1: Curva de saldo + flujo diario -->
+    <div class="card">
+      <div class="card-header">
+        <h3 class="card-title"><i class="fa-solid fa-chart-line"></i> Evolución del Saldo Bancario</h3>
+        <div style="display:flex;gap:6px;">
+          <button class="btn btn-ghost btn-sm" id="btnSaldoView" onclick="toggleSaldoView()" title="Cambiar vista">
+            <i class="fa-solid fa-arrows-rotate"></i> Saldo/Flujo
+          </button>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="chart-container-lg"><canvas id="chartSaldo"></canvas></div>
+      </div>
+    </div>
+
+    <!-- Gráfico 2: Donut tipo transacción -->
+    <div class="card">
+      <div class="card-header">
+        <h3 class="card-title"><i class="fa-solid fa-chart-pie"></i> Por Tipo de Movimiento</h3>
+      </div>
+      <div class="card-body">
+        <div class="chart-container-md"><canvas id="chartTipoTx"></canvas></div>
+        <div id="legendTipoTx" style="margin-top:12px;"></div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ── FILA 2: Ingresos vs Egresos por Mes + Acumulado ── -->
+  <div class="charts-grid-mid">
+
+    <!-- Gráfico 3: Barras mes -->
+    <div class="card">
+      <div class="card-header">
+        <h3 class="card-title"><i class="fa-solid fa-chart-bar"></i> Ingresos vs Egresos por Mes</h3>
+      </div>
+      <div class="card-body">
+        <div class="chart-container-md"><canvas id="chartMes"></canvas></div>
+      </div>
+    </div>
+
+    <!-- Gráfico 4: Área acumulado -->
+    <div class="card">
+      <div class="card-header">
+        <h3 class="card-title"><i class="fa-solid fa-chart-area"></i> Flujo Acumulado del Período</h3>
+      </div>
+      <div class="card-body">
+        <div class="chart-container-md"><canvas id="chartAcum"></canvas></div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ── FILA 3: Top Proveedores + Tipo Doc + Categorías ── -->
+  <div class="charts-grid-bot">
+
+    <!-- Gráfico 5: Top proveedores (horizontal bars custom) -->
+    <div class="card">
+      <div class="card-header">
+        <h3 class="card-title"><i class="fa-solid fa-ranking-star"></i> Top 10 Conceptos por Monto</h3>
+      </div>
+      <div class="card-body" id="topProveedoresChart" style="overflow-y:auto;max-height:280px;"></div>
+    </div>
+
+    <!-- Gráfico 6: Tipo de documento -->
+    <div class="card">
+      <div class="card-header">
+        <h3 class="card-title"><i class="fa-solid fa-file-invoice"></i> Por Tipo de Documento</h3>
+      </div>
+      <div class="card-body">
+        <div class="chart-container-sm"><canvas id="chartTipoDoc"></canvas></div>
+      </div>
+    </div>
+
+    <!-- Gráfico 7: Categorías de gasto -->
+    <div class="card">
+      <div class="card-header">
+        <h3 class="card-title"><i class="fa-solid fa-tags"></i> Categorías de Gasto</h3>
+      </div>
+      <div class="card-body">
+        <div class="chart-container-sm"><canvas id="chartCat"></canvas></div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ── TABLA DE TRANSACCIONES ─────────────────────────── -->
+  <div class="card">
+    <div class="card-header">
+      <h3 class="card-title"><i class="fa-solid fa-table-list"></i> Detalle de Transacciones Extraídas</h3>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <span id="txCountBadge" class="badge badge-primary"></span>
+        <input type="text" id="txSearch" class="filter-control"
+          placeholder="Buscar..." oninput="filterTxTable()" style="width:180px;" />
+      </div>
+    </div>
+    <div class="tx-preview-wrap">
+      <table class="data-table" id="txDetailTable">
+        <thead>
+          <tr>
+            <th>#</th><th>Fecha</th><th>Descripción / Detalle</th>
+            <th>Tipo</th><th>Tipo Doc</th>
+            <th>Cliente / Proveedor</th>
+            <th class="text-right">Importe</th>
+            <th class="text-right">Saldo</th>
+          </tr>
+        </thead>
+        <tbody id="txDetailBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+</div><!-- end dashboardScreen -->
+{% endblock %}
+
+{% block scripts %}
+<script>
+/* ══ STATE ════════════════════════════════════════════════ */
+let currentTxs      = [];
+let currentAnalysis = {};
+let currentFilename = '';
+let selectedBanco   = 'BCP SOLES';
+let saldoViewMode   = 'saldo'; // 'saldo' | 'flujo'
+
+// Charts refs
+let cSaldo, cTipo, cMes, cAcum, cTipoDoc, cCat;
+
+const PALETTE = [
+  '#1a3c6e','#e8a020','#1aaa6b','#e03c3c','#2196f3',
+  '#9c27b0','#ff5722','#009688','#607d8b','#795548'
+];
+
+/* ══ BANCO SELECTION ══════════════════════════════════════ */
+function selectBanco(btn) {
+  document.querySelectorAll('.bank-btn').forEach(b => b.classList.remove('selected'));
+  btn.classList.add('selected');
+  selectedBanco = btn.dataset.banco;
+}
+
+/* ══ FILE INPUTS ══════════════════════════════════════════ */
+function setupDrop(zoneId, inputId, accept) {
+  const zone  = document.getElementById(zoneId);
+  const input = document.getElementById(inputId);
+  const nameEl = document.getElementById(inputId.replace('Input','FileName') + (inputId.includes('pdf') ? '' : ''));
+
+  zone.addEventListener('dragover',  e => { e.preventDefault(); zone.style.borderColor='var(--primary)'; });
+  zone.addEventListener('dragleave', ()  => zone.style.borderColor='');
+  zone.addEventListener('drop', e => {
+    e.preventDefault(); zone.style.borderColor='';
+    const f = e.dataTransfer.files[0];
+    if (f) handleFile(f);
+  });
+  input.addEventListener('change', () => { if (input.files[0]) handleFile(input.files[0]); });
+}
+setupDrop('pdfDropZone',  'pdfFileInput',  '.pdf');
+setupDrop('xlsxDropZone', 'xlsxFileInput', '.xlsx,.xls,.csv');
+
+/* ══ UPLOAD HANDLERS ══════════════════════════════════════ */
+async function handleFile(file) {
+  showLoading(`Procesando "${file.name}"...`, 'Extrayendo transacciones del archivo...');
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('banco', selectedBanco);
+
+  try {
+    const res  = await fetch('/api/analisis-bancario/upload', { method:'POST', body:formData });
+    const data = await res.json();
+    hideLoading();
+
+    const rawText = (data.raw_text || '').trim();
+
+    // Mostrar siempre el visor diagnóstico si hay texto extraído
+    if (rawText) {
+      document.getElementById('rawTextViewer').textContent = rawText;
+      document.getElementById('rawTextSection').style.display = 'block';
+      document.getElementById('pasteTextAB').value = rawText;
+    }
+
+    if (data.no_data) {
+      document.getElementById('pasteSection').style.display = 'block';
+      if (rawText) {
+        showToast('info', 'Texto extraído del PDF',
+          'Haz clic en "Analizar texto del estado de cuenta" para procesar.');
+      } else {
+        showToast('warning', 'PDF sin texto extraíble',
+          'Abre el PDF, selecciona todo (Ctrl+A), cópialo y pégalo en el área de texto.');
+      }
+      return;
+    }
+
+    if (!data.success || data.error) {
+      showToast('error', 'Error al procesar', data.error || data.message || 'Error desconocido');
+      return;
+    }
+
+    // Verificar si las transacciones parecen reales (al menos 3 y montos > 10)
+    const totalMonto = (data.transactions || []).reduce((s, t) => s + Math.abs(t.importe || 0), 0);
+    if (data.transactions.length < 3 || totalMonto < 10) {
+      // Probablemente capturó falsos positivos del encabezado
+      document.getElementById('pasteSection').style.display = 'block';
+      showToast('warning', `Solo ${data.transactions.length} transacciones detectadas`,
+        'El formato del PDF no fue reconocido completamente. Usa el área de texto para procesar.');
+      return;
+    }
+
+    mountDashboard(data.transactions, data.analysis, data.filename);
+  } catch(e) {
+    hideLoading();
+    showToast('error','Error de red', e.message);
+  }
+}
+
+function usarTextoDiag() {
+  const texto = document.getElementById('pasteTextAB').value.trim();
+  if (!texto) { showToast('warning','Sin texto','No hay texto disponible'); return; }
+  document.getElementById('pasteSection').style.display = 'block';
+  document.getElementById('pasteSection').scrollIntoView({ behavior:'smooth' });
+  procesarTextoAB();
+}
+
+async function procesarTextoAB() {
+  const texto = document.getElementById('pasteTextAB').value.trim();
+  if (!texto) { showToast('warning','Texto vacío','Pega el contenido del PDF primero'); return; }
+  showLoading('Analizando texto...', 'Reconociendo transacciones del texto pegado');
+  try {
+    const res  = await fetch('/api/analisis-bancario/upload-texto', {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json' },
+      body: JSON.stringify({ texto, banco: selectedBanco }),
+    });
+    const data = await res.json();
+    hideLoading();
+    if (!data.success) {
+      showToast('warning','Sin resultados', data.message || 'No se detectaron transacciones en el texto.');
+      return;
+    }
+    mountDashboard(data.transactions, data.analysis, data.filename);
+  } catch(e) {
+    hideLoading();
+    showToast('error','Error', e.message);
+  }
+}
+
+async function analizarTemplate() {
+  showLoading('Analizando Template VIVA CONT...', 'Cargando y procesando el archivo Excel principal');
+  try {
+    const res  = await fetch('/api/analisis-bancario/from-excel', { method:'POST' });
+    const data = await res.json();
+    hideLoading();
+    if (data.error) { showToast('error','Error', data.error); return; }
+    mountDashboard(data.transactions, data.analysis, data.filename);
+  } catch(e) {
+    hideLoading();
+    showToast('error','Error', e.message);
+  }
+}
+
+function showLoading(title, msg) {
+  document.getElementById('loadingTitle').textContent = title;
+  document.getElementById('loadingMsg').textContent   = msg;
+  document.getElementById('uploadLoading').style.display = 'block';
+}
+function hideLoading() {
+  document.getElementById('uploadLoading').style.display = 'none';
+}
+
+/* ══ MOUNT DASHBOARD ══════════════════════════════════════ */
+function mountDashboard(txs, analysis, filename) {
+  currentTxs      = txs;
+  currentAnalysis = analysis;
+  currentFilename = filename || '';
+
+  // Switch screens
+  document.getElementById('uploadScreen').style.display    = 'none';
+  document.getElementById('dashboardScreen').style.display = 'block';
+
+  // Header info
+  const ext = filename.toLowerCase().endsWith('.pdf') ? 'fa-file-pdf' : 'fa-file-excel';
+  document.getElementById('dashFileBadge').innerHTML =
+    `<i class="fa-solid ${ext}"></i><span id="dashFileName">${filename}</span>`;
+  const meses = (analysis.por_mes || []).map(m => m.mes).join(', ') || 'Período analizado';
+  document.getElementById('dashSubtitle').textContent =
+    `${analysis.banco || 'Banco'} · ${analysis.total_transacciones || 0} transacciones · ${meses}`;
+
+  renderKPIs(analysis);
+  renderChartSaldo(analysis);
+  renderChartTipo(analysis);
+  renderChartMes(analysis);
+  renderChartAcum(analysis);
+  renderTopProveedores(analysis);
+  renderChartTipoDoc(analysis);
+  renderChartCat(analysis);
+  renderTxTable(txs);
+
+  // Scroll top
+  window.scrollTo({ top:0, behavior:'smooth' });
+}
+
+/* ══ KPIs ═════════════════════════════════════════════════ */
+function renderKPIs(a) {
+  const s = (v) => fmtMoney(v);
+  document.getElementById('kpi-ing').textContent = s(a.total_ingresos);
+  document.getElementById('kpi-egr').textContent = s(a.total_egresos);
+  const balEl = document.getElementById('kpi-bal');
+  balEl.textContent  = s(a.balance);
+  balEl.className    = 'kpi-value ' + (a.balance >= 0 ? 'positive' : 'negative');
+  document.getElementById('kpi-si').textContent  = s(a.saldo_inicial);
+  document.getElementById('kpi-sf').textContent  = s(a.saldo_final);
+  document.getElementById('kpi-ntx').textContent = a.total_transacciones.toLocaleString();
+}
+
+/* ══ CHART 1: Saldo / Flujo diario ═══════════════════════ */
+function renderChartSaldo(a) {
+  if (cSaldo) cSaldo.destroy();
+  const flujo = a.flujo_diario || [];
+  const labels = flujo.map(f => f.fecha);
+  const ctx    = document.getElementById('chartSaldo');
+
+  if (saldoViewMode === 'saldo') {
+    cSaldo = new Chart(ctx, {
+      type:'line',
+      data:{
+        labels,
+        datasets:[{
+          label:'Saldo (S/)',
+          data: flujo.map(f => f.saldo),
+          borderColor:'#1a3c6e', backgroundColor:'rgba(26,60,110,.12)',
+          fill:true, tension:.35, pointRadius:2, pointHoverRadius:5,
+          borderWidth:2.5,
+        }]
+      },
+      options:chartOpts('S/', false)
+    });
+  } else {
+    const pos = flujo.map(f => f.importe > 0 ? f.importe : 0);
+    const neg = flujo.map(f => f.importe < 0 ? Math.abs(f.importe) : 0);
+    cSaldo = new Chart(ctx, {
+      type:'bar',
+      data:{
+        labels,
+        datasets:[
+          { label:'Abonos',  data:pos, backgroundColor:'rgba(26,170,107,.75)', borderRadius:3 },
+          { label:'Cargos',  data:neg, backgroundColor:'rgba(224,60,60,.65)',  borderRadius:3 },
+        ]
+      },
+      options:chartOpts('S/', true)
+    });
+  }
+}
+
+function toggleSaldoView() {
+  saldoViewMode = saldoViewMode === 'saldo' ? 'flujo' : 'saldo';
+  renderChartSaldo(currentAnalysis);
+}
+
+/* ══ CHART 2: Tipo transacción (doughnut) ════════════════ */
+function renderChartTipo(a) {
+  if (cTipo) cTipo.destroy();
+  const data = a.por_tipo || [];
+  cTipo = new Chart(document.getElementById('chartTipoTx'), {
+    type:'doughnut',
+    data:{
+      labels: data.map(d => d.tipo),
+      datasets:[{
+        data: data.map(d => d.monto),
+        backgroundColor: PALETTE.slice(0, data.length),
+        borderWidth:2, borderColor:'#fff',
+      }]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false, cutout:'65%',
+      plugins:{ legend:{ display:false },
+        tooltip:{ callbacks:{ label: c => ` ${c.label}: S/ ${c.parsed.toLocaleString('es-PE',{minimumFractionDigits:2})}` }}}
+    }
+  });
+  const leg = document.getElementById('legendTipoTx');
+  leg.innerHTML = data.map((d,i) => `
+    <div class="stat-mini">
+      <span class="stat-mini-label">
+        <span class="dot" style="background:${PALETTE[i]}"></span>${d.tipo}
+        <span style="font-size:10px;color:var(--text-light);margin-left:4px;">${d.cantidad} mov.</span>
+      </span>
+      <span class="stat-mini-value">${fmtMoney(d.monto)}</span>
+    </div>`).join('');
+}
+
+/* ══ CHART 3: Ingresos vs Egresos por Mes ════════════════ */
+function renderChartMes(a) {
+  if (cMes) cMes.destroy();
+  const meses = a.por_mes || [];
+  cMes = new Chart(document.getElementById('chartMes'), {
+    type:'bar',
+    data:{
+      labels: meses.map(m => m.mes),
+      datasets:[
+        { label:'Ingresos', data: meses.map(m => m.ingresos), backgroundColor:'rgba(26,170,107,.75)', borderRadius:5 },
+        { label:'Egresos',  data: meses.map(m => m.egresos),  backgroundColor:'rgba(224,60,60,.65)',  borderRadius:5 },
+      ]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{ position:'top', labels:{ font:{size:11}, boxWidth:12 } }},
+      scales:{
+        y:{ beginAtZero:true, grid:{ color:'rgba(0,0,0,.05)' },
+            ticks:{ callback: v => 'S/'+v.toLocaleString() }},
+        x:{ grid:{ display:false } }
+      }
+    }
+  });
+}
+
+/* ══ CHART 4: Flujo acumulado (área) ═════════════════════ */
+function renderChartAcum(a) {
+  if (cAcum) cAcum.destroy();
+  const serie = a.serie_acumulada || [];
+  // Sample every N points to keep chart clean
+  const step = Math.max(1, Math.floor(serie.length / 40));
+  const sampled = serie.filter((_,i) => i % step === 0 || i === serie.length-1);
+  cAcum = new Chart(document.getElementById('chartAcum'), {
+    type:'line',
+    data:{
+      labels: sampled.map(s => s.fecha),
+      datasets:[
+        { label:'Ingresos acum.', data: sampled.map(s => s.ing_acum),
+          borderColor:'#1aaa6b', backgroundColor:'rgba(26,170,107,.15)',
+          fill:true, tension:.4, pointRadius:0, borderWidth:2 },
+        { label:'Egresos acum.', data: sampled.map(s => s.egr_acum),
+          borderColor:'#e03c3c', backgroundColor:'rgba(224,60,60,.1)',
+          fill:true, tension:.4, pointRadius:0, borderWidth:2 },
+      ]
+    },
+    options:chartOpts('S/', false)
+  });
+}
+
+/* ══ TOP PROVEEDORES (custom bars) ═══════════════════════ */
+function renderTopProveedores(a) {
+  const container = document.getElementById('topProveedoresChart');
+  const top = a.top_proveedores || [];
+  if (!top.length) { container.innerHTML = '<div class="empty-state"><p>Sin datos</p></div>'; return; }
+  const maxMonto = Math.max(...top.map(t => t.monto), 1);
+  container.innerHTML = top.map((t, i) => `
+    <div class="hbar-item">
+      <div class="hbar-label" title="${t.nombre}">
+        <span style="display:inline-block;width:16px;height:16px;border-radius:4px;background:${PALETTE[i]};vertical-align:middle;margin-right:6px;"></span>
+        ${t.nombre}
+      </div>
+      <div class="hbar-track">
+        <div class="hbar-fill" style="width:${(t.monto/maxMonto*100).toFixed(1)}%;background:${PALETTE[i]};"></div>
+      </div>
+      <div class="hbar-val">${fmtMoney(t.monto)}</div>
+    </div>`).join('');
+}
+
+/* ══ CHART 6: Tipo de documento ══════════════════════════ */
+function renderChartTipoDoc(a) {
+  if (cTipoDoc) cTipoDoc.destroy();
+  const data = a.por_tipo_doc || [];
+  cTipoDoc = new Chart(document.getElementById('chartTipoDoc'), {
+    type:'pie',
+    data:{
+      labels: data.map(d => d.tipo_doc),
+      datasets:[{
+        data: data.map(d => d.cantidad),
+        backgroundColor: PALETTE.slice(0, data.length),
+        borderWidth:2, borderColor:'#fff',
+      }]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{
+        legend:{ position:'bottom', labels:{ font:{size:10.5}, boxWidth:12, padding:8 }},
+        tooltip:{ callbacks:{ label: c => ` ${c.label}: ${c.parsed} movimientos` }}
+      }
+    }
+  });
+}
+
+/* ══ CHART 7: Categorías de gasto ════════════════════════ */
+function renderChartCat(a) {
+  if (cCat) cCat.destroy();
+  const cats  = a.categorias || {};
+  const labels = Object.keys(cats).filter(k => cats[k] > 0);
+  const vals   = labels.map(k => cats[k]);
+  cCat = new Chart(document.getElementById('chartCat'), {
+    type:'doughnut',
+    data:{
+      labels,
+      datasets:[{
+        data:vals,
+        backgroundColor:['#1a3c6e','#e8a020','#2196f3','#1aaa6b'],
+        borderWidth:2, borderColor:'#fff',
+      }]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false, cutout:'55%',
+      plugins:{
+        legend:{ position:'bottom', labels:{ font:{size:10.5}, boxWidth:12, padding:8 }},
+        tooltip:{ callbacks:{ label: c => ` ${c.label}: S/ ${c.parsed.toLocaleString('es-PE',{minimumFractionDigits:2})}` }}
+      }
+    }
+  });
+}
+
+/* ══ TRANSACTION TABLE ════════════════════════════════════ */
+function renderTxTable(txs) {
+  document.getElementById('txCountBadge').textContent = `${txs.length} registros`;
+  const tbody = document.getElementById('txDetailBody');
+  tbody.innerHTML = txs.map((tx, i) => {
+    const pos = parseFloat(tx.importe || 0) >= 0;
+    return `<tr data-search="${(tx.descripcion||'') + (tx.cliente_proveedor||'')}".toLowerCase()>
+      <td style="color:var(--text-muted);font-size:11px;">${i+1}</td>
+      <td class="mono" style="white-space:nowrap;">${fmtDate(tx.fecha_operacion || tx.fecha)}</td>
+      <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
+          title="${tx.detalle || tx.descripcion}">${tx.detalle || tx.descripcion || '—'}</td>
+      <td>${badgeTipo(tx.tipo)}</td>
+      <td>${tx.tipo_doc ? `<span class="badge badge-info">${tx.tipo_doc}</span>` : '—'}</td>
+      <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
+          title="${tx.cliente_proveedor}">${tx.cliente_proveedor || '—'}</td>
+      <td class="text-right mono ${pos?'amount-pos':'amount-neg'}">${pos?'+':''}${fmtMoney(tx.importe)}</td>
+      <td class="text-right mono">${fmtMoney(tx.saldo)}</td>
+    </tr>`;
+  }).join('');
+}
+
+function filterTxTable() {
+  const q = document.getElementById('txSearch').value.toLowerCase();
+  document.querySelectorAll('#txDetailBody tr').forEach(row => {
+    const text = (row.textContent || '').toLowerCase();
+    row.style.display = text.includes(q) ? '' : 'none';
+  });
+}
+
+/* ══ GUARDAR ══════════════════════════════════════════════ */
+async function guardarAlSistema() {
+  if (!currentTxs.length) return;
+  setLoading('btnGuardar', true, 'Guardando...');
+  const res = await apiPost('/api/analisis-bancario/guardar', {
+    transactions: currentTxs,
+    analysis: currentAnalysis,
+    filename: currentFilename || ''
+  });
+  setLoading('btnGuardar', false);
+  if (!res) return;
+  if (res.error) { showToast('error','Error', res.error); return; }
+  showToast('success','¡Guardado exitosamente!',
+    `${res.saved} transacciones guardadas · Período: ${res.label}`);
+  document.getElementById('btnGuardar').disabled = true;
+  document.getElementById('btnGuardar').innerHTML = '<i class="fa-solid fa-check"></i> Guardado';
+  await loadPeriodTabs();
+}
+
+/* ══ TABS DE PERÍODOS ══════════════════════════════════════ */
+let activePeriodoId = null;
+
+async function loadPeriodTabs() {
+  const periodos = await apiGet('/api/periodos');
+  if (!periodos || !periodos.length) return;
+
+  const bar = document.getElementById('periodTabsBar');
+  const list = document.getElementById('periodTabsList');
+  bar.style.display = 'flex';
+
+  list.innerHTML = `
+    <button class="period-tab ${activePeriodoId === 'all' ? 'active' : ''}"
+      onclick="selectPeriodo('all')">
+      <i class="fa-solid fa-layer-group"></i> Consolidado
+    </button>
+    ${periodos.map(p => `
+      <button class="period-tab ${activePeriodoId == p.id ? 'active' : ''}"
+        onclick="selectPeriodo(${p.id})">
+        <i class="fa-solid fa-calendar-days"></i>
+        ${p.label}
+        <span style="font-size:10px;opacity:.7;margin-left:4px;">${p.total_transacciones} txs</span>
+      </button>
+    `).join('')}
+  `;
+}
+
+async function selectPeriodo(id) {
+  activePeriodoId = id;
+  document.querySelectorAll('.period-tab').forEach(b => b.classList.remove('active'));
+  event.currentTarget.classList.add('active');
+
+  document.getElementById('uploadScreen').style.display    = 'none';
+  document.getElementById('dashboardScreen').style.display = 'block';
+
+  if (id === 'all') {
+    showLoading('Cargando consolidado...', 'Combinando todos los períodos');
+    const res = await apiGet('/api/periodos/consolidado');
+    hideLoading();
+    if (!res || !res.transactions.length) {
+      showToast('warning', 'Sin datos', 'No hay períodos guardados aún');
+      return;
+    }
+    currentTxs      = res.transactions;
+    currentAnalysis = res.analysis;
+    currentFilename = 'Consolidado';
+    mountDashboard(res.transactions, res.analysis, 'Consolidado');
+    document.getElementById('btnGuardar').style.display = 'none';
+  } else {
+    showLoading('Cargando período...', '');
+    const res = await apiGet(`/api/periodos/${id}/analysis`);
+    hideLoading();
+    if (!res) return;
+    currentTxs      = res.transactions;
+    currentAnalysis = res.analysis;
+    currentFilename = res.periodo.archivo;
+    mountDashboard(res.transactions, res.analysis, res.periodo.archivo);
+    const btn = document.getElementById('btnGuardar');
+    btn.style.display = 'none';
+  }
+}
+
+/* ══ RESET ════════════════════════════════════════════════ */
+function resetToUpload() {
+  document.getElementById('dashboardScreen').style.display = 'none';
+  document.getElementById('uploadScreen').style.display   = 'block';
+  document.getElementById('pdfFileInput').value  = '';
+  document.getElementById('xlsxFileInput').value = '';
+  document.getElementById('pdfFileName').textContent  = '';
+  document.getElementById('xlsxFileName').textContent = '';
+  currentTxs = []; currentAnalysis = {};
+  [cSaldo,cTipo,cMes,cAcum,cTipoDoc,cCat].forEach(c => c && c.destroy());
+  cSaldo=cTipo=cMes=cAcum=cTipoDoc=cCat=null;
+  window.scrollTo({ top:0, behavior:'smooth' });
+}
+
+/* ══ CHART OPTS HELPER ════════════════════════════════════ */
+function chartOpts(yPrefix, stacked) {
+  return {
+    responsive:true, maintainAspectRatio:false,
+    plugins:{ legend:{ position:'top', labels:{ font:{size:11}, boxWidth:12 } }},
+    scales:{
+      y:{ beginAtZero:true, stacked:!!stacked, grid:{ color:'rgba(0,0,0,.05)' },
+          ticks:{ callback: v => yPrefix+v.toLocaleString('es-PE') }},
+      x:{ stacked:!!stacked, grid:{ display:false },
+          ticks:{ maxTicksLimit:12, maxRotation:40, font:{ size:10 } }}
+    }
+  };
+}
+
+// Inicializar tabs de períodos al cargar la página
+loadPeriodTabs();
+</script>
+{% endblock %}

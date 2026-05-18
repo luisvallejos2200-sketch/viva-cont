@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "viva-cont",
+      "runtimeExecutable": "/Library/Developer/CommandLineTools/usr/bin/python3",
+      "runtimeArgs": ["app.py"],
+      "port": 5050,
+      "cwd": "/Users/ceoluisvallejos/Viva Consulting 2026/VIVA-CONT"
+    }
+  ]
+}

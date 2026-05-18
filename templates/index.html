@@ -1,0 +1,363 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block breadcrumb %}Dashboard{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="page-title"><i class="fa-solid fa-gauge-high" style="color:var(--accent)"></i> Dashboard</h1>
+    <p class="page-subtitle">Resumen financiero y operativo de Viva Consulting Empresas</p>
+  </div>
+  <div class="page-actions">
+    <button class="btn btn-outline btn-sm" onclick="loadKPIs()">
+      <i class="fa-solid fa-arrows-rotate"></i> Actualizar
+    </button>
+    <button class="btn btn-primary btn-sm" onclick="openImportModal()">
+      <i class="fa-solid fa-file-import"></i> Importar datos
+    </button>
+  </div>
+</div>
+
+<!-- KPI CARDS -->
+<div class="kpi-grid" id="kpiGrid">
+  <div class="kpi-card" style="--kpi-color:#1aaa6b;--kpi-bg:rgba(26,170,107,.1)">
+    <div class="kpi-header">
+      <span class="kpi-label">Total Ingresos</span>
+      <span class="kpi-icon"><i class="fa-solid fa-arrow-trend-up"></i></span>
+    </div>
+    <div class="kpi-value positive" id="kpi-ingresos">S/ —</div>
+    <div class="kpi-footer"><i class="fa-solid fa-calendar-days"></i> Acumulado</div>
+  </div>
+
+  <div class="kpi-card" style="--kpi-color:#e03c3c;--kpi-bg:rgba(224,60,60,.1)">
+    <div class="kpi-header">
+      <span class="kpi-label">Total Egresos</span>
+      <span class="kpi-icon"><i class="fa-solid fa-arrow-trend-down"></i></span>
+    </div>
+    <div class="kpi-value negative" id="kpi-egresos">S/ —</div>
+    <div class="kpi-footer"><i class="fa-solid fa-calendar-days"></i> Acumulado</div>
+  </div>
+
+  <div class="kpi-card" style="--kpi-color:#1a3c6e;--kpi-bg:rgba(26,60,110,.1)">
+    <div class="kpi-header">
+      <span class="kpi-label">Balance Neto</span>
+      <span class="kpi-icon"><i class="fa-solid fa-scale-balanced"></i></span>
+    </div>
+    <div class="kpi-value" id="kpi-balance">S/ —</div>
+    <div class="kpi-footer"><i class="fa-solid fa-info-circle"></i> Ingresos - Egresos</div>
+  </div>
+
+  <div class="kpi-card" style="--kpi-color:#2196f3;--kpi-bg:rgba(33,150,243,.1)">
+    <div class="kpi-header">
+      <span class="kpi-label">Transacciones</span>
+      <span class="kpi-icon"><i class="fa-solid fa-list-check"></i></span>
+    </div>
+    <div class="kpi-value" id="kpi-tx">—</div>
+    <div class="kpi-footer"><i class="fa-solid fa-building-columns"></i> Registros bancarios</div>
+  </div>
+
+  <div class="kpi-card" style="--kpi-color:#e8a020;--kpi-bg:rgba(232,160,32,.1)">
+    <div class="kpi-header">
+      <span class="kpi-label">Total Facturado</span>
+      <span class="kpi-icon"><i class="fa-solid fa-file-invoice-dollar"></i></span>
+    </div>
+    <div class="kpi-value" id="kpi-facturado">S/ —</div>
+    <div class="kpi-footer"><i class="fa-solid fa-receipt"></i> <span id="kpi-facturas-count">—</span> facturas emitidas</div>
+  </div>
+</div>
+
+<!-- MAIN GRID -->
+<div class="grid-2" style="gap:20px;margin-bottom:20px;">
+
+  <!-- Flujo Mensual Chart -->
+  <div class="card">
+    <div class="card-header">
+      <h3 class="card-title"><i class="fa-solid fa-chart-area"></i> Flujo de Caja Mensual</h3>
+      <button class="btn btn-ghost btn-sm" onclick="exportChart()">
+        <i class="fa-solid fa-download"></i>
+      </button>
+    </div>
+    <div class="card-body">
+      <div class="chart-wrapper">
+        <canvas id="chartFlujo"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tipo de Transacciones -->
+  <div class="card">
+    <div class="card-header">
+      <h3 class="card-title"><i class="fa-solid fa-chart-pie"></i> Tipos de Transacción</h3>
+    </div>
+    <div class="card-body">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:center;">
+        <div class="chart-wrapper" style="height:200px;">
+          <canvas id="chartTipo"></canvas>
+        </div>
+        <div id="legendTipo"></div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- IMPORT PANEL + RECENT TRANSACTIONS -->
+<div class="grid-2" style="gap:20px;">
+
+  <!-- Import Panel ERP / Excel / Drive -->
+  <div class="card" id="importPanel">
+    <div class="card-header">
+      <h3 class="card-title"><i class="fa-solid fa-file-import"></i> Importar Datos ERP</h3>
+    </div>
+    <div class="card-body">
+      <div class="tabs" style="margin-bottom:16px;">
+        <button class="tab-btn active" data-tab="tab-excel" onclick="switchImportTab(this,'tab-excel')">
+          <i class="fa-solid fa-file-excel"></i> Excel / ERP
+        </button>
+        <button class="tab-btn" data-tab="tab-drive" onclick="switchImportTab(this,'tab-drive')">
+          <i class="fa-brands fa-google-drive"></i> Google Drive
+        </button>
+        <button class="tab-btn" data-tab="tab-template" onclick="switchImportTab(this,'tab-template')">
+          <i class="fa-solid fa-star"></i> Template Viva
+        </button>
+      </div>
+
+      <!-- Tab Excel -->
+      <div class="tab-pane active" id="tab-excel">
+        <div class="upload-zone" id="excelZone">
+          <div class="upload-icon"><i class="fa-solid fa-file-excel"></i></div>
+          <h4>Arrastra tu archivo Excel, CSV o Power BI</h4>
+          <p>Compatible con exportaciones de ERP, contabilidad o Power BI · .xlsx .xls .csv</p>
+          <p style="margin-top:8px;font-size:11px;color:var(--text-light)">o haz clic para seleccionar</p>
+        </div>
+        <input type="file" id="excelInput" accept=".xlsx,.xls,.csv" style="display:none" />
+        <div id="excelProgress" style="display:none;margin-top:12px;">
+          <div style="display:flex;align-items:center;gap:10px;padding:12px;background:var(--surface2);border-radius:var(--radius-xs);">
+            <span class="spinner"></span>
+            <span id="excelProgressText" style="font-size:12.5px;color:var(--text-muted)">Procesando archivo...</span>
+          </div>
+        </div>
+        <p style="font-size:11px;color:var(--text-muted);margin-top:10px;">
+          <i class="fa-solid fa-circle-info" style="color:var(--info)"></i>
+          Los datos importados aquí alimentan los KPIs del Dashboard. Para estados de cuenta bancarios usa
+          <a href="/analisis-bancario" style="color:var(--accent);">Análisis Bancario</a>.
+        </p>
+      </div>
+
+      <!-- Tab Drive -->
+      <div class="tab-pane" id="tab-drive">
+        <div class="form-group">
+          <label class="form-label"><i class="fa-brands fa-google-drive"></i> Link de Google Drive</label>
+          <input type="url" class="form-control" id="driveUrl"
+            placeholder="https://drive.google.com/file/d/..." />
+          <small style="color:var(--text-muted);font-size:11px;margin-top:4px;display:block;">
+            Pega el enlace compartido del archivo Excel o CSV desde tu Drive
+          </small>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Descripción (opcional)</label>
+          <input type="text" class="form-control" id="driveDesc" placeholder="Ej: Reporte ERP Noviembre 2025" />
+        </div>
+        <button class="btn btn-primary" style="width:100%" onclick="importarDrive()">
+          <i class="fa-solid fa-cloud-download"></i> Registrar enlace
+        </button>
+      </div>
+
+      <!-- Tab Template Viva -->
+      <div class="tab-pane" id="tab-template">
+        <div style="text-align:center;padding:20px 0;">
+          <div style="font-size:48px;margin-bottom:12px;">📊</div>
+          <h4 style="font-size:15px;font-weight:700;margin-bottom:8px;">Template MODELO PLANTILLAS VIVA CONT</h4>
+          <p style="font-size:12px;color:var(--text-muted);margin-bottom:20px;">
+            Importa directamente el archivo Excel oficial con todos los datos del sistema
+          </p>
+          <button class="btn btn-accent" style="width:100%" onclick="importarTemplate()">
+            <i class="fa-solid fa-bolt"></i> Importar Template Viva Cont
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Últimas Transacciones -->
+  <div class="card">
+    <div class="card-header">
+      <h3 class="card-title"><i class="fa-solid fa-clock-rotate-left"></i> Últimas Transacciones</h3>
+      <a href="/estados-cuenta" class="btn btn-ghost btn-sm">Ver todo <i class="fa-solid fa-arrow-right"></i></a>
+    </div>
+    <div class="table-wrap">
+      <table class="data-table" id="tableRecent">
+        <thead>
+          <tr>
+            <th>Fecha</th>
+            <th>Descripción</th>
+            <th>Tipo</th>
+            <th class="text-right">Importe</th>
+          </tr>
+        </thead>
+        <tbody id="bodyRecent">
+          <tr class="loading-row"><td colspan="4"><span class="spinner"></span> Cargando...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let chartFlujo = null, chartTipo = null;
+
+async function loadKPIs() {
+  const data = await apiGet('/api/dashboard/kpis');
+  if (!data) return;
+
+  // KPI values
+  document.getElementById('kpi-ingresos').textContent    = fmtMoney(data.total_ingresos);
+  document.getElementById('kpi-egresos').textContent     = fmtMoney(data.total_egresos);
+  const balEl = document.getElementById('kpi-balance');
+  balEl.textContent = fmtMoney(data.balance);
+  balEl.className = 'kpi-value ' + (data.balance >= 0 ? 'positive' : 'negative');
+  document.getElementById('kpi-tx').textContent          = data.total_transacciones.toLocaleString();
+  document.getElementById('kpi-facturado').textContent   = fmtMoney(data.total_facturado);
+  document.getElementById('kpi-facturas-count').textContent = data.total_facturas.toLocaleString();
+
+  // Flujo Chart
+  if (data.flujo_mensual?.length) {
+    const labels  = data.flujo_mensual.map(r => r.mes);
+    const ingresos = data.flujo_mensual.map(r => r.ingresos);
+    const egresos  = data.flujo_mensual.map(r => r.egresos);
+    if (chartFlujo) chartFlujo.destroy();
+    chartFlujo = new Chart(document.getElementById('chartFlujo'), {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [
+          { label:'Ingresos', data:ingresos, backgroundColor:'rgba(26,170,107,.75)', borderRadius:4 },
+          { label:'Egresos',  data:egresos,  backgroundColor:'rgba(224,60,60,.65)',  borderRadius:4 },
+        ]
+      },
+      options: {
+        responsive:true, maintainAspectRatio:false,
+        plugins:{ legend:{ position:'top', labels:{ font:{size:11}, boxWidth:12 } } },
+        scales:{
+          y:{ beginAtZero:true, grid:{ color:'rgba(0,0,0,.05)' },
+              ticks:{ callback: v => 'S/'+v.toLocaleString('es-PE') } },
+          x:{ grid:{ display:false } }
+        }
+      }
+    });
+  }
+
+  // Tipo Pie
+  if (data.por_tipo?.length) {
+    const COLORS = ['#1a3c6e','#e8a020','#1aaa6b','#e03c3c','#2196f3','#9c27b0'];
+    const labels = data.por_tipo.map(r => r.tipo || 'OTRO');
+    const montos = data.por_tipo.map(r => r.monto);
+    if (chartTipo) chartTipo.destroy();
+    chartTipo = new Chart(document.getElementById('chartTipo'), {
+      type: 'doughnut',
+      data: {
+        labels,
+        datasets:[{ data:montos, backgroundColor:COLORS, borderWidth:2, borderColor:'#fff' }]
+      },
+      options:{
+        responsive:true, maintainAspectRatio:false,
+        cutout:'68%',
+        plugins:{ legend:{ display:false } }
+      }
+    });
+    const legend = document.getElementById('legendTipo');
+    legend.innerHTML = data.por_tipo.map((r,i) => `
+      <div class="stat-mini">
+        <span class="stat-mini-label">
+          <span class="dot" style="background:${COLORS[i]}"></span>
+          ${r.tipo || 'OTRO'}
+        </span>
+        <span class="stat-mini-value">${r.cantidad}</span>
+      </div>`).join('');
+  }
+
+  // Recent Table
+  const tbody = document.getElementById('bodyRecent');
+  if (!data.ultimas_transacciones?.length) {
+    tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:30px;">Sin transacciones</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = data.ultimas_transacciones.map(tx => {
+    const pos = tx.importe >= 0;
+    return `<tr>
+      <td style="white-space:nowrap">${fmtDate(tx.fecha_operacion)}</td>
+      <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+          title="${tx.descripcion}">${tx.descripcion || '—'}</td>
+      <td>${badgeTipo(tx.tipo)}</td>
+      <td class="text-right ${pos?'amount-pos':'amount-neg'}">${pos?'+':''}${fmtMoney(tx.importe)}</td>
+    </tr>`;
+  }).join('');
+}
+
+// Scroll al panel de importación y resaltarlo
+function openImportModal() {
+  const panel = document.getElementById('importPanel');
+  if (!panel) return;
+  panel.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  panel.style.transition = 'box-shadow .3s ease, outline .3s ease';
+  panel.style.outline = '2px solid var(--primary)';
+  panel.style.boxShadow = '0 0 0 4px rgba(0,48,155,.15)';
+  setTimeout(() => {
+    panel.style.outline = '';
+    panel.style.boxShadow = '';
+  }, 1800);
+}
+
+// Import tabs
+function switchImportTab(btn, tabId) {
+  document.querySelectorAll('#importPanel .tab-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('#importPanel .tab-pane').forEach(p => p.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById(tabId).classList.add('active');
+}
+
+// Import Excel
+initUploadZone('excelZone', 'excelInput', async (file) => {
+  document.getElementById('excelProgress').style.display = 'block';
+  document.getElementById('excelProgressText').textContent = `Procesando "${file.name}"...`;
+  const formData = new FormData();
+  formData.append('file', file);
+  try {
+    const res = await fetch('/api/importar/excel', { method:'POST', body:formData });
+    const data = await res.json();
+    document.getElementById('excelProgress').style.display = 'none';
+    if (data.error) { showToast('error','Error al importar', data.error); return; }
+    showToast('success','Importación completada',
+      `Se importaron ${data.imported} de ${data.total} registros`);
+    setTimeout(loadKPIs, 800);
+  } catch (e) {
+    document.getElementById('excelProgress').style.display = 'none';
+    showToast('error','Error', e.message);
+  }
+});
+
+async function importarDrive() {
+  const url = document.getElementById('driveUrl').value.trim();
+  if (!url) { showToast('warning','URL requerida','Ingresa un enlace de Google Drive'); return; }
+  const data = await apiPost('/api/importar/drive', { url });
+  if (!data) return;
+  if (data.error) { showToast('error','Error', data.error); return; }
+  showToast('success','Enlace registrado','El link de Drive ha sido guardado correctamente');
+  document.getElementById('driveUrl').value = '';
+  document.getElementById('driveDesc').value = '';
+}
+
+async function importarTemplate() {
+  const res = await apiPost('/api/importar/template-viva', {});
+  if (!res) return;
+  if (res.error) { showToast('error','Error', res.error); return; }
+  showToast('success','Template importado', `Se importaron ${res.imported} registros`);
+  setTimeout(loadKPIs, 800);
+}
+
+loadKPIs();
+</script>
+{% endblock %}

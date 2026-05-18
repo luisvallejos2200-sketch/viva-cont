@@ -1,0 +1,668 @@
+{% extends "base.html" %}
+{% block title %}Estados de Cuenta{% endblock %}
+{% block breadcrumb %}Estados de Cuenta Bancarios{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="page-title"><i class="fa-solid fa-building-columns" style="color:var(--accent)"></i> Estados de Cuenta</h1>
+    <p class="page-subtitle">Importa PDFs bancarios y gestiona todas las transacciones</p>
+  </div>
+  <div class="page-actions">
+    <button class="btn btn-outline btn-sm" onclick="exportarExcel()">
+      <i class="fa-solid fa-file-excel"></i> Exportar Excel
+    </button>
+    <button class="btn btn-primary btn-sm" onclick="openUploadModal()">
+      <i class="fa-solid fa-upload"></i> Subir PDF Bancario
+    </button>
+  </div>
+</div>
+
+<!-- TABS DE PERÍODOS -->
+<div id="periodTabsEC" style="display:none;margin-bottom:16px;">
+  <div id="periodTabsListEC" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+  </div>
+</div>
+
+<!-- FILTERS -->
+<div class="card" style="margin-bottom:18px;">
+  <div class="filters-bar">
+    <div class="search-wrap">
+      <i class="fa-solid fa-magnifying-glass"></i>
+      <input type="text" class="form-control filter-control" id="filterSearch"
+        placeholder="Buscar por descripción, cliente, RUC..." oninput="debounceSearch()" />
+    </div>
+    <select class="filter-control" id="filterBanco" onchange="loadTransacciones(1)">
+      <option value="">Todos los bancos</option>
+      <option value="BCP SOLES">BCP SOLES</option>
+      <option value="BCP DOLARES">BCP DÓLARES</option>
+      <option value="BBVA">BBVA</option>
+      <option value="INTERBANK">INTERBANK</option>
+      <option value="SCOTIABANK">SCOTIABANK</option>
+    </select>
+    <select class="filter-control" id="filterMes" onchange="loadTransacciones(1)">
+      <option value="">Todos los meses</option>
+      <option>Enero</option><option>Febrero</option><option>Marzo</option>
+      <option>Abril</option><option>Mayo</option><option>Junio</option>
+      <option>Julio</option><option>Agosto</option><option>Septiembre</option>
+      <option>Octubre</option><option>Noviembre</option><option>Diciembre</option>
+    </select>
+    <select class="filter-control" id="filterTipo" onchange="loadTransacciones(1)">
+      <option value="">Todos los tipos</option>
+      <option>TRANSFERENCIA</option>
+      <option>COBRO</option>
+      <option>PAGO</option>
+      <option>ABONO</option>
+      <option>YAPE</option>
+      <option>OTRO</option>
+    </select>
+    <button class="btn btn-ghost btn-sm" onclick="clearFilters()">
+      <i class="fa-solid fa-xmark"></i> Limpiar
+    </button>
+  </div>
+</div>
+
+<!-- TABLE -->
+<div class="card" style="overflow:visible;">
+  <div class="card-header">
+    <h3 class="card-title"><i class="fa-solid fa-table"></i> Transacciones Bancarias</h3>
+    <span id="totalLabel" style="font-size:12px;color:var(--text-muted)"></span>
+  </div>
+  <div class="table-wrap" style="overflow:auto;max-height:calc(100vh - 240px);">
+    <table class="data-table" id="tableEC" style="min-width:1800px;">
+      <thead>
+        <tr>
+          <th>F.Operac.</th>
+          <th>Referencia</th>
+          <th>Moneda</th>
+          <th class="text-right">Importe</th>
+          <th>Num.Ope</th>
+          <th>Banco</th>
+          <th>Mes</th>
+          <th>Descripción</th>
+          <th>Tipo</th>
+          <th>Detalle</th>
+          <th>Tipo Doc</th>
+          <th>RUC</th>
+          <th>Cliente/Proveedor</th>
+          <th>N° Documento</th>
+          <th class="text-right">Saldo</th>
+          <th>Doc Cont</th>
+          <th>Comprobante</th>
+          <th>Acciones</th>
+        </tr>
+      </thead>
+      <tbody id="bodyEC">
+        <tr class="loading-row"><td colspan="18"><span class="spinner"></span> Cargando transacciones...</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div id="paginationEC" class="pagination"></div>
+</div>
+
+<!-- MODAL UPLOAD PDF / EXCEL / TEXTO -->
+<div class="modal-overlay" id="uploadModal" style="display:none;">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3 class="modal-title"><i class="fa-solid fa-upload"></i> Importar Estado de Cuenta</h3>
+      <button class="modal-close" onclick="closeUploadModal()"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div class="modal-body">
+
+      <!-- Selector banco -->
+      <div class="form-group">
+        <label class="form-label">Banco</label>
+        <select class="form-control" id="pdfBanco">
+          <option value="BCP SOLES">BCP SOLES</option>
+          <option value="BCP DOLARES">BCP DÓLARES</option>
+          <option value="BBVA">BBVA</option>
+          <option value="INTERBANK">INTERBANK</option>
+          <option value="SCOTIABANK">SCOTIABANK</option>
+          <option value="OTRO">Otro</option>
+        </select>
+      </div>
+
+      <!-- Tabs de importación -->
+      <div class="tabs" style="margin-bottom:16px;">
+        <button class="tab-btn active" onclick="switchUploadTab(this,'tab-pdf')">
+          <i class="fa-solid fa-file-pdf" style="color:#e03c3c;"></i> PDF
+        </button>
+        <button class="tab-btn" onclick="switchUploadTab(this,'tab-excel-up')">
+          <i class="fa-solid fa-file-excel" style="color:#1a6b3c;"></i> Excel
+        </button>
+        <button class="tab-btn" onclick="switchUploadTab(this,'tab-paste')">
+          <i class="fa-solid fa-paste"></i> Pegar texto
+        </button>
+      </div>
+
+      <!-- Tab PDF -->
+      <div id="tab-pdf" class="tab-pane active">
+        <div class="upload-zone" id="pdfZone">
+          <div class="upload-icon"><i class="fa-solid fa-file-pdf" style="color:#e03c3c;"></i></div>
+          <h4>Arrastra el PDF del estado de cuenta</h4>
+          <p>BCP, BBVA, Interbank, Scotiabank · Extracción automática</p>
+          <p style="font-size:11px;color:var(--text-light);margin-top:6px;">o haz clic para seleccionar</p>
+        </div>
+        <input type="file" id="pdfInput" accept=".pdf,.xlsx,.xls" style="display:none" />
+
+        <!-- Tips -->
+        <div style="margin-top:12px;padding:10px 14px;background:rgba(33,150,243,.06);border:1px solid rgba(33,150,243,.2);border-radius:var(--radius-xs);">
+          <p style="font-size:11.5px;color:var(--info);font-weight:600;margin-bottom:4px;">
+            <i class="fa-solid fa-circle-info"></i> Si el PDF no se extrae correctamente:
+          </p>
+          <ul style="font-size:11px;color:var(--text-muted);padding-left:16px;line-height:1.8;">
+            <li>Abre el PDF, selecciona todo (Ctrl+A), copia y usa la pestaña <b>Pegar texto</b></li>
+            <li>O descarga el estado de cuenta como Excel desde tu banca en línea</li>
+            <li>O usa el módulo <b>Análisis Bancario</b> para el tablero completo</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- Tab Excel -->
+      <div id="tab-excel-up" class="tab-pane">
+        <div class="upload-zone" id="excelZoneEC">
+          <div class="upload-icon"><i class="fa-solid fa-file-excel" style="color:#1a6b3c;"></i></div>
+          <h4>Sube el Excel del estado de cuenta</h4>
+          <p>Formato VIVA CONT .xlsx · También acepta .csv exportado de la banca en línea</p>
+        </div>
+        <input type="file" id="excelInputEC" accept=".xlsx,.xls,.csv" style="display:none" />
+      </div>
+
+      <!-- Tab Pegar texto -->
+      <div id="tab-paste" class="tab-pane">
+        <p style="font-size:12px;color:var(--text-muted);margin-bottom:10px;">
+          <i class="fa-solid fa-circle-info" style="color:var(--info)"></i>
+          Abre el PDF en tu visor, selecciona todo el texto (Ctrl+A), cópialo (Ctrl+C) y pégalo aquí:
+        </p>
+        <textarea class="form-control" id="pasteText" rows="10"
+          placeholder="Pega aquí el texto del estado de cuenta...
+Ejemplo:
+03/11/2025  TRAN.CTAS.TERC.HK  250.00  5,100.82
+04/11/2025  TRANSF.BCO.HK  104.80  4,996.02
+06/11/2025  IMPUESTO ITF   0.20  4,995.62"></textarea>
+        <button class="btn btn-primary" style="width:100%;margin-top:12px;" onclick="procesarTexto()">
+          <i class="fa-solid fa-wand-magic-sparkles"></i> Extraer transacciones del texto
+        </button>
+      </div>
+
+      <!-- Debug panel (oculto, solo visible cuando hay raw_text) -->
+      <div id="debugPanel" style="display:none;margin-top:12px;">
+        <div style="background:#1a1a2e;border-radius:6px;padding:12px;">
+          <p style="font-size:11px;font-weight:700;color:#7fdbff;margin-bottom:6px;">
+            <i class="fa-solid fa-terminal"></i> Texto extraído del PDF (diagnóstico)
+          </p>
+          <pre id="debugText" style="font-size:10px;color:#a8ff78;max-height:180px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;margin:0;"></pre>
+        </div>
+      </div>
+
+      <!-- Progress -->
+      <div id="pdfProgress" style="display:none;margin-top:12px;">
+        <div style="display:flex;align-items:center;gap:10px;padding:12px;background:var(--surface2);border-radius:var(--radius-xs);">
+          <span class="spinner"></span>
+          <span id="pdfProgressMsg" style="font-size:12.5px;color:var(--text-muted)">Procesando...</span>
+        </div>
+      </div>
+
+      <!-- Error panel (cuando el PDF no se puede parsear) -->
+      <div id="uploadErrorPanel" style="display:none;margin-top:12px;padding:14px;background:#fff3cd;border:1.5px solid #ffc107;border-radius:var(--radius-xs);">
+        <p style="font-size:13px;font-weight:700;color:#856404;margin-bottom:6px;">
+          <i class="fa-solid fa-triangle-exclamation"></i> No se pudieron extraer transacciones automáticamente
+        </p>
+        <p style="font-size:12px;color:#664d03;" id="uploadErrorMsg"></p>
+        <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;">
+          <button class="btn btn-sm" style="background:#856404;color:#fff;" onclick="switchUploadTab(document.querySelector('#uploadModal .tab-btn:nth-child(3)'),'tab-paste')">
+            <i class="fa-solid fa-paste"></i> Pegar texto del PDF
+          </button>
+          <a href="/analisis-bancario" class="btn btn-outline btn-sm" target="_blank">
+            <i class="fa-solid fa-chart-bar"></i> Módulo Análisis Bancario
+          </a>
+        </div>
+      </div>
+
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeUploadModal()">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL PREVIEW TRANSACCIONES -->
+<div class="modal-overlay" id="previewModal" style="display:none;">
+  <div class="modal-box modal-xl">
+    <div class="modal-header">
+      <h3 class="modal-title"><i class="fa-solid fa-eye"></i> Vista previa – Transacciones extraídas</h3>
+      <button class="modal-close" onclick="closePreviewModal()"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div class="modal-body" style="padding:0;">
+      <div style="padding:14px 20px;background:var(--surface2);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;">
+        <span class="badge badge-info" id="previewCount"></span>
+        <span style="font-size:12px;color:var(--text-muted)">Revisa y confirma las transacciones antes de guardar</span>
+      </div>
+      <div class="table-wrap" style="max-height:420px;overflow-y:auto;">
+        <table class="data-table" id="previewTable">
+          <thead>
+            <tr>
+              <th>F.Operac.</th><th>Referencia</th><th>Num.Ope</th>
+              <th>Tipo</th><th class="text-right">Importe</th>
+              <th class="text-right">Saldo</th><th>Mes</th>
+            </tr>
+          </thead>
+          <tbody id="previewBody"></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closePreviewModal()">Descartar</button>
+      <button class="btn btn-success" id="btnConfirmar" onclick="confirmarTransacciones()">
+        <i class="fa-solid fa-check"></i> Confirmar e importar
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL EDITAR TRANSACCIÓN -->
+<div class="modal-overlay" id="editModal" style="display:none;">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3 class="modal-title"><i class="fa-solid fa-pen-to-square"></i> Editar Transacción</h3>
+      <button class="modal-close" onclick="closeEditModal()"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="editId" />
+      <div class="form-row form-row-2">
+        <div class="form-group">
+          <label class="form-label">Tipo</label>
+          <select class="form-control" id="editTipo">
+            <option>TRANSFERENCIA</option><option>COBRO</option>
+            <option>PAGO</option><option>ABONO</option><option>YAPE</option><option>OTRO</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Tipo Doc</label>
+          <select class="form-control" id="editTipoDoc">
+            <option value="">—</option>
+            <option>FACTURA</option><option>BOLETA</option>
+            <option>RHE</option><option>RECIBO</option><option>CERTIFICADO</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row form-row-2">
+        <div class="form-group">
+          <label class="form-label">RUC</label>
+          <input type="text" class="form-control" id="editRuc" maxlength="11" placeholder="20xxxxxxxxx" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">N° Documento</label>
+          <input type="text" class="form-control" id="editNumDoc" placeholder="F001-000001" />
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Cliente / Proveedor</label>
+        <input type="text" class="form-control" id="editClienteProv" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Detalle</label>
+        <input type="text" class="form-control" id="editDetalle" />
+      </div>
+      <div class="form-row form-row-2">
+        <div class="form-group">
+          <label class="form-label">Doc Contable</label>
+          <input type="text" class="form-control" id="editDocCont" placeholder="22-110001" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Comprobante (Drive link)</label>
+          <input type="url" class="form-control" id="editComprobante" placeholder="https://drive.google.com/..." />
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeEditModal()">Cancelar</button>
+      <button class="btn btn-primary" onclick="guardarEdicion()">
+        <i class="fa-solid fa-floppy-disk"></i> Guardar cambios
+      </button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block head %}
+<style>
+.period-tab {
+  padding:7px 14px; border-radius:20px; border:1.5px solid var(--border);
+  background:var(--surface2); font-size:12px; font-weight:600;
+  color:var(--text-muted); cursor:pointer; font-family:inherit;
+  transition:all var(--transition); white-space:nowrap;
+  display:inline-flex; align-items:center; gap:6px;
+}
+.period-tab:hover { border-color:var(--primary); color:var(--primary); }
+.period-tab.active {
+  background:var(--primary); border-color:var(--primary);
+  color:#fff; box-shadow:0 3px 10px rgba(26,60,110,.3);
+}
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let currentPage    = 1;
+let pendingTxs     = [];
+let searchTimer    = null;
+let activePeriodoEC = 'all';
+
+// ── LOAD TRANSACCIONES ──────────────────────────────────────
+async function loadTransacciones(page = 1) {
+  currentPage = page;
+  const search = document.getElementById('filterSearch').value;
+  const banco  = document.getElementById('filterBanco').value;
+  const mes    = document.getElementById('filterMes').value;
+  const tipo   = document.getElementById('filterTipo').value;
+
+  const params = new URLSearchParams({ page, per_page:50, search, banco, mes, tipo,
+    periodo_id: activePeriodoEC === 'all' ? '' : activePeriodoEC });
+  const data = await apiGet('/api/estados-cuenta/transacciones?' + params);
+  if (!data) return;
+
+  document.getElementById('totalLabel').textContent =
+    `${data.total.toLocaleString()} transacciones`;
+  document.getElementById('badge-ec').textContent = data.total > 0 ? data.total : '';
+
+  const tbody = document.getElementById('bodyEC');
+  if (!data.data.length) {
+    tbody.innerHTML = `<tr><td colspan="18" class="text-center" style="padding:40px;color:var(--text-muted);">
+      <i class="fa-solid fa-inbox" style="font-size:32px;opacity:.3;display:block;margin-bottom:8px;"></i>
+      Sin transacciones para los filtros seleccionados</td></tr>`;
+    document.getElementById('paginationEC').innerHTML = '';
+    return;
+  }
+
+  tbody.innerHTML = data.data.map(tx => {
+    const pos = parseFloat(tx.importe) >= 0;
+    const comp = tx.comprobante && tx.comprobante.startsWith('http')
+      ? `<a href="${tx.comprobante}" target="_blank" class="btn btn-ghost btn-sm" title="Ver comprobante">
+           <i class="fa-brands fa-google-drive"></i></a>`
+      : '<span style="color:var(--text-light);font-size:11px;">—</span>';
+    return `<tr>
+      <td class="mono" style="white-space:nowrap">${fmtDate(tx.fecha_operacion)}</td>
+      <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${tx.referencia}">${tx.referencia || '—'}</td>
+      <td><span class="badge badge-default">${tx.moneda || 'PEN'}</span></td>
+      <td class="text-right ${pos?'amount-pos':'amount-neg'} mono">${pos?'+':''}${fmtMoney(tx.importe,tx.moneda)}</td>
+      <td class="mono" style="font-size:11px">${tx.num_operacion || '—'}</td>
+      <td style="white-space:nowrap">${tx.banco || '—'}</td>
+      <td><span class="badge badge-primary">${tx.mes || '—'}</span></td>
+      <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${tx.descripcion}">${tx.descripcion || '—'}</td>
+      <td>${badgeTipo(tx.tipo)}</td>
+      <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${tx.detalle}">${tx.detalle || '—'}</td>
+      <td>${tx.tipo_doc ? `<span class="badge badge-info">${tx.tipo_doc}</span>` : '—'}</td>
+      <td class="mono" style="font-size:11px">${tx.ruc || '—'}</td>
+      <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${tx.cliente_proveedor}">${tx.cliente_proveedor || '—'}</td>
+      <td class="mono" style="font-size:11px">${tx.num_documento || '—'}</td>
+      <td class="text-right mono">${fmtMoney(tx.saldo,tx.moneda)}</td>
+      <td class="mono" style="font-size:11px">${tx.doc_cont || '—'}</td>
+      <td>${comp}</td>
+      <td>
+        <button class="btn btn-ghost btn-sm btn-icon" onclick="openEditModal(${JSON.stringify(tx).replace(/"/g,'&quot;')})" title="Editar">
+          <i class="fa-solid fa-pen-to-square"></i>
+        </button>
+      </td>
+    </tr>`;
+  }).join('');
+
+  renderPagination('paginationEC', data.total, page, 50,
+    `function(p){ loadTransacciones(p); }`);
+}
+
+function debounceSearch() {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => loadTransacciones(1), 380);
+}
+
+function clearFilters() {
+  document.getElementById('filterSearch').value = '';
+  document.getElementById('filterBanco').value  = '';
+  document.getElementById('filterMes').value    = '';
+  document.getElementById('filterTipo').value   = '';
+  loadTransacciones(1);
+}
+
+// ── UPLOAD MODAL TABS ─────────────────────────────────────────
+function openUploadModal() {
+  document.getElementById('uploadModal').style.display      = 'flex';
+  document.getElementById('uploadErrorPanel').style.display = 'none';
+  document.getElementById('pdfProgress').style.display      = 'none';
+  document.getElementById('debugPanel').style.display       = 'none';
+  document.getElementById('pasteText').value                = '';
+}
+function closeUploadModal() {
+  document.getElementById('uploadModal').style.display = 'none';
+}
+function switchUploadTab(btn, tabId) {
+  document.querySelectorAll('#uploadModal .tab-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('#uploadModal .tab-pane').forEach(p => p.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById(tabId).classList.add('active');
+  document.getElementById('uploadErrorPanel').style.display = 'none';
+}
+
+// ── UPLOAD PDF ────────────────────────────────────────────────
+async function handleUploadFile(file) {
+  document.getElementById('pdfProgress').style.display    = 'block';
+  document.getElementById('uploadErrorPanel').style.display = 'none';
+  document.getElementById('pdfProgressMsg').textContent   = `Procesando "${file.name}"...`;
+
+  const banco = document.getElementById('pdfBanco').value;
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('banco', banco);
+
+  try {
+    const res  = await fetch('/api/estados-cuenta/upload', { method:'POST', body:formData });
+    const data = await res.json();
+    document.getElementById('pdfProgress').style.display = 'none';
+
+    if (data.error && !data.no_data) {
+      showToast('error', 'Error al procesar', data.error); return;
+    }
+
+    if (data.no_data || !data.transactions?.length) {
+      const rawText = (data.raw_text || '').trim();
+      const errPanel = document.getElementById('uploadErrorPanel');
+
+      if (rawText) {
+        // Pre-llenar textarea y cambiar a pestaña "Pegar texto"
+        document.getElementById('pasteText').value = rawText;
+        const pasteBtn = document.querySelector('#uploadModal .tab-btn:nth-child(3)');
+        switchUploadTab(pasteBtn, 'tab-paste');
+
+        // Mostrar debug del texto extraído
+        document.getElementById('debugText').textContent = rawText.substring(0, 1500) + (rawText.length > 1500 ? '\n…(truncado)' : '');
+        document.getElementById('debugPanel').style.display = 'block';
+
+        // Panel verde informativo
+        errPanel.style.cssText = 'display:block;margin-top:12px;padding:14px;background:#d1e7dd;border:1.5px solid #0f5132;border-radius:var(--radius-xs);';
+        errPanel.innerHTML = `
+          <p style="font-size:13px;font-weight:700;color:#0f5132;margin-bottom:6px;">
+            <i class="fa-solid fa-circle-check"></i> Texto del PDF cargado automáticamente
+          </p>
+          <p style="font-size:12px;color:#0a3622;">
+            Se extrajo texto del PDF. Haz clic en <b>"Extraer transacciones del texto"</b> para procesar.
+            Si el resultado no es correcto, edita el texto en el área de texto antes de procesar.
+          </p>
+          <div style="margin-top:10px;">
+            <button class="btn btn-sm" style="background:#0f5132;color:#fff;" onclick="procesarTexto()">
+              <i class="fa-solid fa-wand-magic-sparkles"></i> Extraer transacciones del texto
+            </button>
+          </div>`;
+        showToast('info', 'Texto extraído del PDF', 'Haz clic en "Extraer transacciones del texto".');
+      } else {
+        // PDF de imagen o protegido — sin texto extraíble
+        document.getElementById('debugPanel').style.display = 'none';
+        errPanel.style.cssText = 'display:block;margin-top:12px;padding:14px;background:#fff3cd;border:1.5px solid #ffc107;border-radius:var(--radius-xs);';
+        errPanel.innerHTML = `
+          <p style="font-size:13px;font-weight:700;color:#856404;margin-bottom:6px;">
+            <i class="fa-solid fa-triangle-exclamation"></i> No se pudo leer el PDF
+          </p>
+          <p style="font-size:12px;color:#664d03;">
+            ${data.message || 'El PDF parece ser una imagen escaneada o está protegido. Abre el PDF, selecciona todo el texto (Ctrl+A), cópialo y úsalo en la pestaña Pegar texto.'}
+          </p>
+          <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;">
+            <button class="btn btn-sm" style="background:#856404;color:#fff;"
+              onclick="switchUploadTab(document.querySelector('#uploadModal .tab-btn:nth-child(3)'),'tab-paste')">
+              <i class="fa-solid fa-paste"></i> Ir a Pegar texto
+            </button>
+            <a href="/analisis-bancario" class="btn btn-outline btn-sm" target="_blank">
+              <i class="fa-solid fa-chart-bar"></i> Módulo Análisis Bancario
+            </a>
+          </div>`;
+        showToast('warning', 'PDF sin texto extraíble', 'Copia el texto manualmente y usa "Pegar texto".');
+      }
+      return;
+    }
+
+    closeUploadModal();
+    showToast('info', `${data.total} transacciones extraídas`,
+      `Estrategia: ${data.strategy || 'automática'} · Revisa y confirma`);
+    showPreview(data.transactions);
+  } catch (e) {
+    document.getElementById('pdfProgress').style.display = 'none';
+    showToast('error', 'Error de red', e.message);
+  }
+}
+
+initUploadZone('pdfZone',     'pdfInput',     handleUploadFile);
+initUploadZone('excelZoneEC', 'excelInputEC', handleUploadFile);
+
+// ── PEGAR TEXTO ────────────────────────────────────────────────
+async function procesarTexto() {
+  const texto = document.getElementById('pasteText').value.trim();
+  const banco = document.getElementById('pdfBanco').value;
+  if (!texto) { showToast('warning','Texto vacío','Pega el contenido del PDF primero'); return; }
+
+  document.getElementById('pdfProgress').style.display  = 'block';
+  document.getElementById('pdfProgressMsg').textContent = 'Analizando texto...';
+
+  const res  = await apiPost('/api/estados-cuenta/upload-texto', { texto, banco });
+  document.getElementById('pdfProgress').style.display = 'none';
+  if (!res) return;
+
+  if (!res.success || !res.transactions?.length) {
+    showToast('warning', 'Sin coincidencias',
+      res.message || 'No se detectaron fechas y montos en el texto pegado.');
+    return;
+  }
+  closeUploadModal();
+  document.getElementById('pasteText').value = '';
+  showToast('success', `${res.total} transacciones reconocidas`, 'Revisa y confirma antes de guardar');
+  showPreview(res.transactions);
+}
+
+// ── PREVIEW ──────────────────────────────────────────────────
+function showPreview(txs) {
+  pendingTxs = txs;
+  document.getElementById('previewCount').textContent = `${txs.length} transacciones encontradas`;
+  const tbody = document.getElementById('previewBody');
+  tbody.innerHTML = txs.map(tx => {
+    const pos = parseFloat(tx.importe) >= 0;
+    return `<tr>
+      <td class="mono" style="white-space:nowrap">${fmtDate(tx.fecha_operacion)}</td>
+      <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${tx.referencia||tx.descripcion}">${tx.referencia||tx.descripcion||'—'}</td>
+      <td class="mono" style="font-size:11px">${tx.num_operacion||'—'}</td>
+      <td>${badgeTipo(tx.tipo)}</td>
+      <td class="text-right ${pos?'amount-pos':'amount-neg'} mono">${pos?'+':''}${fmtMoney(tx.importe)}</td>
+      <td class="text-right mono">${fmtMoney(tx.saldo)}</td>
+      <td><span class="badge badge-primary">${tx.mes||'—'}</span></td>
+    </tr>`;
+  }).join('');
+  document.getElementById('previewModal').style.display = 'flex';
+}
+
+function closePreviewModal() {
+  document.getElementById('previewModal').style.display = 'none';
+  pendingTxs = [];
+}
+
+async function confirmarTransacciones() {
+  if (!pendingTxs.length) return;
+  setLoading('btnConfirmar', true, 'Guardando...');
+  const res = await apiPost('/api/estados-cuenta/confirmar', { transactions: pendingTxs });
+  setLoading('btnConfirmar', false);
+  if (!res) return;
+  if (res.error) { showToast('error','Error', res.error); return; }
+  showToast('success','Importación exitosa', `${res.saved} transacciones guardadas`);
+  closePreviewModal();
+  loadTransacciones(1);
+}
+
+// ── EDITAR ───────────────────────────────────────────────────
+function openEditModal(tx) {
+  document.getElementById('editId').value            = tx.id;
+  document.getElementById('editTipo').value          = tx.tipo || 'OTRO';
+  document.getElementById('editTipoDoc').value       = tx.tipo_doc || '';
+  document.getElementById('editRuc').value           = tx.ruc || '';
+  document.getElementById('editNumDoc').value        = tx.num_documento || '';
+  document.getElementById('editClienteProv').value   = tx.cliente_proveedor || '';
+  document.getElementById('editDetalle').value       = tx.detalle || '';
+  document.getElementById('editDocCont').value       = tx.doc_cont || '';
+  document.getElementById('editComprobante').value   = tx.comprobante || '';
+  document.getElementById('editModal').style.display = 'flex';
+}
+function closeEditModal() {
+  document.getElementById('editModal').style.display = 'none';
+}
+
+async function guardarEdicion() {
+  const id = document.getElementById('editId').value;
+  const payload = {
+    tipo:              document.getElementById('editTipo').value,
+    tipo_doc:          document.getElementById('editTipoDoc').value,
+    ruc:               document.getElementById('editRuc').value,
+    num_documento:     document.getElementById('editNumDoc').value,
+    cliente_proveedor: document.getElementById('editClienteProv').value,
+    detalle:           document.getElementById('editDetalle').value,
+    doc_cont:          document.getElementById('editDocCont').value,
+    comprobante:       document.getElementById('editComprobante').value,
+  };
+  const res = await apiPut(`/api/estados-cuenta/transacciones/${id}`, payload);
+  if (!res) return;
+  if (res.error) { showToast('error','Error', res.error); return; }
+  showToast('success','Guardado', 'Transacción actualizada correctamente');
+  closeEditModal();
+  loadTransacciones(currentPage);
+}
+
+async function exportarExcel() {
+  window.location.href = '/api/estados-cuenta/exportar';
+}
+
+/* ══ TABS DE PERÍODOS ═══════════════════════════════════════ */
+async function loadPeriodTabsEC() {
+  const periodos = await apiGet('/api/periodos');
+  if (!periodos || !periodos.length) return;
+
+  document.getElementById('periodTabsEC').style.display = 'block';
+  const list = document.getElementById('periodTabsListEC');
+  list.innerHTML = `
+    <button class="period-tab active" onclick="selectPeriodoEC('all', this)">
+      <i class="fa-solid fa-layer-group"></i> Consolidado
+      <span style="font-size:10px;opacity:.7;">(todos)</span>
+    </button>
+    ${periodos.map(p => `
+      <button class="period-tab" onclick="selectPeriodoEC(${p.id}, this)">
+        <i class="fa-solid fa-calendar-days"></i>
+        ${p.label}
+        <span style="font-size:10px;opacity:.7;">${p.total_transacciones} txs</span>
+      </button>
+    `).join('')}
+  `;
+}
+
+function selectPeriodoEC(id, btn) {
+  activePeriodoEC = id === 'all' ? 'all' : String(id);
+  document.querySelectorAll('#periodTabsListEC .period-tab').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  loadTransacciones(1);
+}
+
+loadPeriodTabsEC();
+loadTransacciones(1);
+</script>
+{% endblock %}

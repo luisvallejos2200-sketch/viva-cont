@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>VIVA CONT | Iniciar Sesión</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Outfit', system-ui, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      background: #f0f4fa;
+    }
+
+    /* Panel izquierdo — marca */
+    .login-brand {
+      width: 52%;
+      background: linear-gradient(155deg, #0A096F 0%, #00309B 55%, #211FA9 100%);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      padding: 60px 48px;
+      position: relative;
+      overflow: hidden;
+    }
+    .login-brand::before {
+      content: '';
+      position: absolute;
+      width: 500px; height: 500px;
+      border-radius: 50%;
+      background: rgba(255,255,255,.04);
+      top: -120px; left: -160px;
+    }
+    .login-brand::after {
+      content: '';
+      position: absolute;
+      width: 380px; height: 380px;
+      border-radius: 50%;
+      background: rgba(255,255,255,.04);
+      bottom: -80px; right: -100px;
+    }
+    .brand-content { position: relative; z-index: 1; text-align: center; max-width: 400px; }
+    .brand-logo-img { width: 200px; margin-bottom: 36px; filter: brightness(0) invert(1); }
+    .brand-divider {
+      width: 48px; height: 3px;
+      background: rgba(255,255,255,.35);
+      border-radius: 2px;
+      margin: 20px auto 24px;
+    }
+    .brand-tagline {
+      font-size: 22px; font-weight: 700; color: #fff;
+      line-height: 1.4; margin-bottom: 12px;
+    }
+    .brand-sub {
+      font-size: 14px; color: rgba(255,255,255,.6);
+      font-weight: 300; line-height: 1.6;
+    }
+    .brand-badges {
+      display: flex; gap: 12px; justify-content: center;
+      margin-top: 40px; flex-wrap: wrap;
+    }
+    .brand-badge {
+      background: rgba(255,255,255,.1);
+      border: 1px solid rgba(255,255,255,.18);
+      border-radius: 20px;
+      padding: 6px 16px;
+      font-size: 11px; font-weight: 600;
+      color: rgba(255,255,255,.8);
+      letter-spacing: .4px;
+      text-transform: uppercase;
+    }
+    .brand-footer {
+      position: absolute; bottom: 28px; left: 0; right: 0;
+      text-align: center;
+      font-size: 11px; color: rgba(255,255,255,.3);
+    }
+
+    /* Panel derecho — formulario */
+    .login-form-panel {
+      width: 48%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 48px 40px;
+    }
+    .login-box { width: 100%; max-width: 400px; }
+
+    .login-header { margin-bottom: 36px; }
+    .login-title {
+      font-size: 26px; font-weight: 800;
+      color: #0d1a3a; margin-bottom: 6px;
+    }
+    .login-subtitle { font-size: 14px; color: #6b7a99; font-weight: 400; }
+
+    .form-group { margin-bottom: 20px; }
+    .form-label {
+      display: block; font-size: 12.5px; font-weight: 600;
+      color: #0d1a3a; margin-bottom: 8px; letter-spacing: .2px;
+    }
+    .input-wrap { position: relative; }
+    .input-icon {
+      position: absolute; left: 14px; top: 50%; transform: translateY(-50%);
+      color: #a0aec0; font-size: 14px;
+    }
+    .form-control {
+      width: 100%;
+      padding: 12px 14px 12px 40px;
+      border: 1.5px solid #d8e0f0;
+      border-radius: 10px;
+      font-family: 'Outfit', sans-serif;
+      font-size: 14px; color: #0d1a3a;
+      background: #fff;
+      transition: border-color .2s, box-shadow .2s;
+      outline: none;
+    }
+    .form-control:focus {
+      border-color: #00309B;
+      box-shadow: 0 0 0 3px rgba(0,48,155,.1);
+    }
+    .toggle-pass {
+      position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
+      background: none; border: none; cursor: pointer;
+      color: #a0aec0; font-size: 14px; padding: 4px;
+    }
+    .toggle-pass:hover { color: #00309B; }
+
+    .btn-login {
+      width: 100%;
+      padding: 13px;
+      background: linear-gradient(135deg, #0A096F 0%, #00309B 50%, #211FA9 100%);
+      color: #fff;
+      border: none; border-radius: 10px;
+      font-family: 'Outfit', sans-serif;
+      font-size: 15px; font-weight: 700;
+      cursor: pointer;
+      transition: filter .2s, transform .15s, box-shadow .2s;
+      box-shadow: 0 4px 14px rgba(0,48,155,.3);
+      letter-spacing: .3px;
+      margin-top: 8px;
+    }
+    .btn-login:hover {
+      filter: brightness(1.08);
+      transform: translateY(-1px);
+      box-shadow: 0 6px 20px rgba(0,48,155,.4);
+    }
+    .btn-login:active { transform: translateY(0); }
+    .btn-login i { margin-right: 8px; }
+
+    .error-alert {
+      display: flex; align-items: center; gap: 10px;
+      background: #fff5f5;
+      border: 1px solid #fed7d7;
+      border-left: 3px solid #e03c3c;
+      border-radius: 8px;
+      padding: 12px 14px;
+      margin-bottom: 20px;
+      font-size: 13px; color: #c53030;
+    }
+    .error-alert i { color: #e03c3c; flex-shrink: 0; }
+
+    .login-footer {
+      margin-top: 32px;
+      text-align: center;
+      font-size: 11.5px; color: #a0aec0;
+    }
+    .login-footer span { color: #00309B; font-weight: 600; }
+
+    .system-badge {
+      display: inline-flex; align-items: center; gap: 6px;
+      background: rgba(0,48,155,.07);
+      border: 1px solid rgba(0,48,155,.15);
+      border-radius: 20px;
+      padding: 5px 14px;
+      font-size: 11px; font-weight: 700;
+      color: #00309B; letter-spacing: .5px;
+      text-transform: uppercase;
+      margin-bottom: 20px;
+    }
+
+    @media (max-width: 768px) {
+      body { flex-direction: column; }
+      .login-brand { width: 100%; padding: 40px 24px 30px; min-height: 220px; }
+      .brand-logo-img { width: 140px; margin-bottom: 16px; }
+      .brand-tagline { font-size: 16px; }
+      .brand-badges { margin-top: 16px; }
+      .login-form-panel { width: 100%; padding: 32px 24px; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Panel de marca -->
+  <div class="login-brand">
+    <div class="brand-content">
+      <img src="/static/images/viva_logo_white.svg" alt="Viva Consulting" class="brand-logo-img"/>
+      <div class="brand-divider"></div>
+      <div class="brand-tagline">Impulsamos el crecimiento<br>de negocios con estrategia<br>y visión empresarial</div>
+      <div class="brand-sub">Sistema de gestión financiera y contable<br>diseñado para líderes empresariales</div>
+      <div class="brand-badges">
+        <span class="brand-badge"><i class="fa-solid fa-chart-line"></i> Análisis Bancario</span>
+        <span class="brand-badge"><i class="fa-solid fa-scale-balanced"></i> Balance General</span>
+        <span class="brand-badge"><i class="fa-solid fa-file-invoice-dollar"></i> Facturación</span>
+      </div>
+    </div>
+    <div class="brand-footer">© 2026 Viva Consulting Empresas S.A.C. · Todos los derechos reservados</div>
+  </div>
+
+  <!-- Formulario -->
+  <div class="login-form-panel">
+    <div class="login-box">
+
+      <div class="system-badge">
+        <i class="fa-solid fa-chart-column"></i> VIVA CONT
+      </div>
+
+      <div class="login-header">
+        <div class="login-title">Bienvenido de vuelta</div>
+        <div class="login-subtitle">Ingresa tus credenciales para acceder al sistema</div>
+      </div>
+
+      {% if error %}
+      <div class="error-alert">
+        <i class="fa-solid fa-circle-exclamation"></i>
+        {{ error }}
+      </div>
+      {% endif %}
+
+      <form method="POST" action="/login{% if request.args.get('next') %}?next={{ request.args.get('next') }}{% endif %}">
+        <div class="form-group">
+          <label class="form-label">Usuario o correo electrónico</label>
+          <div class="input-wrap">
+            <i class="fa-solid fa-user input-icon"></i>
+            <input type="text" name="username" class="form-control"
+                   placeholder="luisvallejos o vivacont@vivaempresasglobal.com"
+                   autocomplete="username" required autofocus/>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Contraseña</label>
+          <div class="input-wrap">
+            <i class="fa-solid fa-lock input-icon"></i>
+            <input type="password" name="password" id="passwordField" class="form-control"
+                   placeholder="••••••••••••" autocomplete="current-password" required/>
+            <button type="button" class="toggle-pass" onclick="togglePass()">
+              <i class="fa-regular fa-eye" id="eyeIcon"></i>
+            </button>
+          </div>
+        </div>
+
+        <button type="submit" class="btn-login">
+          <i class="fa-solid fa-right-to-bracket"></i> Ingresar al sistema
+        </button>
+      </form>
+
+      <div class="login-footer">
+        Sistema exclusivo de <span>Viva Consulting Empresas</span><br>
+        Propiedad de <span>Luis Vallejos Rodríguez</span> — CEO &amp; Fundador
+      </div>
+
+    </div>
+  </div>
+
+  <script>
+    function togglePass() {
+      const f = document.getElementById('passwordField');
+      const i = document.getElementById('eyeIcon');
+      if (f.type === 'password') {
+        f.type = 'text';
+        i.className = 'fa-regular fa-eye-slash';
+      } else {
+        f.type = 'password';
+        i.className = 'fa-regular fa-eye';
+      }
+    }
+  </script>
+</body>
+</html>

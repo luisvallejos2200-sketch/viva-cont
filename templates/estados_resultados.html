@@ -1,0 +1,610 @@
+{% extends "base.html" %}
+{% block title %}Estado de Resultados{% endblock %}
+{% block breadcrumb %}Estado de Resultados{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="page-title"><i class="fa-solid fa-chart-line" style="color:var(--accent)"></i> Estado de Resultados</h1>
+    <p class="page-subtitle">Gestiona y analiza el resultado económico por período</p>
+  </div>
+  <div class="page-actions">
+    <a href="/api/estados-resultados/template" class="btn btn-outline btn-sm">
+      <i class="fa-solid fa-file-arrow-down"></i> Plantilla Excel
+    </a>
+    <button class="btn btn-outline btn-sm" onclick="exportarExcel()">
+      <i class="fa-solid fa-file-excel"></i> Exportar
+    </button>
+    <button class="btn btn-primary btn-sm" onclick="openImportModal()">
+      <i class="fa-solid fa-upload"></i> Importar Período
+    </button>
+  </div>
+</div>
+
+<!-- TABS DE PERÍODOS -->
+<div id="periodTabs" style="display:none;margin-bottom:16px;">
+  <div id="periodTabsList" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;"></div>
+</div>
+
+<!-- KPI CARDS -->
+<div id="kpiSection" style="display:block;">
+
+  <!-- Grupo 1: Resultados Absolutos -->
+  <div style="margin-bottom:20px;">
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-muted);margin-bottom:12px;letter-spacing:.5px;">RESULTADOS ABSOLUTOS</div>
+    <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:16px;">
+      <div class="card" style="padding:20px;">
+        <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Ingresos Totales</div>
+        <div id="kpiIngresos" style="font-size:22px;font-weight:800;color:var(--primary);">S/ 0</div>
+        <div id="kpiIngresosLabel" style="font-size:11px;color:var(--text-muted);margin-top:4px;">Ventas + Otros</div>
+      </div>
+      <div class="card" style="padding:20px;">
+        <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Utilidad Bruta</div>
+        <div id="kpiUtilidadBruta" style="font-size:22px;font-weight:800;color:var(--success);">S/ 0</div>
+        <div id="kpiMargenBruto" style="font-size:11px;color:var(--text-muted);margin-top:4px;">Margen Bruto: 0%</div>
+      </div>
+      <div class="card" style="padding:20px;">
+        <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">EBITDA</div>
+        <div id="kpiEbitda" style="font-size:22px;font-weight:800;color:#f59e0b;">S/ 0</div>
+        <div id="kpiMargenEbitda" style="font-size:11px;color:var(--text-muted);margin-top:4px;">Margen EBITDA: 0%</div>
+      </div>
+      <div class="card" style="padding:20px;">
+        <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">EBIT</div>
+        <div id="kpiEbit" style="font-size:22px;font-weight:800;color:#7c3aed;">S/ 0</div>
+        <div id="kpiMargenEbit" style="font-size:11px;color:var(--text-muted);margin-top:4px;">Margen Operativo: 0%</div>
+      </div>
+      <div class="card" style="padding:20px;">
+        <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Utilidad Neta</div>
+        <div id="kpiUtilidadNeta" style="font-size:22px;font-weight:800;color:var(--success);">S/ 0</div>
+        <div id="kpiMargenNeto" style="font-size:11px;color:var(--text-muted);margin-top:4px;">Margen Neto: 0%</div>
+      </div>
+      <div class="card" style="padding:20px;">
+        <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Costo de Ventas</div>
+        <div id="kpiCostoVentas" style="font-size:22px;font-weight:800;color:var(--danger);">S/ 0</div>
+        <div id="kpiCostoVentasPct" style="font-size:11px;color:var(--text-muted);margin-top:4px;">% Ingresos: 0%</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Grupo 2: Ratios de Eficiencia -->
+  <div style="background:var(--surface2);border-radius:10px;padding:18px 20px;margin-bottom:24px;">
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-muted);margin-bottom:12px;letter-spacing:.5px;">RATIOS DE EFICIENCIA FINANCIERA</div>
+    <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:16px;">
+      <div class="card" style="padding:20px;">
+        <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">G. Administrativos</div>
+        <div id="kpiGastosAdmin" style="font-size:22px;font-weight:800;color:var(--primary);">S/ 0</div>
+        <div id="kpiGastosAdminPct" style="font-size:11px;color:var(--text-muted);margin-top:4px;">% Ingresos: 0%</div>
+      </div>
+      <div class="card" style="padding:20px;">
+        <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">G. de Ventas</div>
+        <div id="kpiGastosVentas" style="font-size:22px;font-weight:800;color:#f59e0b;">S/ 0</div>
+        <div id="kpiGastosVentasPct" style="font-size:11px;color:var(--text-muted);margin-top:4px;">% Ingresos: 0%</div>
+      </div>
+      <div class="card" style="padding:20px;">
+        <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">G. Financieros</div>
+        <div id="kpiGastosFinancieros" style="font-size:22px;font-weight:800;color:var(--danger);">S/ 0</div>
+        <div id="kpiGastosFinancierosPct" style="font-size:11px;color:var(--text-muted);margin-top:4px;">% Ingresos: 0%</div>
+      </div>
+      <div class="card" style="padding:20px;">
+        <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Depreciación</div>
+        <div id="kpiDepreciacion" style="font-size:22px;font-weight:800;color:#64748b;">S/ 0</div>
+        <div id="kpiDepreciacionPct" style="font-size:11px;color:var(--text-muted);margin-top:4px;">% Ingresos: 0%</div>
+      </div>
+      <div class="card" style="padding:20px;">
+        <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Tasa Impuesto</div>
+        <div id="kpiTasaImpuesto" style="font-size:22px;font-weight:800;color:#7c3aed;">0%</div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">% sobre UAI</div>
+      </div>
+      <div class="card" style="padding:20px;">
+        <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Punto Equilibrio</div>
+        <div id="kpiPuntoEq" style="font-size:22px;font-weight:800;color:#0891b2;">—</div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">Ingresos mínimos (est.)</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- EMPTY STATE -->
+<div id="emptyState" class="card" style="padding:60px;text-align:center;">
+  <i class="fa-solid fa-chart-line" style="font-size:48px;color:var(--border);margin-bottom:16px;"></i>
+  <h3 style="color:var(--text-muted);margin-bottom:8px;">Sin datos de resultados</h3>
+  <p style="color:var(--text-muted);font-size:13px;margin-bottom:24px;">Descarga la plantilla, complétala con los datos del período y súbela.</p>
+  <div style="display:flex;gap:12px;justify-content:center;">
+    <a href="/api/estados-resultados/template" class="btn btn-outline btn-sm">
+      <i class="fa-solid fa-file-arrow-down"></i> Descargar Plantilla
+    </a>
+    <button class="btn btn-primary btn-sm" onclick="openImportModal()">
+      <i class="fa-solid fa-upload"></i> Importar Datos
+    </button>
+  </div>
+</div>
+
+<!-- CONTENIDO CON DATOS -->
+<div id="contentSection" style="display:none;">
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:24px;">
+
+    <!-- Estado de Resultados estructurado -->
+    <div class="card" style="overflow:visible;">
+      <div class="card-header">
+        <h3 class="card-title"><i class="fa-solid fa-list"></i> Estado de Resultados</h3>
+        <span id="periodoLabel" style="font-size:12px;color:var(--text-muted);font-weight:600;"></span>
+      </div>
+      <div style="padding:0;">
+        <table style="width:100%;border-collapse:collapse;font-size:13px;">
+          <tbody id="erTable"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Charts -->
+    <div style="display:flex;flex-direction:column;gap:20px;">
+      <div class="card" style="padding:20px;flex:1;">
+        <div class="card-header" style="padding:0 0 12px 0;border-bottom:none;">
+          <h3 class="card-title"><i class="fa-solid fa-chart-bar"></i> Ingresos vs Costos vs Utilidad</h3>
+        </div>
+        <canvas id="chartER" height="200"></canvas>
+      </div>
+      <div class="card" style="padding:20px;flex:1;">
+        <div class="card-header" style="padding:0 0 12px 0;border-bottom:none;">
+          <h3 class="card-title"><i class="fa-solid fa-chart-pie"></i> Estructura de Gastos</h3>
+        </div>
+        <canvas id="chartGastos" height="180"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tabla comparativa de períodos -->
+  <div class="card" style="overflow:visible;margin-bottom:24px;" id="comparativoSection">
+    <div class="card-header">
+      <h3 class="card-title"><i class="fa-solid fa-table-columns"></i> Comparativo de Períodos</h3>
+    </div>
+    <div style="overflow-x:auto;">
+      <table class="data-table" id="comparativoTable" style="min-width:900px;">
+        <thead>
+          <tr>
+            <th>Concepto</th>
+            <th id="th1" class="text-right">—</th>
+            <th id="th2" class="text-right">—</th>
+            <th id="th3" class="text-right">—</th>
+          </tr>
+        </thead>
+        <tbody id="comparativoBody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL IMPORTAR -->
+<div class="modal-overlay" id="importModal" style="display:none;">
+  <div class="modal-box" style="max-width:560px;">
+    <div class="modal-header">
+      <h3 class="modal-title"><i class="fa-solid fa-upload"></i> Importar Estado de Resultados</h3>
+      <button class="modal-close" onclick="closeImportModal()"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div class="modal-body">
+      <div style="background:var(--surface2);border-radius:8px;padding:14px;margin-bottom:18px;font-size:12px;color:var(--text-muted);">
+        <i class="fa-solid fa-circle-info" style="color:var(--accent);margin-right:6px;"></i>
+        Descarga la plantilla, llena los datos del período y súbela aquí.
+        <a href="/api/estados-resultados/template" style="color:var(--primary);font-weight:600;margin-left:4px;">
+          <i class="fa-solid fa-file-arrow-down"></i> Descargar Plantilla
+        </a>
+      </div>
+
+      <!-- Tabs -->
+      <div class="tabs" style="margin-bottom:18px;">
+        <button class="tab-btn active" onclick="switchTab(this,'tab-excel')">
+          <i class="fa-solid fa-file-excel" style="color:#1d6f42;"></i> Excel / ERP
+        </button>
+        <button class="tab-btn" onclick="switchTab(this,'tab-drive')">
+          <i class="fa-brands fa-google-drive" style="color:#4285f4;"></i> Google Drive
+        </button>
+        <button class="tab-btn" onclick="switchTab(this,'tab-manual')">
+          <i class="fa-solid fa-keyboard"></i> Manual
+        </button>
+      </div>
+
+      <!-- Excel Tab -->
+      <div id="tab-excel">
+        <div class="form-group">
+          <label class="form-label">Período <span style="color:var(--danger)">*</span></label>
+          <input type="text" class="form-control" id="excelPeriodo" placeholder="Ej: Enero 2026">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Archivo Excel (.xlsx / .xls / .csv)</label>
+          <div id="dropzone" style="border:2px dashed var(--border);border-radius:8px;padding:32px;text-align:center;cursor:pointer;transition:all .2s;"
+               onclick="document.getElementById('fileInputER').click()"
+               ondragover="event.preventDefault();this.style.borderColor='var(--primary)'"
+               ondragleave="this.style.borderColor='var(--border)'"
+               ondrop="handleDrop(event)">
+            <i class="fa-solid fa-cloud-arrow-up" style="font-size:28px;color:var(--text-muted);margin-bottom:8px;"></i>
+            <p style="color:var(--text-muted);font-size:13px;margin:0;">Arrastra el archivo aquí o <strong style="color:var(--primary);">haz clic</strong></p>
+            <p id="fileName" style="color:var(--text-muted);font-size:12px;margin-top:6px;"></p>
+          </div>
+          <input type="file" id="fileInputER" accept=".xlsx,.xls,.csv" style="display:none;" onchange="handleFileSelect(this)">
+        </div>
+        <button class="btn btn-primary" style="width:100%;" onclick="importarExcel()">
+          <i class="fa-solid fa-upload"></i> Importar
+        </button>
+      </div>
+
+      <!-- Drive Tab -->
+      <div id="tab-drive" style="display:none;">
+        <div class="form-group">
+          <label class="form-label">Período</label>
+          <input type="text" class="form-control" id="drivePeriodo" placeholder="Ej: Enero 2026">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Link de Google Drive / Sheets</label>
+          <input type="text" class="form-control" id="driveUrl" placeholder="https://docs.google.com/...">
+        </div>
+        <div style="background:var(--surface2);border-radius:6px;padding:10px;font-size:12px;color:var(--text-muted);margin-bottom:14px;">
+          <i class="fa-solid fa-info-circle"></i> Asegúrate que el archivo sea de acceso público o compartido contigo.
+        </div>
+        <button class="btn btn-primary" style="width:100%;" onclick="importarDrive()">
+          <i class="fa-brands fa-google-drive"></i> Conectar Drive
+        </button>
+      </div>
+
+      <!-- Manual Tab -->
+      <div id="tab-manual" style="display:none;">
+        <div class="form-group">
+          <label class="form-label">Período <span style="color:var(--danger)">*</span></label>
+          <input type="text" class="form-control" id="manualPeriodo" placeholder="Ej: Enero 2026">
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+          <div class="form-group"><label class="form-label">Ventas Netas</label><input type="number" class="form-control" id="m_ventas_netas" value="0" min="0"></div>
+          <div class="form-group"><label class="form-label">Otros Ingresos</label><input type="number" class="form-control" id="m_otros_ingresos" value="0" min="0"></div>
+          <div class="form-group"><label class="form-label">Costo de Ventas</label><input type="number" class="form-control" id="m_costo_ventas" value="0" min="0"></div>
+          <div class="form-group"><label class="form-label">Gastos Administrativos</label><input type="number" class="form-control" id="m_gastos_administrativos" value="0" min="0"></div>
+          <div class="form-group"><label class="form-label">Gastos de Ventas</label><input type="number" class="form-control" id="m_gastos_ventas" value="0" min="0"></div>
+          <div class="form-group"><label class="form-label">Depreciación y Amort.</label><input type="number" class="form-control" id="m_depreciacion_amortizacion" value="0" min="0"></div>
+          <div class="form-group"><label class="form-label">Gastos Financieros</label><input type="number" class="form-control" id="m_gastos_financieros" value="0" min="0"></div>
+          <div class="form-group"><label class="form-label">Impuesto a la Renta</label><input type="number" class="form-control" id="m_impuesto_renta" value="0" min="0"></div>
+        </div>
+        <button class="btn btn-primary" style="width:100%;margin-top:8px;" onclick="importarManual()">
+          <i class="fa-solid fa-save"></i> Guardar Período
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+.er-section { background:var(--primary-dark); color:#fff; font-weight:700; font-size:11px; text-transform:uppercase; letter-spacing:.5px; padding:8px 16px; }
+.er-item { padding:9px 16px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center; font-size:13px; }
+.er-item:hover { background:var(--surface2); }
+.er-total { padding:10px 16px; border-top:2px solid var(--primary); border-bottom:2px solid var(--primary); background:var(--surface2); display:flex; justify-content:space-between; font-weight:700; font-size:13px; }
+.er-subtotal { padding:9px 16px; background:rgba(26,60,110,.05); display:flex; justify-content:space-between; font-weight:600; font-size:13px; border-bottom:1px solid var(--border); }
+.er-net { padding:12px 16px; background:var(--primary); color:#fff; display:flex; justify-content:space-between; font-weight:800; font-size:15px; }
+.tab-btn { background:none; border:1px solid var(--border); padding:7px 14px; border-radius:6px; cursor:pointer; font-size:12px; font-weight:600; color:var(--text-muted); transition:all .2s; display:flex; align-items:center; gap:6px; }
+.tab-btn.active { background:var(--primary); color:#fff; border-color:var(--primary); }
+.tabs { display:flex; gap:8px; }
+.period-tab { padding:6px 14px; border-radius:6px; border:1px solid var(--border); background:var(--surface); font-size:12px; font-weight:600; cursor:pointer; color:var(--text-muted); transition:all .2s; }
+.period-tab.active { background:var(--primary); color:#fff; border-color:var(--primary); }
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let allPeriodos = [];
+let activePeriodo = null;
+let chartER = null;
+let chartGastos = null;
+
+function fmt(v, mono='PEN') {
+  const prefix = mono === 'USD' ? '$ ' : 'S/ ';
+  if (v === null || v === undefined) return prefix + '0.00';
+  return prefix + parseFloat(v).toLocaleString('es-PE', {minimumFractionDigits:2, maximumFractionDigits:2});
+}
+function pct(num, den) {
+  if (!den || den === 0) return '0.0%';
+  return (num / den * 100).toFixed(1) + '%';
+}
+
+// ── TABS
+function switchTab(btn, tabId) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('#importModal > .modal-body > div[id^="tab-"]').forEach(d => d.style.display = 'none');
+  btn.classList.add('active');
+  document.getElementById(tabId).style.display = 'block';
+}
+
+// ── MODAL
+function openImportModal() { document.getElementById('importModal').style.display = 'flex'; }
+function closeImportModal() { document.getElementById('importModal').style.display = 'none'; }
+
+// ── FILE HANDLING
+function handleFileSelect(input) {
+  if (input.files[0]) document.getElementById('fileName').textContent = '📄 ' + input.files[0].name;
+}
+function handleDrop(e) {
+  e.preventDefault();
+  const f = e.dataTransfer.files[0];
+  if (f) {
+    document.getElementById('fileInputER').files = e.dataTransfer.files;
+    document.getElementById('fileName').textContent = '📄 ' + f.name;
+    document.getElementById('dropzone').style.borderColor = 'var(--success)';
+  }
+}
+
+// ── IMPORT EXCEL
+async function importarExcel() {
+  const file = document.getElementById('fileInputER').files[0];
+  if (!file) return showToast('Selecciona un archivo', 'warning');
+  const periodo = document.getElementById('excelPeriodo').value.trim();
+
+  const fd = new FormData();
+  fd.append('file', file);
+  if (periodo) fd.append('periodo', periodo);
+
+  showToast('Procesando archivo...', 'info');
+  try {
+    const r = await fetch('/api/estados-resultados/importar', {method:'POST', body:fd});
+    const d = await r.json();
+    if (!r.ok || d.error) return showToast(d.error || 'Error al importar', 'error');
+    showToast(`Período "${d.periodo_label}" importado correctamente`, 'success');
+    closeImportModal();
+    await loadPeriodos();
+    if (d.id) selectPeriodo(d.id);
+  } catch(e) { showToast('Error de conexión', 'error'); }
+}
+
+// ── IMPORT DRIVE
+async function importarDrive() {
+  const url = document.getElementById('driveUrl').value.trim();
+  const periodo = document.getElementById('drivePeriodo').value.trim();
+  if (!url) return showToast('Ingresa el link de Drive', 'warning');
+  showToast('Link de Drive registrado. Usa la plantilla Excel para importar los datos.', 'info');
+  closeImportModal();
+}
+
+// ── IMPORT MANUAL
+async function importarManual() {
+  const periodo = document.getElementById('manualPeriodo').value.trim();
+  if (!periodo) return showToast('Ingresa el período', 'warning');
+
+  const fields = ['ventas_netas','otros_ingresos','costo_ventas','gastos_administrativos',
+                  'gastos_ventas','depreciacion_amortizacion','gastos_financieros','impuesto_renta'];
+  const data = {periodo_label: periodo};
+  fields.forEach(f => { data[f] = parseFloat(document.getElementById('m_' + f).value) || 0; });
+
+  // Compute totals
+  data.total_ingresos = data.ventas_netas + data.otros_ingresos;
+  data.utilidad_bruta = data.total_ingresos - data.costo_ventas;
+  data.total_gastos_operativos = data.gastos_administrativos + data.gastos_ventas;
+  data.ebitda = data.utilidad_bruta - data.total_gastos_operativos;
+  data.ebit = data.ebitda - data.depreciacion_amortizacion;
+  data.utilidad_antes_impuestos = data.ebit - data.gastos_financieros;
+  data.utilidad_neta = data.utilidad_antes_impuestos - data.impuesto_renta;
+
+  // Create a fake CSV and submit as file
+  let csv = 'CONCEPTO,MONTO\n';
+  csv += `PERIODO,${periodo}\n`;
+  Object.entries(data).forEach(([k,v]) => { if (k !== 'periodo_label') csv += `${k.toUpperCase().replace(/_/g,' ')},${v}\n`; });
+
+  const blob = new Blob([csv], {type:'text/csv'});
+  const file = new File([blob], 'manual_input.csv');
+  const fd = new FormData();
+  fd.append('file', file);
+  fd.append('periodo', periodo);
+
+  try {
+    const r = await fetch('/api/estados-resultados/importar', {method:'POST', body:fd});
+    const d = await r.json();
+    if (!r.ok || d.error) return showToast(d.error || 'Error', 'error');
+    showToast(`Período "${periodo}" guardado`, 'success');
+    closeImportModal();
+    await loadPeriodos();
+    if (d.id) selectPeriodo(d.id);
+  } catch(e) { showToast('Error de conexión', 'error'); }
+}
+
+// ── LOAD PERÍODOS
+async function loadPeriodos() {
+  const r = await fetch('/api/estados-resultados');
+  allPeriodos = await r.json();
+  renderTabs();
+  if (allPeriodos.length > 0 && !activePeriodo) selectPeriodo(allPeriodos[0].id);
+  else if (allPeriodos.length === 0) showEmpty();
+}
+
+function renderTabs() {
+  const bar = document.getElementById('periodTabsList');
+  if (allPeriodos.length === 0) { document.getElementById('periodTabs').style.display = 'none'; return; }
+  document.getElementById('periodTabs').style.display = 'block';
+  bar.innerHTML = allPeriodos.map(p => `
+    <button class="period-tab ${activePeriodo === p.id ? 'active' : ''}" onclick="selectPeriodo(${p.id})" title="${p.archivo_origen || ''}">
+      <i class="fa-solid fa-calendar-days" style="margin-right:5px;"></i>${p.periodo_label || p.mes + ' ' + p.anio}
+      <span onclick="event.stopPropagation();deletePeriodo(${p.id})" style="margin-left:8px;opacity:.5;font-size:10px;" title="Eliminar">✕</span>
+    </button>`).join('');
+}
+
+async function deletePeriodo(id) {
+  if (!confirm('¿Eliminar este período?')) return;
+  await fetch('/api/estados-resultados/' + id, {method:'DELETE'});
+  if (activePeriodo === id) { activePeriodo = null; }
+  await loadPeriodos();
+  if (allPeriodos.length === 0) showEmpty();
+  else selectPeriodo(allPeriodos[0].id);
+}
+
+async function selectPeriodo(id) {
+  activePeriodo = id;
+  renderTabs();
+  const r = await fetch('/api/estados-resultados/' + id);
+  const d = await r.json();
+  renderData(d);
+  renderComparativo();
+}
+
+function showEmpty() {
+  document.getElementById('emptyState').style.display = 'block';
+  document.getElementById('contentSection').style.display = 'none';
+}
+
+// ── RENDER DATA
+function renderData(d) {
+  document.getElementById('emptyState').style.display = 'none';
+  document.getElementById('kpiSection').style.display = 'block';
+  document.getElementById('contentSection').style.display = 'block';
+
+  const m = d.moneda || 'PEN';
+  const ing = d.total_ingresos || 0;
+
+  // Grupo 1 KPIs
+  document.getElementById('kpiIngresos').textContent = fmt(ing, m);
+  document.getElementById('kpiIngresosLabel').textContent = `Ventas: ${fmt(d.ventas_netas, m)}`;
+  document.getElementById('kpiUtilidadBruta').textContent = fmt(d.utilidad_bruta, m);
+  document.getElementById('kpiMargenBruto').textContent = `Margen Bruto: ${pct(d.utilidad_bruta, ing)}`;
+  document.getElementById('kpiEbitda').textContent = fmt(d.ebitda, m);
+  document.getElementById('kpiMargenEbitda').textContent = `Margen EBITDA: ${pct(d.ebitda, ing)}`;
+  document.getElementById('kpiEbit').textContent = fmt(d.ebit, m);
+  document.getElementById('kpiMargenEbit').textContent = `Margen Operativo: ${pct(d.ebit, ing)}`;
+  document.getElementById('kpiUtilidadNeta').textContent = fmt(d.utilidad_neta, m);
+  document.getElementById('kpiMargenNeto').textContent = `Margen Neto: ${pct(d.utilidad_neta, ing)}`;
+  document.getElementById('kpiCostoVentas').textContent = fmt(d.costo_ventas, m);
+  document.getElementById('kpiCostoVentasPct').textContent = `% Ingresos: ${pct(d.costo_ventas, ing)}`;
+
+  // Grupo 2 KPIs
+  const i = d.total_ingresos || 0;
+  document.getElementById('kpiGastosAdmin').textContent = fmt(d.gastos_administrativos, m);
+  document.getElementById('kpiGastosAdminPct').textContent = '% Ingresos: ' + pct(d.gastos_administrativos, i);
+  document.getElementById('kpiGastosVentas').textContent = fmt(d.gastos_ventas, m);
+  document.getElementById('kpiGastosVentasPct').textContent = '% Ingresos: ' + pct(d.gastos_ventas, i);
+  document.getElementById('kpiGastosFinancieros').textContent = fmt(d.gastos_financieros, m);
+  document.getElementById('kpiGastosFinancierosPct').textContent = '% Ingresos: ' + pct(d.gastos_financieros, i);
+  document.getElementById('kpiDepreciacion').textContent = fmt(d.depreciacion_amortizacion, m);
+  document.getElementById('kpiDepreciacionPct').textContent = '% Ingresos: ' + pct(d.depreciacion_amortizacion, i);
+  document.getElementById('kpiTasaImpuesto').textContent = pct(d.impuesto_renta, d.utilidad_antes_impuestos);
+  document.getElementById('kpiPuntoEq').textContent = i > 0 && d.costo_ventas < i ? fmt((d.total_gastos_operativos)/(1 - d.costo_ventas/i), m) : '—';
+
+  document.getElementById('periodoLabel').textContent = d.periodo_label || '';
+
+  // Estado de Resultados Table
+  const rows = [
+    {type:'section', label:'INGRESOS'},
+    {type:'item', label:'Ventas Netas', val:d.ventas_netas, m},
+    {type:'item', label:'Otros Ingresos', val:d.otros_ingresos, m},
+    {type:'total', label:'TOTAL INGRESOS', val:d.total_ingresos, m},
+    {type:'section', label:'COSTOS'},
+    {type:'item', label:'(-) Costo de Ventas', val:d.costo_ventas, m, neg:true},
+    {type:'subtotal', label:'UTILIDAD BRUTA', val:d.utilidad_bruta, m},
+    {type:'section', label:'GASTOS OPERATIVOS'},
+    {type:'item', label:'(-) Gastos Administrativos', val:d.gastos_administrativos, m, neg:true},
+    {type:'item', label:'(-) Gastos de Ventas', val:d.gastos_ventas, m, neg:true},
+    {type:'subtotal', label:'EBITDA', val:d.ebitda, m},
+    {type:'item', label:'(-) Depreciación y Amortización', val:d.depreciacion_amortizacion, m, neg:true},
+    {type:'subtotal', label:'EBIT (Utilidad Operativa)', val:d.ebit, m},
+    {type:'section', label:'OTROS'},
+    {type:'item', label:'(-) Gastos Financieros', val:d.gastos_financieros, m, neg:true},
+    {type:'item', label:'(-) Otros Gastos Netos', val:d.otros_gastos_netos, m, neg:true},
+    {type:'total', label:'UTILIDAD ANTES IMPUESTOS', val:d.utilidad_antes_impuestos, m},
+    {type:'item', label:'(-) Impuesto a la Renta', val:d.impuesto_renta, m, neg:true},
+    {type:'net', label:'UTILIDAD NETA', val:d.utilidad_neta, m},
+  ];
+
+  document.getElementById('erTable').innerHTML = rows.map(r => {
+    if (r.type === 'section') return `<tr><td class="er-section" colspan="2">${r.label}</td></tr>`;
+    const display = r.neg ? fmt(r.val, r.m) : fmt(r.val, r.m);
+    const cls = r.type === 'net' ? 'er-net' : r.type === 'total' ? 'er-total' : r.type === 'subtotal' ? 'er-subtotal' : 'er-item';
+    const valColor = parseFloat(r.val) < 0 ? 'color:#ff6b6b' : '';
+    return `<tr><td class="${cls}">${r.label}</td><td class="${cls} text-right" style="${valColor}">${display}</td></tr>`;
+  }).join('');
+
+  // Chart ER
+  const ctx1 = document.getElementById('chartER').getContext('2d');
+  if (chartER) chartER.destroy();
+  chartER = new Chart(ctx1, {
+    type: 'bar',
+    data: {
+      labels: ['Ingresos', 'Costo Ventas', 'Gastos Op.', 'EBITDA', 'EBIT', 'Utilidad Neta'],
+      datasets: [{
+        data: [d.total_ingresos, d.costo_ventas, d.total_gastos_operativos, d.ebitda, d.ebit, d.utilidad_neta],
+        backgroundColor: ['#1A3C6E','#ef4444','#f59e0b','#10b981','#7c3aed','#059669'],
+        borderRadius: 6,
+      }]
+    },
+    options: {
+      responsive: true, plugins: {legend:{display:false}},
+      scales: { y: { beginAtZero:true, ticks:{ callback: v => 'S/' + v.toLocaleString() } } }
+    }
+  });
+
+  // Chart Gastos
+  const ctx2 = document.getElementById('chartGastos').getContext('2d');
+  if (chartGastos) chartGastos.destroy();
+  const gastosData = [
+    {label:'Costo Ventas', val:d.costo_ventas},
+    {label:'G. Administrativos', val:d.gastos_administrativos},
+    {label:'G. Ventas', val:d.gastos_ventas},
+    {label:'Depreciación', val:d.depreciacion_amortizacion},
+    {label:'G. Financieros', val:d.gastos_financieros},
+    {label:'Impuesto Renta', val:d.impuesto_renta},
+  ].filter(g => g.val > 0);
+
+  chartGastos = new Chart(ctx2, {
+    type: 'doughnut',
+    data: {
+      labels: gastosData.map(g => g.label),
+      datasets: [{ data: gastosData.map(g => g.val),
+        backgroundColor: ['#ef4444','#f59e0b','#3b82f6','#8b5cf6','#ec4899','#10b981'], borderWidth:2 }]
+    },
+    options: { responsive:true, plugins:{ legend:{ position:'right', labels:{font:{size:11}} } } }
+  });
+}
+
+// ── COMPARATIVO
+async function renderComparativo() {
+  if (allPeriodos.length < 2) { document.getElementById('comparativoSection').style.display = 'none'; return; }
+  document.getElementById('comparativoSection').style.display = 'block';
+  const last3 = allPeriodos.slice(0, 3);
+  const datas = await Promise.all(last3.map(p => fetch('/api/estados-resultados/' + p.id).then(r => r.json())));
+
+  const headers = ['th1','th2','th3'];
+  last3.forEach((p, i) => { const el = document.getElementById(headers[i]); if (el) el.textContent = p.periodo_label || '—'; });
+  // Hide unused headers
+  for (let i = last3.length; i < 3; i++) { const el = document.getElementById(headers[i]); if (el) el.style.display = 'none'; }
+
+  const concepts = [
+    {key:'ventas_netas', label:'Ventas Netas'},
+    {key:'otros_ingresos', label:'Otros Ingresos'},
+    {key:'total_ingresos', label:'TOTAL INGRESOS', bold:true},
+    {key:'costo_ventas', label:'(-) Costo de Ventas'},
+    {key:'utilidad_bruta', label:'UTILIDAD BRUTA', bold:true},
+    {key:'gastos_administrativos', label:'(-) G. Administrativos'},
+    {key:'gastos_ventas', label:'(-) G. de Ventas'},
+    {key:'ebitda', label:'EBITDA', bold:true},
+    {key:'ebit', label:'EBIT', bold:true},
+    {key:'gastos_financieros', label:'(-) G. Financieros'},
+    {key:'impuesto_renta', label:'(-) Impuesto Renta'},
+    {key:'utilidad_neta', label:'UTILIDAD NETA', bold:true},
+  ];
+
+  document.getElementById('comparativoBody').innerHTML = concepts.map(c => {
+    const vals = datas.map(d => {
+      const v = d[c.key] || 0;
+      const color = v < 0 ? 'color:var(--danger)' : '';
+      return `<td class="text-right" style="font-weight:${c.bold?700:400};${color}">${fmt(v, d.moneda)}</td>`;
+    }).join('');
+    return `<tr style="background:${c.bold ? 'var(--surface2)' : ''}"><td style="font-weight:${c.bold?700:400};padding:9px 14px;">${c.label}</td>${vals}</tr>`;
+  }).join('');
+}
+
+// ── EXPORT
+function exportarExcel() { window.location.href = '/api/estados-resultados/exportar'; }
+
+// ── TOAST helper (usa el global de main.js si existe)
+function showToast(msg, type='info') {
+  if (typeof window.toast === 'function') return window.toast(msg, type);
+  const el = document.createElement('div');
+  el.style.cssText = `position:fixed;bottom:24px;right:24px;z-index:9999;background:${type==='error'?'#ef4444':type==='success'?'#10b981':type==='warning'?'#f59e0b':'#1A3C6E'};color:#fff;padding:12px 20px;border-radius:8px;font-size:13px;font-weight:600;box-shadow:0 4px 20px rgba(0,0,0,.2);`;
+  el.textContent = msg;
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 3500);
+}
+
+// ── INIT
+loadPeriodos();
+</script>
+{% endblock %}

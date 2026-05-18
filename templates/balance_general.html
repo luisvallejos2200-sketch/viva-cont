@@ -1,0 +1,674 @@
+{% extends "base.html" %}
+{% block title %}Balance General{% endblock %}
+{% block breadcrumb %}Balance General{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="page-title"><i class="fa-solid fa-scale-balanced" style="color:var(--accent)"></i> Balance General</h1>
+    <p class="page-subtitle">Posición financiera de la empresa por período</p>
+  </div>
+  <div class="page-actions">
+    <a href="/api/balance-general/template" class="btn btn-outline btn-sm">
+      <i class="fa-solid fa-file-arrow-down"></i> Plantilla Excel
+    </a>
+    <button class="btn btn-outline btn-sm" onclick="exportarExcel()">
+      <i class="fa-solid fa-file-excel"></i> Exportar
+    </button>
+    <button class="btn btn-primary btn-sm" onclick="openImportModal()">
+      <i class="fa-solid fa-upload"></i> Importar Período
+    </button>
+  </div>
+</div>
+
+<!-- TABS DE PERÍODOS -->
+<div id="periodTabs" style="display:none;margin-bottom:16px;">
+  <div id="periodTabsList" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;"></div>
+</div>
+
+<!-- KPI CARDS -->
+<div id="kpiSection" style="display:block;">
+
+  <!-- Grupo 1: Estructura del Balance -->
+  <div style="margin-bottom:20px;">
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-muted);margin-bottom:12px;letter-spacing:.5px;">ESTRUCTURA DEL BALANCE</div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;">
+      <div class="card" style="padding:20px;">
+        <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Activo Total</div>
+        <div id="kpiActivoTotal" style="font-size:22px;font-weight:800;color:var(--primary);">S/ 0</div>
+        <div id="kpiActivoDetalle" style="font-size:11px;color:var(--text-muted);margin-top:4px;">Corriente + No Corriente</div>
+      </div>
+      <div class="card" style="padding:20px;">
+        <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Pasivo Total</div>
+        <div id="kpiPasivoTotal" style="font-size:22px;font-weight:800;color:var(--danger);">S/ 0</div>
+        <div id="kpiPasivoDetalle" style="font-size:11px;color:var(--text-muted);margin-top:4px;">CP + LP</div>
+      </div>
+      <div class="card" style="padding:20px;">
+        <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Patrimonio Neto</div>
+        <div id="kpiPatrimonio" style="font-size:22px;font-weight:800;color:var(--success);">S/ 0</div>
+        <div id="kpiPatrimonioDetalle" style="font-size:11px;color:var(--text-muted);margin-top:4px;">Capital + Utilidades</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Grupo 2: Ratios de Liquidez -->
+  <div style="background:#EFF6FF;border-radius:10px;padding:18px 20px;margin-bottom:20px;">
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-muted);margin-bottom:12px;letter-spacing:.5px;">LIQUIDEZ</div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;">
+      <div class="card" style="padding:20px;">
+        <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Razón Corriente</div>
+        <div id="kpiRazonCorriente" style="font-size:22px;font-weight:800;color:var(--accent);">0.00x</div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">AC / PC · ≥1.5 saludable</div>
+      </div>
+      <div class="card" style="padding:20px;">
+        <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Liquidez Ácida</div>
+        <div id="kpiLiquidez" style="font-size:22px;font-weight:800;color:#0891b2;">0.00x</div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">(AC-Inv) / PC · ≥1.0 óptimo</div>
+      </div>
+      <div class="card" style="padding:20px;">
+        <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Liquidez Absoluta</div>
+        <div id="kpiLiquidezAbs" style="font-size:22px;font-weight:800;color:#7c3aed;">0.00x</div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">Caja / PC · ≥0.20 aceptable</div>
+      </div>
+      <div class="card" style="padding:20px;">
+        <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Capital de Trabajo</div>
+        <div id="kpiCapitalTrabajo" style="font-size:22px;font-weight:800;color:var(--success);">S/ 0</div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">AC - PC</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Grupo 3: Ratios de Solvencia -->
+  <div style="background:#FFF7ED;border-radius:10px;padding:18px 20px;margin-bottom:24px;">
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-muted);margin-bottom:12px;letter-spacing:.5px;">SOLVENCIA Y APALANCAMIENTO</div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;">
+      <div class="card" style="padding:20px;">
+        <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Endeudamiento</div>
+        <div id="kpiEndeudamiento" style="font-size:22px;font-weight:800;color:var(--danger);">0.0%</div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">Pasivo/Activo · &lt;60% saludable</div>
+      </div>
+      <div class="card" style="padding:20px;">
+        <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Deuda/Patrimonio</div>
+        <div id="kpiDeudaPatrimonio" style="font-size:22px;font-weight:800;color:#7c3aed;">0.00x</div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">Apalancamiento · ≤1.0x conserv.</div>
+      </div>
+      <div class="card" style="padding:20px;">
+        <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Solvencia</div>
+        <div id="kpiSolvencia" style="font-size:22px;font-weight:800;color:var(--success);">0.0%</div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">Patrimonio/Activo · &gt;40% fuerte</div>
+      </div>
+      <div class="card" style="padding:20px;">
+        <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Mult. Patrimonio</div>
+        <div id="kpiMultPatrimonio" style="font-size:22px;font-weight:800;color:#f59e0b;">0.00x</div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">Activo/Patrimonio</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- EMPTY STATE -->
+<div id="emptyState" class="card" style="padding:60px;text-align:center;">
+  <i class="fa-solid fa-scale-balanced" style="font-size:48px;color:var(--border);margin-bottom:16px;"></i>
+  <h3 style="color:var(--text-muted);margin-bottom:8px;">Sin datos de balance</h3>
+  <p style="color:var(--text-muted);font-size:13px;margin-bottom:24px;">Descarga la plantilla, complétala con los datos del período y súbela.</p>
+  <div style="display:flex;gap:12px;justify-content:center;">
+    <a href="/api/balance-general/template" class="btn btn-outline btn-sm">
+      <i class="fa-solid fa-file-arrow-down"></i> Descargar Plantilla
+    </a>
+    <button class="btn btn-primary btn-sm" onclick="openImportModal()">
+      <i class="fa-solid fa-upload"></i> Importar Datos
+    </button>
+  </div>
+</div>
+
+<!-- CONTENIDO -->
+<div id="contentSection" style="display:none;">
+
+  <!-- Balance Sheet + Charts -->
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:24px;">
+
+    <!-- Activo -->
+    <div class="card" style="overflow:visible;">
+      <div class="card-header" style="background:var(--primary);border-radius:var(--radius) var(--radius) 0 0;">
+        <h3 class="card-title" style="color:#fff;"><i class="fa-solid fa-arrow-trend-up"></i> ACTIVO</h3>
+        <span id="activoTotal" style="color:#fff;font-weight:800;font-size:14px;">S/ 0</span>
+      </div>
+      <table style="width:100%;border-collapse:collapse;font-size:13px;">
+        <tbody id="activoTable"></tbody>
+      </table>
+    </div>
+
+    <!-- Pasivo + Patrimonio -->
+    <div class="card" style="overflow:visible;">
+      <div class="card-header" style="background:#7c3aed;border-radius:var(--radius) var(--radius) 0 0;">
+        <h3 class="card-title" style="color:#fff;"><i class="fa-solid fa-arrow-trend-down"></i> PASIVO Y PATRIMONIO</h3>
+        <span id="pasivoPlusPatrimonio" style="color:#fff;font-weight:800;font-size:14px;">S/ 0</span>
+      </div>
+      <table style="width:100%;border-collapse:collapse;font-size:13px;">
+        <tbody id="pasivoTable"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Charts row -->
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:20px;margin-bottom:24px;">
+    <div class="card" style="padding:20px;">
+      <div style="font-weight:700;font-size:13px;margin-bottom:12px;"><i class="fa-solid fa-chart-pie"></i> Composición del Activo</div>
+      <canvas id="chartActivo" height="200"></canvas>
+    </div>
+    <div class="card" style="padding:20px;">
+      <div style="font-weight:700;font-size:13px;margin-bottom:12px;"><i class="fa-solid fa-chart-pie"></i> Estructura del Pasivo</div>
+      <canvas id="chartPasivo" height="200"></canvas>
+    </div>
+    <div class="card" style="padding:20px;">
+      <div style="font-weight:700;font-size:13px;margin-bottom:12px;"><i class="fa-solid fa-chart-bar"></i> Activo · Pasivo · Patrimonio</div>
+      <canvas id="chartResumen" height="200"></canvas>
+    </div>
+  </div>
+
+  <!-- Indicadores financieros -->
+  <div class="card" style="margin-bottom:24px;">
+    <div class="card-header">
+      <h3 class="card-title"><i class="fa-solid fa-gauge-high"></i> Indicadores Financieros</h3>
+      <span id="periodoLabel" style="font-size:12px;color:var(--text-muted);font-weight:600;"></span>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:0;border-top:1px solid var(--border);">
+      <div class="indicator-row" id="ind1"></div>
+      <div class="indicator-row" id="ind2"></div>
+      <div class="indicator-row" id="ind3"></div>
+      <div class="indicator-row" id="ind4"></div>
+      <div class="indicator-row" id="ind5"></div>
+      <div class="indicator-row" id="ind6"></div>
+    </div>
+  </div>
+
+  <!-- Comparativo de períodos -->
+  <div class="card" style="overflow:visible;margin-bottom:24px;" id="comparativoSection">
+    <div class="card-header">
+      <h3 class="card-title"><i class="fa-solid fa-table-columns"></i> Comparativo de Períodos</h3>
+    </div>
+    <div style="overflow-x:auto;">
+      <table class="data-table" id="comparativoTable" style="min-width:900px;">
+        <thead>
+          <tr>
+            <th>Concepto</th>
+            <th id="bth1" class="text-right">—</th>
+            <th id="bth2" class="text-right">—</th>
+            <th id="bth3" class="text-right">—</th>
+          </tr>
+        </thead>
+        <tbody id="comparativoBody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL IMPORTAR -->
+<div class="modal-overlay" id="importModal" style="display:none;">
+  <div class="modal-box" style="max-width:580px;">
+    <div class="modal-header">
+      <h3 class="modal-title"><i class="fa-solid fa-upload"></i> Importar Balance General</h3>
+      <button class="modal-close" onclick="closeImportModal()"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div class="modal-body">
+      <div style="background:var(--surface2);border-radius:8px;padding:14px;margin-bottom:18px;font-size:12px;color:var(--text-muted);">
+        <i class="fa-solid fa-circle-info" style="color:var(--accent);margin-right:6px;"></i>
+        Descarga la plantilla, llena los datos y súbela. TOTAL ACTIVO debe igualar TOTAL PASIVO + PATRIMONIO.
+        <a href="/api/balance-general/template" style="color:var(--primary);font-weight:600;margin-left:4px;">
+          <i class="fa-solid fa-file-arrow-down"></i> Descargar Plantilla
+        </a>
+      </div>
+
+      <div class="tabs" style="margin-bottom:18px;">
+        <button class="tab-btn active" onclick="switchTab(this,'tab-excel')">
+          <i class="fa-solid fa-file-excel" style="color:#1d6f42;"></i> Excel / ERP
+        </button>
+        <button class="tab-btn" onclick="switchTab(this,'tab-drive')">
+          <i class="fa-brands fa-google-drive" style="color:#4285f4;"></i> Google Drive
+        </button>
+        <button class="tab-btn" onclick="switchTab(this,'tab-manual')">
+          <i class="fa-solid fa-keyboard"></i> Manual
+        </button>
+      </div>
+
+      <!-- Excel -->
+      <div id="tab-excel">
+        <div class="form-group">
+          <label class="form-label">Período <span style="color:var(--danger)">*</span></label>
+          <input type="text" class="form-control" id="excelPeriodo" placeholder="Ej: Diciembre 2025">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Archivo Excel</label>
+          <div id="dropzone" style="border:2px dashed var(--border);border-radius:8px;padding:32px;text-align:center;cursor:pointer;"
+               onclick="document.getElementById('fileInputBG').click()"
+               ondragover="event.preventDefault();this.style.borderColor='var(--primary)'"
+               ondragleave="this.style.borderColor='var(--border)'"
+               ondrop="handleDrop(event)">
+            <i class="fa-solid fa-cloud-arrow-up" style="font-size:28px;color:var(--text-muted);margin-bottom:8px;"></i>
+            <p style="color:var(--text-muted);font-size:13px;margin:0;">Arrastra o <strong style="color:var(--primary);">haz clic</strong></p>
+            <p id="fileName" style="color:var(--text-muted);font-size:12px;margin-top:6px;"></p>
+          </div>
+          <input type="file" id="fileInputBG" accept=".xlsx,.xls,.csv" style="display:none;" onchange="handleFileSelect(this)">
+        </div>
+        <button class="btn btn-primary" style="width:100%;" onclick="importarExcel()">
+          <i class="fa-solid fa-upload"></i> Importar
+        </button>
+      </div>
+
+      <!-- Drive -->
+      <div id="tab-drive" style="display:none;">
+        <div class="form-group">
+          <label class="form-label">Período</label>
+          <input type="text" class="form-control" id="drivePeriodo" placeholder="Ej: Diciembre 2025">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Link de Google Drive / Sheets</label>
+          <input type="text" class="form-control" id="driveUrl" placeholder="https://docs.google.com/...">
+        </div>
+        <button class="btn btn-primary" style="width:100%;" onclick="importarDrive()">
+          <i class="fa-brands fa-google-drive"></i> Conectar Drive
+        </button>
+      </div>
+
+      <!-- Manual -->
+      <div id="tab-manual" style="display:none;">
+        <div class="form-group">
+          <label class="form-label">Período <span style="color:var(--danger)">*</span></label>
+          <input type="text" class="form-control" id="manualPeriodo" placeholder="Ej: Diciembre 2025">
+        </div>
+        <p style="font-weight:700;font-size:12px;color:var(--text-muted);margin:12px 0 8px;text-transform:uppercase;">ACTIVO CORRIENTE</p>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+          <div class="form-group"><label class="form-label">Caja y Bancos</label><input type="number" class="form-control" id="b_caja_bancos" value="0"></div>
+          <div class="form-group"><label class="form-label">Cuentas por Cobrar</label><input type="number" class="form-control" id="b_cuentas_cobrar" value="0"></div>
+          <div class="form-group"><label class="form-label">Inventarios</label><input type="number" class="form-control" id="b_inventarios" value="0"></div>
+          <div class="form-group"><label class="form-label">Otros AC</label><input type="number" class="form-control" id="b_otros_ac" value="0"></div>
+        </div>
+        <p style="font-weight:700;font-size:12px;color:var(--text-muted);margin:12px 0 8px;text-transform:uppercase;">ACTIVO NO CORRIENTE</p>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+          <div class="form-group"><label class="form-label">Inmueble Maq. Equipo</label><input type="number" class="form-control" id="b_inmueble_maquinaria" value="0"></div>
+          <div class="form-group"><label class="form-label">Depreciación Acumulada</label><input type="number" class="form-control" id="b_depreciacion_acumulada" value="0"></div>
+          <div class="form-group"><label class="form-label">Intangibles</label><input type="number" class="form-control" id="b_activos_intangibles" value="0"></div>
+          <div class="form-group"><label class="form-label">Otros ANC</label><input type="number" class="form-control" id="b_otros_anc" value="0"></div>
+        </div>
+        <p style="font-weight:700;font-size:12px;color:var(--text-muted);margin:12px 0 8px;text-transform:uppercase;">PASIVO</p>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+          <div class="form-group"><label class="form-label">Cuentas por Pagar</label><input type="number" class="form-control" id="b_cuentas_pagar" value="0"></div>
+          <div class="form-group"><label class="form-label">Préstamos CP</label><input type="number" class="form-control" id="b_prestamos_cp" value="0"></div>
+          <div class="form-group"><label class="form-label">Otros PC</label><input type="number" class="form-control" id="b_otros_pc" value="0"></div>
+          <div class="form-group"><label class="form-label">Deuda Largo Plazo</label><input type="number" class="form-control" id="b_deuda_lp" value="0"></div>
+          <div class="form-group"><label class="form-label">Otros PNC</label><input type="number" class="form-control" id="b_otros_pnc" value="0"></div>
+        </div>
+        <p style="font-weight:700;font-size:12px;color:var(--text-muted);margin:12px 0 8px;text-transform:uppercase;">PATRIMONIO</p>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+          <div class="form-group"><label class="form-label">Capital Social</label><input type="number" class="form-control" id="b_capital_social" value="0"></div>
+          <div class="form-group"><label class="form-label">Reservas</label><input type="number" class="form-control" id="b_reservas" value="0"></div>
+          <div class="form-group"><label class="form-label">Utilidades Retenidas</label><input type="number" class="form-control" id="b_utilidades_retenidas" value="0"></div>
+          <div class="form-group"><label class="form-label">Resultado Ejercicio</label><input type="number" class="form-control" id="b_resultado_ejercicio" value="0"></div>
+        </div>
+        <button class="btn btn-primary" style="width:100%;margin-top:12px;" onclick="importarManual()">
+          <i class="fa-solid fa-save"></i> Guardar Balance
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+.bg-section { background:var(--primary-dark); color:#fff; font-weight:700; font-size:10.5px; text-transform:uppercase; letter-spacing:.5px; padding:7px 14px; }
+.bg-section.pasivo { background:#5b21b6; }
+.bg-item { padding:8px 14px 8px 22px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; font-size:12.5px; }
+.bg-item:hover { background:var(--surface2); }
+.bg-subtotal { padding:9px 14px; border-top:1px solid var(--border); border-bottom:2px solid var(--border); background:var(--surface2); display:flex; justify-content:space-between; font-weight:700; font-size:13px; }
+.bg-total { padding:11px 14px; background:var(--primary); color:#fff; display:flex; justify-content:space-between; font-weight:800; font-size:14px; }
+.bg-total.pasivo { background:#7c3aed; }
+.indicator-row { padding:14px 20px; border-bottom:1px solid var(--border); border-right:1px solid var(--border); }
+.indicator-row:nth-child(3n) { border-right:none; }
+.tab-btn { background:none; border:1px solid var(--border); padding:7px 14px; border-radius:6px; cursor:pointer; font-size:12px; font-weight:600; color:var(--text-muted); transition:all .2s; display:flex; align-items:center; gap:6px; }
+.tab-btn.active { background:var(--primary); color:#fff; border-color:var(--primary); }
+.tabs { display:flex; gap:8px; }
+.period-tab { padding:6px 14px; border-radius:6px; border:1px solid var(--border); background:var(--surface); font-size:12px; font-weight:600; cursor:pointer; color:var(--text-muted); transition:all .2s; }
+.period-tab.active { background:var(--primary); color:#fff; border-color:var(--primary); }
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let allPeriodos = [];
+let activePeriodo = null;
+let chartActivo = null, chartPasivo = null, chartResumen = null;
+
+function fmt(v, mono='PEN') {
+  const prefix = mono === 'USD' ? '$ ' : 'S/ ';
+  if (v === null || v === undefined) return prefix + '0.00';
+  return prefix + parseFloat(v).toLocaleString('es-PE', {minimumFractionDigits:2, maximumFractionDigits:2});
+}
+function ratio(num, den) {
+  if (!den || den === 0) return '—';
+  return (num / den).toFixed(2) + 'x';
+}
+
+function switchTab(btn, tabId) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('#importModal > .modal-body > div[id^="tab-"]').forEach(d => d.style.display = 'none');
+  btn.classList.add('active');
+  document.getElementById(tabId).style.display = 'block';
+}
+
+function openImportModal() { document.getElementById('importModal').style.display = 'flex'; }
+function closeImportModal() { document.getElementById('importModal').style.display = 'none'; }
+function handleFileSelect(input) { if (input.files[0]) document.getElementById('fileName').textContent = '📄 ' + input.files[0].name; }
+function handleDrop(e) {
+  e.preventDefault();
+  const f = e.dataTransfer.files[0];
+  if (f) {
+    document.getElementById('fileInputBG').files = e.dataTransfer.files;
+    document.getElementById('fileName').textContent = '📄 ' + f.name;
+  }
+}
+
+async function importarExcel() {
+  const file = document.getElementById('fileInputBG').files[0];
+  if (!file) return showToast('Selecciona un archivo', 'warning');
+  const periodo = document.getElementById('excelPeriodo').value.trim();
+  const fd = new FormData();
+  fd.append('file', file);
+  if (periodo) fd.append('periodo', periodo);
+  showToast('Procesando...', 'info');
+  try {
+    const r = await fetch('/api/balance-general/importar', {method:'POST', body:fd});
+    const d = await r.json();
+    if (!r.ok || d.error) return showToast(d.error || 'Error', 'error');
+    showToast(`Balance "${d.periodo_label}" importado`, 'success');
+    closeImportModal();
+    await loadPeriodos();
+    if (d.id) selectPeriodo(d.id);
+  } catch(e) { showToast('Error de conexión', 'error'); }
+}
+
+async function importarDrive() {
+  showToast('Link de Drive registrado. Usa la plantilla Excel para importar los datos.', 'info');
+  closeImportModal();
+}
+
+async function importarManual() {
+  const periodo = document.getElementById('manualPeriodo').value.trim();
+  if (!periodo) return showToast('Ingresa el período', 'warning');
+  const fields = ['caja_bancos','cuentas_cobrar','inventarios','otros_ac',
+                  'inmueble_maquinaria','depreciacion_acumulada','activos_intangibles','otros_anc',
+                  'cuentas_pagar','prestamos_cp','otros_pc','deuda_lp','otros_pnc',
+                  'capital_social','reservas','utilidades_retenidas','resultado_ejercicio'];
+  let csv = 'CONCEPTO,MONTO\n';
+  csv += `PERIODO,${periodo}\n`;
+  fields.forEach(f => {
+    const v = parseFloat(document.getElementById('b_' + f).value) || 0;
+    csv += `${f.toUpperCase().replace(/_/g,' ')},${v}\n`;
+  });
+  const blob = new Blob([csv], {type:'text/csv'});
+  const file = new File([blob], 'manual_balance.csv');
+  const fd = new FormData();
+  fd.append('file', file);
+  fd.append('periodo', periodo);
+  try {
+    const r = await fetch('/api/balance-general/importar', {method:'POST', body:fd});
+    const d = await r.json();
+    if (!r.ok || d.error) return showToast(d.error || 'Error', 'error');
+    showToast(`Balance "${periodo}" guardado`, 'success');
+    closeImportModal();
+    await loadPeriodos();
+    if (d.id) selectPeriodo(d.id);
+  } catch(e) { showToast('Error de conexión', 'error'); }
+}
+
+async function loadPeriodos() {
+  const r = await fetch('/api/balance-general');
+  allPeriodos = await r.json();
+  renderTabs();
+  if (allPeriodos.length > 0 && !activePeriodo) selectPeriodo(allPeriodos[0].id);
+  else if (allPeriodos.length === 0) showEmpty();
+}
+
+function renderTabs() {
+  const bar = document.getElementById('periodTabsList');
+  if (allPeriodos.length === 0) { document.getElementById('periodTabs').style.display = 'none'; return; }
+  document.getElementById('periodTabs').style.display = 'block';
+  bar.innerHTML = allPeriodos.map(p => `
+    <button class="period-tab ${activePeriodo === p.id ? 'active' : ''}" onclick="selectPeriodo(${p.id})">
+      <i class="fa-solid fa-calendar-days" style="margin-right:5px;"></i>${p.periodo_label || p.mes + ' ' + p.anio}
+      <span onclick="event.stopPropagation();deletePeriodo(${p.id})" style="margin-left:8px;opacity:.5;font-size:10px;" title="Eliminar">✕</span>
+    </button>`).join('');
+}
+
+async function deletePeriodo(id) {
+  if (!confirm('¿Eliminar este balance?')) return;
+  await fetch('/api/balance-general/' + id, {method:'DELETE'});
+  if (activePeriodo === id) activePeriodo = null;
+  await loadPeriodos();
+  if (allPeriodos.length === 0) showEmpty();
+  else selectPeriodo(allPeriodos[0].id);
+}
+
+async function selectPeriodo(id) {
+  activePeriodo = id;
+  renderTabs();
+  const r = await fetch('/api/balance-general/' + id);
+  const d = await r.json();
+  renderData(d);
+  renderComparativo();
+}
+
+function showEmpty() {
+  document.getElementById('emptyState').style.display = 'block';
+  document.getElementById('contentSection').style.display = 'none';
+}
+
+function renderData(d) {
+  document.getElementById('emptyState').style.display = 'none';
+  document.getElementById('kpiSection').style.display = 'block';
+  document.getElementById('contentSection').style.display = 'block';
+
+  const m = d.moneda || 'PEN';
+
+  // Grupo 1 KPIs — Estructura del Balance
+  document.getElementById('kpiActivoTotal').textContent = fmt(d.total_activo, m);
+  document.getElementById('kpiActivoDetalle').textContent = `Corriente: ${fmt(d.total_activo_corriente, m)}`;
+  document.getElementById('kpiPasivoTotal').textContent = fmt(d.total_pasivo, m);
+  document.getElementById('kpiPasivoDetalle').textContent = `LP: ${fmt(d.deuda_lp, m)}`;
+  document.getElementById('kpiPatrimonio').textContent = fmt(d.total_patrimonio, m);
+  document.getElementById('kpiPatrimonioDetalle').textContent = `Capital: ${fmt(d.capital_social, m)}`;
+
+  // Grupo 2 KPIs — Liquidez
+  const rc = d.total_pasivo_corriente > 0 ? (d.total_activo_corriente / d.total_pasivo_corriente) : 0;
+  document.getElementById('kpiRazonCorriente').textContent = rc.toFixed(2) + 'x';
+  document.getElementById('kpiRazonCorriente').style.color = rc >= 1.5 ? 'var(--success)' : rc >= 1 ? 'var(--accent)' : 'var(--danger)';
+
+  const liq = d.total_pasivo_corriente > 0 ? ((d.total_activo_corriente - d.inventarios) / d.total_pasivo_corriente) : 0;
+  document.getElementById('kpiLiquidez').textContent = liq.toFixed(2) + 'x';
+  document.getElementById('kpiLiquidez').style.color = liq >= 1 ? 'var(--success)' : 'var(--danger)';
+
+  // Liquidez Absoluta
+  const liqAbs = d.total_pasivo_corriente > 0 ? (d.caja_bancos / d.total_pasivo_corriente) : 0;
+  document.getElementById('kpiLiquidezAbs').textContent = liqAbs.toFixed(2) + 'x';
+  document.getElementById('kpiLiquidezAbs').style.color = liqAbs >= 0.2 ? 'var(--success)' : 'var(--danger)';
+
+  // Capital de Trabajo
+  document.getElementById('kpiCapitalTrabajo').textContent = fmt(d.total_activo_corriente - d.total_pasivo_corriente, m);
+  document.getElementById('kpiCapitalTrabajo').style.color = (d.total_activo_corriente - d.total_pasivo_corriente) >= 0 ? 'var(--success)' : 'var(--danger)';
+
+  // Grupo 3 KPIs — Solvencia
+  // Endeudamiento
+  const end = d.total_activo > 0 ? d.total_pasivo / d.total_activo : 0;
+  document.getElementById('kpiEndeudamiento').textContent = (end * 100).toFixed(1) + '%';
+  document.getElementById('kpiEndeudamiento').style.color = end < 0.6 ? 'var(--success)' : 'var(--danger)';
+
+  // Deuda / Patrimonio
+  const dp = d.total_patrimonio > 0 ? (d.total_pasivo / d.total_patrimonio) : 0;
+  document.getElementById('kpiDeudaPatrimonio').textContent = dp.toFixed(2) + 'x';
+  document.getElementById('kpiDeudaPatrimonio').style.color = dp <= 1 ? 'var(--success)' : 'var(--danger)';
+
+  // Solvencia
+  const solv = d.total_activo > 0 ? d.total_patrimonio / d.total_activo : 0;
+  document.getElementById('kpiSolvencia').textContent = (solv * 100).toFixed(1) + '%';
+  document.getElementById('kpiSolvencia').style.color = solv >= 0.4 ? 'var(--success)' : 'var(--danger)';
+
+  // Mult. Patrimonio
+  const mult = d.total_patrimonio > 0 ? d.total_activo / d.total_patrimonio : 0;
+  document.getElementById('kpiMultPatrimonio').textContent = mult.toFixed(2) + 'x';
+
+  document.getElementById('activoTotal').textContent = fmt(d.total_activo, m);
+  document.getElementById('pasivoPlusPatrimonio').textContent = fmt(d.total_pasivo_patrimonio || (d.total_pasivo + d.total_patrimonio), m);
+  document.getElementById('periodoLabel').textContent = d.periodo_label || '';
+
+  // Activo Table
+  document.getElementById('activoTable').innerHTML = `
+    <tr><td class="bg-section" colspan="2">ACTIVO CORRIENTE</td></tr>
+    <tr><td class="bg-item">Caja y Bancos</td><td class="bg-item text-right">${fmt(d.caja_bancos, m)}</td></tr>
+    <tr><td class="bg-item">Cuentas por Cobrar</td><td class="bg-item text-right">${fmt(d.cuentas_cobrar, m)}</td></tr>
+    <tr><td class="bg-item">Inventarios</td><td class="bg-item text-right">${fmt(d.inventarios, m)}</td></tr>
+    <tr><td class="bg-item">Otros Activos Corrientes</td><td class="bg-item text-right">${fmt(d.otros_ac, m)}</td></tr>
+    <tr><td class="bg-subtotal">TOTAL ACTIVO CORRIENTE</td><td class="bg-subtotal text-right">${fmt(d.total_activo_corriente, m)}</td></tr>
+    <tr><td class="bg-section" colspan="2">ACTIVO NO CORRIENTE</td></tr>
+    <tr><td class="bg-item">Inmueble, Maq. y Equipo</td><td class="bg-item text-right">${fmt(d.inmueble_maquinaria, m)}</td></tr>
+    <tr><td class="bg-item">(-) Depreciación Acumulada</td><td class="bg-item text-right" style="color:var(--danger);">${fmt(d.depreciacion_acumulada, m)}</td></tr>
+    <tr><td class="bg-item">Activos Intangibles</td><td class="bg-item text-right">${fmt(d.activos_intangibles, m)}</td></tr>
+    <tr><td class="bg-item">Otros Activos No Corrientes</td><td class="bg-item text-right">${fmt(d.otros_anc, m)}</td></tr>
+    <tr><td class="bg-subtotal">TOTAL ACTIVO NO CORRIENTE</td><td class="bg-subtotal text-right">${fmt(d.total_activo_no_corriente, m)}</td></tr>
+    <tr><td class="bg-total">TOTAL ACTIVO</td><td class="bg-total text-right">${fmt(d.total_activo, m)}</td></tr>
+  `;
+
+  // Pasivo + Patrimonio Table
+  document.getElementById('pasivoTable').innerHTML = `
+    <tr><td class="bg-section pasivo" colspan="2">PASIVO CORRIENTE</td></tr>
+    <tr><td class="bg-item">Cuentas por Pagar</td><td class="bg-item text-right">${fmt(d.cuentas_pagar, m)}</td></tr>
+    <tr><td class="bg-item">Préstamos Corto Plazo</td><td class="bg-item text-right">${fmt(d.prestamos_cp, m)}</td></tr>
+    <tr><td class="bg-item">Otros Pasivos Corrientes</td><td class="bg-item text-right">${fmt(d.otros_pc, m)}</td></tr>
+    <tr><td class="bg-subtotal">TOTAL PASIVO CORRIENTE</td><td class="bg-subtotal text-right">${fmt(d.total_pasivo_corriente, m)}</td></tr>
+    <tr><td class="bg-section pasivo" colspan="2">PASIVO NO CORRIENTE</td></tr>
+    <tr><td class="bg-item">Deuda Largo Plazo</td><td class="bg-item text-right">${fmt(d.deuda_lp, m)}</td></tr>
+    <tr><td class="bg-item">Otros Pasivos No Corrientes</td><td class="bg-item text-right">${fmt(d.otros_pnc, m)}</td></tr>
+    <tr><td class="bg-subtotal">TOTAL PASIVO NO CORRIENTE</td><td class="bg-subtotal text-right">${fmt(d.total_pasivo_no_corriente, m)}</td></tr>
+    <tr><td class="bg-total pasivo">TOTAL PASIVO</td><td class="bg-total pasivo text-right">${fmt(d.total_pasivo, m)}</td></tr>
+    <tr><td class="bg-section" colspan="2" style="background:#059669;">PATRIMONIO</td></tr>
+    <tr><td class="bg-item">Capital Social</td><td class="bg-item text-right">${fmt(d.capital_social, m)}</td></tr>
+    <tr><td class="bg-item">Reservas</td><td class="bg-item text-right">${fmt(d.reservas, m)}</td></tr>
+    <tr><td class="bg-item">Utilidades Retenidas</td><td class="bg-item text-right">${fmt(d.utilidades_retenidas, m)}</td></tr>
+    <tr><td class="bg-item">Resultado del Ejercicio</td><td class="bg-item text-right" style="color:${d.resultado_ejercicio>=0?'var(--success)':'var(--danger)'};">${fmt(d.resultado_ejercicio, m)}</td></tr>
+    <tr><td class="bg-subtotal">TOTAL PATRIMONIO</td><td class="bg-subtotal text-right">${fmt(d.total_patrimonio, m)}</td></tr>
+    <tr><td class="bg-total">TOTAL PASIVO + PATRIMONIO</td><td class="bg-total text-right">${fmt(d.total_pasivo + d.total_patrimonio, m)}</td></tr>
+  `;
+
+  // Indicadores
+  const inds = [
+    {id:'ind1', label:'Razón Corriente', val: rc.toFixed(2)+'x', desc:'Act. Corriente / Pas. Corriente', good: rc >= 1},
+    {id:'ind2', label:'Liquidez Ácida', val: liq.toFixed(2)+'x', desc:'(AC - Inventarios) / PC', good: liq >= 1},
+    {id:'ind3', label:'Endeudamiento Total', val: d.total_activo > 0 ? (d.total_pasivo/d.total_activo*100).toFixed(1)+'%' : '—', desc:'Pasivo / Activo', good: d.total_activo > 0 && d.total_pasivo/d.total_activo < 0.6},
+    {id:'ind4', label:'Deuda / Patrimonio', val: dp.toFixed(2)+'x', desc:'Apalancamiento financiero', good: dp <= 1},
+    {id:'ind5', label:'Activo Corriente %', val: d.total_activo > 0 ? (d.total_activo_corriente/d.total_activo*100).toFixed(1)+'%' : '—', desc:'Liquidez estructural', good: true},
+    {id:'ind6', label:'Capital de Trabajo', val: fmt(d.total_activo_corriente - d.total_pasivo_corriente, m), desc:'AC - PC', good: (d.total_activo_corriente - d.total_pasivo_corriente) > 0},
+  ];
+  inds.forEach(ind => {
+    document.getElementById(ind.id).innerHTML = `
+      <div style="font-size:11px;color:var(--text-muted);font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">${ind.label}</div>
+      <div style="font-size:20px;font-weight:800;color:${ind.good ? 'var(--success)' : 'var(--danger)'};">${ind.val}</div>
+      <div style="font-size:11px;color:var(--text-muted);">${ind.desc}</div>`;
+  });
+
+  // Charts
+  const ctx1 = document.getElementById('chartActivo').getContext('2d');
+  if (chartActivo) chartActivo.destroy();
+  chartActivo = new Chart(ctx1, {
+    type: 'doughnut',
+    data: {
+      labels: ['Caja/Bancos','Ctas. Cobrar','Inventarios','Otros AC','IME Neto','Intangibles','Otros ANC'],
+      datasets: [{
+        data: [d.caja_bancos, d.cuentas_cobrar, d.inventarios, d.otros_ac,
+               Math.max(0, d.inmueble_maquinaria + d.depreciacion_acumulada),
+               d.activos_intangibles, d.otros_anc],
+        backgroundColor: ['#1A3C6E','#3b82f6','#10b981','#6366f1','#f59e0b','#ec4899','#8b5cf6'],
+        borderWidth: 2
+      }]
+    },
+    options: {responsive:true, plugins:{legend:{position:'bottom', labels:{font:{size:10}}}}}
+  });
+
+  const ctx2 = document.getElementById('chartPasivo').getContext('2d');
+  if (chartPasivo) chartPasivo.destroy();
+  chartPasivo = new Chart(ctx2, {
+    type: 'doughnut',
+    data: {
+      labels: ['Ctas. Pagar','Préstamos CP','Otros PC','Deuda LP','Otros PNC','Patrimonio'],
+      datasets: [{
+        data: [d.cuentas_pagar, d.prestamos_cp, d.otros_pc, d.deuda_lp, d.otros_pnc, d.total_patrimonio],
+        backgroundColor: ['#ef4444','#f97316','#eab308','#8b5cf6','#ec4899','#10b981'],
+        borderWidth: 2
+      }]
+    },
+    options: {responsive:true, plugins:{legend:{position:'bottom', labels:{font:{size:10}}}}}
+  });
+
+  const ctx3 = document.getElementById('chartResumen').getContext('2d');
+  if (chartResumen) chartResumen.destroy();
+  chartResumen = new Chart(ctx3, {
+    type: 'bar',
+    data: {
+      labels: ['Activo Total','Pasivo Total','Patrimonio'],
+      datasets: [{
+        data: [d.total_activo, d.total_pasivo, d.total_patrimonio],
+        backgroundColor: ['#1A3C6E','#ef4444','#10b981'],
+        borderRadius: 6
+      }]
+    },
+    options: {
+      responsive:true, plugins:{legend:{display:false}},
+      scales:{y:{beginAtZero:true, ticks:{callback: v => 'S/'+v.toLocaleString()}}}
+    }
+  });
+}
+
+async function renderComparativo() {
+  if (allPeriodos.length < 2) { document.getElementById('comparativoSection').style.display = 'none'; return; }
+  document.getElementById('comparativoSection').style.display = 'block';
+  const last3 = allPeriodos.slice(0, 3);
+  const datas = await Promise.all(last3.map(p => fetch('/api/balance-general/' + p.id).then(r => r.json())));
+  const hdrs = ['bth1','bth2','bth3'];
+  last3.forEach((p, i) => { const el = document.getElementById(hdrs[i]); if (el) el.textContent = p.periodo_label || '—'; });
+  for (let i = last3.length; i < 3; i++) { const el = document.getElementById(hdrs[i]); if (el) el.style.display='none'; }
+
+  const concepts = [
+    {key:'total_activo_corriente', label:'Activo Corriente', bold:true},
+    {key:'caja_bancos', label:'  Caja y Bancos'},
+    {key:'cuentas_cobrar', label:'  Cuentas por Cobrar'},
+    {key:'inventarios', label:'  Inventarios'},
+    {key:'total_activo_no_corriente', label:'Activo No Corriente', bold:true},
+    {key:'total_activo', label:'TOTAL ACTIVO', bold:true},
+    {key:'total_pasivo_corriente', label:'Pasivo Corriente', bold:true},
+    {key:'deuda_lp', label:'  Deuda Largo Plazo'},
+    {key:'total_pasivo', label:'TOTAL PASIVO', bold:true},
+    {key:'capital_social', label:'  Capital Social'},
+    {key:'resultado_ejercicio', label:'  Resultado Ejercicio'},
+    {key:'total_patrimonio', label:'TOTAL PATRIMONIO', bold:true},
+  ];
+
+  document.getElementById('comparativoBody').innerHTML = concepts.map(c => {
+    const vals = datas.map(d => {
+      const v = d[c.key] || 0;
+      return `<td class="text-right" style="font-weight:${c.bold?700:400};">${fmt(v, d.moneda)}</td>`;
+    }).join('');
+    return `<tr style="background:${c.bold?'var(--surface2)':''}"><td style="font-weight:${c.bold?700:400};padding:9px 14px;">${c.label}</td>${vals}</tr>`;
+  }).join('');
+}
+
+function exportarExcel() { window.location.href = '/api/balance-general/exportar'; }
+
+function showToast(msg, type='info') {
+  if (typeof window.toast === 'function') return window.toast(msg, type);
+  const el = document.createElement('div');
+  el.style.cssText = `position:fixed;bottom:24px;right:24px;z-index:9999;background:${type==='error'?'#ef4444':type==='success'?'#10b981':type==='warning'?'#f59e0b':'#1A3C6E'};color:#fff;padding:12px 20px;border-radius:8px;font-size:13px;font-weight:600;box-shadow:0 4px 20px rgba(0,0,0,.2);`;
+  el.textContent = msg;
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 3500);
+}
+
+loadPeriodos();
+</script>
+{% endblock %}

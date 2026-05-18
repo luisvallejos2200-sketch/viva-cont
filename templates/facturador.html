@@ -1,0 +1,535 @@
+{% extends "base.html" %}
+{% block title %}Facturador Electrónico{% endblock %}
+{% block breadcrumb %}Facturador Electrónico{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="page-title"><i class="fa-solid fa-file-invoice-dollar" style="color:var(--accent)"></i> Facturador Electrónico</h1>
+    <p class="page-subtitle">Creación y gestión de comprobantes electrónicos – SUNAT</p>
+  </div>
+  <div class="page-actions">
+    <button class="btn btn-outline btn-sm" id="btnFiltroEstado" onclick="toggleFiltroEstado()">
+      <i class="fa-solid fa-filter"></i> Filtrar por estado
+    </button>
+    <button class="btn btn-accent btn-sm" onclick="openNuevaFactura()">
+      <i class="fa-solid fa-plus"></i> Nueva Factura
+    </button>
+  </div>
+</div>
+
+<!-- KPIs facturación -->
+<div class="kpi-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:20px;" id="facKpiGrid">
+  <div class="kpi-card" style="--kpi-color:#1a3c6e;--kpi-bg:rgba(26,60,110,.1)">
+    <div class="kpi-header"><span class="kpi-label">Total Facturas</span>
+      <span class="kpi-icon"><i class="fa-solid fa-file-invoice"></i></span></div>
+    <div class="kpi-value" id="fac-total">—</div>
+  </div>
+  <div class="kpi-card" style="--kpi-color:#1aaa6b;--kpi-bg:rgba(26,170,107,.1)">
+    <div class="kpi-header"><span class="kpi-label">Emitidas</span>
+      <span class="kpi-icon"><i class="fa-solid fa-circle-check"></i></span></div>
+    <div class="kpi-value positive" id="fac-emitidas">—</div>
+  </div>
+  <div class="kpi-card" style="--kpi-color:#e8a020;--kpi-bg:rgba(232,160,32,.1)">
+    <div class="kpi-header"><span class="kpi-label">Borradores</span>
+      <span class="kpi-icon"><i class="fa-solid fa-pencil"></i></span></div>
+    <div class="kpi-value" id="fac-borradores">—</div>
+  </div>
+  <div class="kpi-card" style="--kpi-color:#e03c3c;--kpi-bg:rgba(224,60,60,.1)">
+    <div class="kpi-header"><span class="kpi-label">Anuladas</span>
+      <span class="kpi-icon"><i class="fa-solid fa-ban"></i></span></div>
+    <div class="kpi-value negative" id="fac-anuladas">—</div>
+  </div>
+</div>
+
+<!-- TABLA FACTURAS -->
+<div class="card">
+  <div class="card-header">
+    <h3 class="card-title"><i class="fa-solid fa-table"></i> Listado de Comprobantes</h3>
+    <div style="display:flex;gap:8px;align-items:center;">
+      <select class="filter-control" id="filterEstadoFac" onchange="loadFacturas(1)">
+        <option value="">Todos los estados</option>
+        <option value="BORRADOR">Borrador</option>
+        <option value="EMITIDA">Emitida</option>
+        <option value="ANULADA">Anulada</option>
+      </select>
+    </div>
+  </div>
+  <div class="table-wrap">
+    <table class="data-table" id="tableFacturas">
+      <thead>
+        <tr>
+          <th>Serie-Num</th>
+          <th>Tipo</th>
+          <th>Fecha Emisión</th>
+          <th>RUC Cliente</th>
+          <th>Cliente</th>
+          <th>Moneda</th>
+          <th class="text-right">Subtotal</th>
+          <th class="text-right">IGV</th>
+          <th class="text-right">Total</th>
+          <th>Estado</th>
+          <th>Acciones</th>
+        </tr>
+      </thead>
+      <tbody id="bodyFacturas">
+        <tr class="loading-row"><td colspan="11"><span class="spinner"></span> Cargando...</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div id="paginationFac" class="pagination"></div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<!-- MODAL NUEVA/EDITAR FACTURA                              -->
+<!-- ═══════════════════════════════════════════════════════ -->
+<div class="modal-overlay" id="facturaModal" style="display:none;">
+  <div class="modal-box modal-xl">
+    <div class="modal-header">
+      <h3 class="modal-title" id="facturaModalTitle">
+        <i class="fa-solid fa-file-invoice-dollar"></i> Nueva Factura
+      </h3>
+      <button class="modal-close" onclick="closeFacturaModal()"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="facturaId" />
+
+      <!-- EMISOR / DOC INFO -->
+      <div class="form-row form-row-3" style="margin-bottom:8px;">
+        <div class="form-group">
+          <label class="form-label">Tipo Comprobante</label>
+          <select class="form-control" id="fTipo">
+            <option value="FACTURA">FACTURA</option>
+            <option value="BOLETA">BOLETA DE VENTA</option>
+            <option value="NOTA_CREDITO">NOTA DE CRÉDITO</option>
+            <option value="NOTA_DEBITO">NOTA DE DÉBITO</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Serie</label>
+          <input type="text" class="form-control" id="fSerie" value="F001" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Correlativo</label>
+          <input type="text" class="form-control" id="fCorrelativo" placeholder="000001" />
+        </div>
+      </div>
+
+      <div class="form-row form-row-3" style="margin-bottom:8px;">
+        <div class="form-group">
+          <label class="form-label">Fecha Emisión</label>
+          <input type="date" class="form-control" id="fFechaEmision" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Fecha Vencimiento</label>
+          <input type="date" class="form-control" id="fFechaVenc" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Moneda</label>
+          <select class="form-control" id="fMoneda">
+            <option value="PEN">SOLES (PEN)</option>
+            <option value="USD">DÓLARES (USD)</option>
+          </select>
+        </div>
+      </div>
+
+      <hr style="margin:12px 0;border:none;border-top:1px solid var(--border);" />
+
+      <!-- DATOS DEL CLIENTE -->
+      <p style="font-size:11px;font-weight:700;letter-spacing:.5px;color:var(--text-muted);margin-bottom:10px;">DATOS DEL CLIENTE</p>
+      <div class="form-row form-row-2" style="margin-bottom:8px;">
+        <div class="form-group">
+          <label class="form-label">RUC / DNI del Cliente</label>
+          <input type="text" class="form-control" id="fRucCliente" placeholder="20xxxxxxxxx" maxlength="11" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Razón Social / Nombre</label>
+          <input type="text" class="form-control" id="fRsCliente" placeholder="Nombre del cliente" />
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Dirección</label>
+        <input type="text" class="form-control" id="fDirCliente" placeholder="Av. ..." />
+      </div>
+
+      <hr style="margin:12px 0;border:none;border-top:1px solid var(--border);" />
+
+      <!-- ITEMS -->
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+        <p style="font-size:11px;font-weight:700;letter-spacing:.5px;color:var(--text-muted);">DETALLE DE SERVICIOS / PRODUCTOS</p>
+        <button class="btn btn-outline btn-sm" type="button" onclick="addItem()">
+          <i class="fa-solid fa-plus"></i> Añadir ítem
+        </button>
+      </div>
+      <div class="table-wrap" style="margin-bottom:16px;">
+        <table class="data-table" id="itemsTable">
+          <thead>
+            <tr>
+              <th style="width:36%">Descripción</th>
+              <th>Unidad</th>
+              <th class="text-right">Cant.</th>
+              <th class="text-right">P. Unit.</th>
+              <th class="text-right">Desc.</th>
+              <th class="text-right">Valor Venta</th>
+              <th class="text-right">IGV</th>
+              <th class="text-right">Total</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="itemsBody">
+            <!-- items here -->
+          </tbody>
+          <tfoot>
+            <tr style="background:var(--surface2)">
+              <td colspan="5" class="text-right" style="font-weight:700;font-size:12px;color:var(--text-muted);">SUBTOTAL</td>
+              <td colspan="2" class="text-right" id="totalSubtotal" style="font-weight:700;">S/ 0.00</td>
+              <td id="totalIgv" class="text-right" style="font-weight:700;">S/ 0.00</td>
+              <td></td>
+            </tr>
+            <tr style="background:var(--primary);color:#fff;">
+              <td colspan="6" class="text-right" style="font-weight:800;font-size:13px;padding:10px 14px;">TOTAL A PAGAR</td>
+              <td colspan="2" class="text-right" id="totalGeneral" style="font-weight:800;font-size:15px;">S/ 0.00</td>
+              <td></td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+
+      <!-- OBSERVACIONES -->
+      <div class="form-group">
+        <label class="form-label">Observaciones</label>
+        <textarea class="form-control" id="fObservaciones" rows="2"
+          placeholder="Condiciones de pago, nota especial..."></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeFacturaModal()">Cancelar</button>
+      <button class="btn btn-outline btn-sm" onclick="guardarFactura('BORRADOR')">
+        <i class="fa-solid fa-floppy-disk"></i> Guardar Borrador
+      </button>
+      <button class="btn btn-success" onclick="guardarFactura('EMITIDA')">
+        <i class="fa-solid fa-paper-plane"></i> Emitir Factura
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL VER FACTURA -->
+<div class="modal-overlay" id="viewFacturaModal" style="display:none;">
+  <div class="modal-box modal-lg">
+    <div class="modal-header">
+      <h3 class="modal-title"><i class="fa-solid fa-eye"></i> Vista de Comprobante</h3>
+      <button class="modal-close" onclick="document.getElementById('viewFacturaModal').style.display='none'">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+    </div>
+    <div class="modal-body" id="facturaPreviewContent"></div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="document.getElementById('viewFacturaModal').style.display='none'">Cerrar</button>
+      <button class="btn btn-primary" onclick="window.print()"><i class="fa-solid fa-print"></i> Imprimir</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let facturas        = [];
+let itemCounter     = 0;
+let editingFacturaId = null;
+
+// ── LOAD FACTURAS ───────────────────────────────────────────
+async function loadFacturas(page = 1) {
+  const estado = document.getElementById('filterEstadoFac').value;
+  const params = new URLSearchParams({ page, per_page:20, estado });
+  const data   = await apiGet('/api/facturas?' + params);
+  if (!data) return;
+  facturas = data.data;
+
+  // KPIs
+  const all    = facturas;
+  document.getElementById('fac-total').textContent     = data.total;
+  document.getElementById('fac-emitidas').textContent  = all.filter(f=>f.estado==='EMITIDA').length;
+  document.getElementById('fac-borradores').textContent= all.filter(f=>f.estado==='BORRADOR').length;
+  document.getElementById('fac-anuladas').textContent  = all.filter(f=>f.estado==='ANULADA').length;
+
+  const tbody = document.getElementById('bodyFacturas');
+  if (!facturas.length) {
+    tbody.innerHTML = `<tr><td colspan="11" class="text-center" style="padding:40px;color:var(--text-muted);">
+      <i class="fa-solid fa-file-invoice" style="font-size:32px;opacity:.3;display:block;margin-bottom:8px;"></i>
+      No hay comprobantes. ¡Crea tu primera factura!</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = facturas.map(f => {
+    const monSym = f.moneda === 'USD' ? '$' : 'S/';
+    return `<tr>
+      <td class="mono font-bold">${f.serie}-${String(f.correlativo).padStart(6,'0')}</td>
+      <td><span class="badge badge-primary">${f.tipo_comprobante}</span></td>
+      <td>${fmtDate(f.fecha_emision)}</td>
+      <td class="mono" style="font-size:11px">${f.ruc_cliente || '—'}</td>
+      <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${f.razon_social_cliente || '—'}</td>
+      <td><span class="badge badge-default">${f.moneda}</span></td>
+      <td class="text-right mono">${monSym} ${parseFloat(f.subtotal||0).toFixed(2)}</td>
+      <td class="text-right mono">${monSym} ${parseFloat(f.igv||0).toFixed(2)}</td>
+      <td class="text-right mono font-bold">${monSym} ${parseFloat(f.total||0).toFixed(2)}</td>
+      <td>${badgeEstado(f.estado)}</td>
+      <td style="white-space:nowrap;">
+        <button class="btn btn-ghost btn-sm btn-icon" onclick="verFactura(${f.id})" title="Ver">
+          <i class="fa-solid fa-eye"></i></button>
+        ${f.estado==='BORRADOR' ? `
+          <button class="btn btn-ghost btn-sm btn-icon" onclick="editarFactura(${f.id})" title="Editar">
+            <i class="fa-solid fa-pen-to-square"></i></button>
+          <button class="btn btn-ghost btn-sm btn-icon text-success" onclick="emitirFactura(${f.id})" title="Emitir">
+            <i class="fa-solid fa-paper-plane"></i></button>
+        ` : ''}
+        ${f.estado==='EMITIDA' ? `
+          <button class="btn btn-ghost btn-sm btn-icon text-danger" onclick="anularFactura(${f.id})" title="Anular">
+            <i class="fa-solid fa-ban"></i></button>
+        ` : ''}
+      </td>
+    </tr>`;
+  }).join('');
+
+  renderPagination('paginationFac', data.total, page, 20,
+    `function(p){ loadFacturas(p); }`);
+}
+
+// ── NUEVA FACTURA ────────────────────────────────────────────
+function openNuevaFactura() {
+  editingFacturaId = null;
+  document.getElementById('facturaModalTitle').innerHTML =
+    '<i class="fa-solid fa-file-invoice-dollar"></i> Nueva Factura';
+  document.getElementById('facturaId').value = '';
+  document.getElementById('fSerie').value         = 'F001';
+  document.getElementById('fCorrelativo').value   = '';
+  document.getElementById('fTipo').value          = 'FACTURA';
+  document.getElementById('fFechaEmision').value  = new Date().toISOString().slice(0,10);
+  document.getElementById('fFechaVenc').value     = '';
+  document.getElementById('fMoneda').value        = 'PEN';
+  document.getElementById('fRucCliente').value    = '';
+  document.getElementById('fRsCliente').value     = '';
+  document.getElementById('fDirCliente').value    = '';
+  document.getElementById('fObservaciones').value = '';
+  document.getElementById('itemsBody').innerHTML  = '';
+  itemCounter = 0;
+  addItem();
+  recalcTotals();
+  document.getElementById('facturaModal').style.display = 'flex';
+}
+
+function closeFacturaModal() {
+  document.getElementById('facturaModal').style.display = 'none';
+}
+
+// ── ITEMS ────────────────────────────────────────────────────
+function addItem() {
+  const id = ++itemCounter;
+  const tr = document.createElement('tr');
+  tr.id = `item-row-${id}`;
+  tr.innerHTML = `
+    <td><input type="text" class="form-control" id="iDesc${id}" placeholder="Descripción del servicio..." /></td>
+    <td><select class="form-control" id="iUnidad${id}">
+      <option>UND</option><option>SRV</option><option>HRS</option><option>MES</option><option>KG</option>
+    </select></td>
+    <td><input type="number" class="form-control text-right" id="iCant${id}" value="1" min="0.01" step="0.01" oninput="recalcItem(${id})" /></td>
+    <td><input type="number" class="form-control text-right" id="iPU${id}" value="0" min="0" step="0.01" oninput="recalcItem(${id})" /></td>
+    <td><input type="number" class="form-control text-right" id="iDesc${id}n" value="0" min="0" step="0.01" oninput="recalcItem(${id})" /></td>
+    <td class="text-right mono" id="iVV${id}">0.00</td>
+    <td class="text-right mono" id="iIGV${id}">0.00</td>
+    <td class="text-right mono font-bold" id="iTotal${id}">0.00</td>
+    <td><button class="btn btn-ghost btn-sm btn-icon text-danger" onclick="removeItem(${id})">
+      <i class="fa-solid fa-trash"></i></button></td>`;
+  document.getElementById('itemsBody').appendChild(tr);
+}
+
+function removeItem(id) {
+  document.getElementById(`item-row-${id}`)?.remove();
+  recalcTotals();
+}
+
+function recalcItem(id) {
+  const cant  = parseFloat(document.getElementById(`iCant${id}`)?.value) || 0;
+  const pu    = parseFloat(document.getElementById(`iPU${id}`)?.value)   || 0;
+  const desc  = parseFloat(document.getElementById(`iDesc${id}n`)?.value) || 0;
+  const vv    = Math.max(0, cant * pu - desc);
+  const igv   = vv * 0.18;
+  const total = vv + igv;
+  const sym   = document.getElementById('fMoneda').value === 'USD' ? '$' : 'S/';
+  document.getElementById(`iVV${id}`).textContent    = vv.toFixed(2);
+  document.getElementById(`iIGV${id}`).textContent   = igv.toFixed(2);
+  document.getElementById(`iTotal${id}`).textContent = total.toFixed(2);
+  recalcTotals();
+}
+
+function recalcTotals() {
+  let subtotal = 0;
+  document.querySelectorAll('#itemsBody tr').forEach(tr => {
+    const id = tr.id.replace('item-row-', '');
+    const vv = parseFloat(document.getElementById(`iVV${id}`)?.textContent) || 0;
+    subtotal += vv;
+  });
+  const igv   = subtotal * 0.18;
+  const total = subtotal + igv;
+  const sym   = document.getElementById('fMoneda').value === 'USD' ? '$' : 'S/';
+  document.getElementById('totalSubtotal').textContent = `${sym} ${subtotal.toFixed(2)}`;
+  document.getElementById('totalIgv').textContent      = `${sym} ${igv.toFixed(2)}`;
+  document.getElementById('totalGeneral').textContent  = `${sym} ${total.toFixed(2)}`;
+}
+
+document.getElementById('fMoneda')?.addEventListener('change', recalcTotals);
+
+// ── GUARDAR FACTURA ───────────────────────────────────────────
+async function guardarFactura(estado) {
+  const items = [];
+  let ok = true;
+  document.querySelectorAll('#itemsBody tr').forEach(tr => {
+    const id = tr.id.replace('item-row-', '');
+    const desc = document.getElementById(`iDesc${id}`)?.value?.trim();
+    if (!desc) { ok = false; return; }
+    items.push({
+      descripcion:    desc,
+      unidad:         document.getElementById(`iUnidad${id}`)?.value || 'UND',
+      cantidad:       parseFloat(document.getElementById(`iCant${id}`)?.value) || 1,
+      precio_unitario: parseFloat(document.getElementById(`iPU${id}`)?.value) || 0,
+      descuento:      parseFloat(document.getElementById(`iDesc${id}n`)?.value) || 0,
+      valor_venta:    parseFloat(document.getElementById(`iVV${id}`)?.textContent) || 0,
+    });
+  });
+  if (!ok || !items.length) { showToast('warning','Campos incompletos','Completa al menos un ítem'); return; }
+
+  const payload = {
+    serie:               document.getElementById('fSerie').value,
+    correlativo:         document.getElementById('fCorrelativo').value,
+    tipo_comprobante:    document.getElementById('fTipo').value,
+    fecha_emision:       document.getElementById('fFechaEmision').value,
+    fecha_vencimiento:   document.getElementById('fFechaVenc').value,
+    ruc_cliente:         document.getElementById('fRucCliente').value,
+    razon_social_cliente: document.getElementById('fRsCliente').value,
+    direccion_cliente:   document.getElementById('fDirCliente').value,
+    moneda:              document.getElementById('fMoneda').value,
+    observaciones:       document.getElementById('fObservaciones').value,
+    estado,
+    items,
+  };
+
+  let res;
+  if (editingFacturaId) {
+    res = await apiPut(`/api/facturas/${editingFacturaId}`, payload);
+  } else {
+    res = await apiPost('/api/facturas', payload);
+  }
+  if (!res) return;
+  if (res.error) { showToast('error','Error', res.error); return; }
+  showToast('success', estado==='EMITIDA'?'Factura emitida':'Borrador guardado',
+    `Total: ${document.getElementById('fMoneda').value==='USD'?'$':'S/'} ${(parseFloat(res.total)||0).toFixed(2)}`);
+  closeFacturaModal();
+  loadFacturas(1);
+}
+
+// ── EDITAR ────────────────────────────────────────────────────
+async function editarFactura(id) {
+  const data = await apiGet(`/api/facturas/${id}`);
+  if (!data) return;
+  editingFacturaId = id;
+  document.getElementById('facturaModalTitle').innerHTML =
+    '<i class="fa-solid fa-pen-to-square"></i> Editar Factura';
+  document.getElementById('fSerie').value         = data.serie;
+  document.getElementById('fCorrelativo').value   = data.correlativo;
+  document.getElementById('fTipo').value          = data.tipo_comprobante;
+  document.getElementById('fFechaEmision').value  = data.fecha_emision || '';
+  document.getElementById('fFechaVenc').value     = data.fecha_vencimiento || '';
+  document.getElementById('fMoneda').value        = data.moneda;
+  document.getElementById('fRucCliente').value    = data.ruc_cliente || '';
+  document.getElementById('fRsCliente').value     = data.razon_social_cliente || '';
+  document.getElementById('fDirCliente').value    = data.direccion_cliente || '';
+  document.getElementById('fObservaciones').value = data.observaciones || '';
+  document.getElementById('itemsBody').innerHTML  = '';
+  itemCounter = 0;
+  (data.items || []).forEach(item => {
+    addItem();
+    const id2 = itemCounter;
+    document.getElementById(`iDesc${id2}`).value    = item.descripcion || '';
+    document.getElementById(`iUnidad${id2}`).value  = item.unidad || 'UND';
+    document.getElementById(`iCant${id2}`).value    = item.cantidad;
+    document.getElementById(`iPU${id2}`).value      = item.precio_unitario;
+    document.getElementById(`iDesc${id2}n`).value   = item.descuento;
+    recalcItem(id2);
+  });
+  document.getElementById('facturaModal').style.display = 'flex';
+}
+
+// ── VER ───────────────────────────────────────────────────────
+async function verFactura(id) {
+  const f = await apiGet(`/api/facturas/${id}`);
+  if (!f) return;
+  const sym = f.moneda === 'USD' ? '$' : 'S/';
+  const itemsHTML = (f.items||[]).map(i => `
+    <tr>
+      <td>${i.descripcion}</td><td>${i.unidad}</td>
+      <td class="text-right">${i.cantidad}</td>
+      <td class="text-right">${sym} ${parseFloat(i.precio_unitario).toFixed(2)}</td>
+      <td class="text-right">${sym} ${parseFloat(i.valor_venta).toFixed(2)}</td>
+      <td class="text-right">${sym} ${parseFloat(i.igv_item).toFixed(2)}</td>
+      <td class="text-right font-bold">${sym} ${parseFloat(i.precio_total).toFixed(2)}</td>
+    </tr>`).join('');
+
+  document.getElementById('facturaPreviewContent').innerHTML = `
+    <div class="factura-preview">
+      <div class="f-header">
+        <div class="f-company">
+          <strong>${f.razon_social_emisor || 'VIVA CONSULTING EMPRESAS S.A.C.'}</strong>
+          RUC: ${f.ruc_emisor || '—'}<br/>
+          ${f.direccion_emisor || ''}
+        </div>
+        <div class="f-doc-box">
+          <div class="f-doc-type">${f.tipo_comprobante}</div>
+          <div class="f-doc-num">${f.serie}-${String(f.correlativo).padStart(6,'0')}</div>
+          <div style="font-size:11px;margin-top:4px;color:#666">${fmtDate(f.fecha_emision)}</div>
+        </div>
+      </div>
+      <div class="f-section">
+        <strong>CLIENTE:</strong> ${f.razon_social_cliente || '—'}<br/>
+        <strong>RUC/DNI:</strong> ${f.ruc_cliente || '—'}<br/>
+        <strong>DIRECCIÓN:</strong> ${f.direccion_cliente || '—'}
+      </div>
+      <table class="f-items-table">
+        <thead>
+          <tr><th>Descripción</th><th>Unidad</th><th>Cant.</th><th>P. Unit.</th>
+              <th>Valor Venta</th><th>IGV</th><th>Precio Total</th></tr>
+        </thead>
+        <tbody>${itemsHTML}</tbody>
+      </table>
+      <div class="clearfix">
+        <div class="f-totals">
+          <table>
+            <tr><td>Op. Gravadas:</td><td class="text-right">${sym} ${parseFloat(f.subtotal).toFixed(2)}</td></tr>
+            <tr><td>IGV (18%):</td><td class="text-right">${sym} ${parseFloat(f.igv).toFixed(2)}</td></tr>
+            <tr class="f-total-row"><td>TOTAL:</td><td class="text-right">${sym} ${parseFloat(f.total).toFixed(2)}</td></tr>
+          </table>
+        </div>
+      </div>
+      ${f.observaciones ? `<p style="margin-top:20px;font-size:11px;color:#666"><strong>Observaciones:</strong> ${f.observaciones}</p>` : ''}
+    </div>`;
+  document.getElementById('viewFacturaModal').style.display = 'flex';
+}
+
+// ── EMITIR / ANULAR ───────────────────────────────────────────
+async function emitirFactura(id) {
+  const res = await apiPost(`/api/facturas/${id}/emitir`, {});
+  if (!res) return;
+  showToast('success','Factura emitida','El comprobante ha sido emitido');
+  loadFacturas(1);
+}
+
+async function anularFactura(id) {
+  if (!confirm('¿Deseas anular este comprobante? Esta acción no se puede revertir.')) return;
+  const res = await apiPost(`/api/facturas/${id}/anular`, {});
+  if (!res) return;
+  showToast('warning','Factura anulada','El comprobante ha sido anulado');
+  loadFacturas(1);
+}
+
+loadFacturas(1);
+</script>
+{% endblock %}

@@ -273,6 +273,69 @@ def api_update_cliente(cid_param):
     return jsonify({"ok": True})
 
 
+@app.route("/api/admin/clientes/<int:cid_param>/usuarios", methods=["GET"])
+@login_required
+def api_get_usuarios_cliente(cid_param):
+    if session.get("user_rol") != "super_admin":
+        return jsonify({"error": "Sin permisos"}), 403
+    conn = get_connection()
+    rows = rows_to_list(conn.execute("""
+        SELECT id, nombre, email, username, rol, privilegios, activo, ultimo_acceso, created_at
+        FROM usuarios WHERE cliente_id=? AND rol != 'super_admin' ORDER BY created_at DESC
+    """, (cid_param,)).fetchall())
+    conn.close()
+    return jsonify(rows)
+
+
+@app.route("/api/admin/clientes/<int:cid_param>/usuarios", methods=["POST"])
+@login_required
+def api_crear_usuario_cliente(cid_param):
+    if session.get("user_rol") != "super_admin":
+        return jsonify({"error": "Sin permisos"}), 403
+    d = request.json or {}
+    nombre   = d.get("nombre", "").strip()
+    email    = d.get("email", "").strip().lower()
+    username = d.get("username", "").strip().lower()
+    password = d.get("password", "")
+    rol_nuevo = d.get("rol", "usuario")
+    privs    = d.get("privilegios", ["estados_cuenta","analisis_bancario",
+                                     "estados_resultados","balance_general","facturador"])
+    if not all([nombre, email, username, password]):
+        return jsonify({"error": "Todos los campos son requeridos"}), 400
+    if len(password) < 8:
+        return jsonify({"error": "Contraseña mínimo 8 caracteres"}), 400
+    if rol_nuevo not in ("admin", "usuario"):
+        rol_nuevo = "usuario"
+    conn = get_connection()
+    try:
+        conn.execute("""
+            INSERT INTO usuarios (cliente_id, nombre, email, username, password_hash, rol, privilegios)
+            VALUES (?,?,?,?,?,?,?)
+        """, (cid_param, nombre, email, username,
+              generate_password_hash(password, method='pbkdf2:sha256:50000'),
+              rol_nuevo, json.dumps(privs)))
+        conn.commit()
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+    finally:
+        conn.close()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/admin/clientes/<int:cid_param>/usuarios/<int:uid>", methods=["DELETE"])
+@login_required
+def api_delete_usuario_cliente(cid_param, uid):
+    if session.get("user_rol") != "super_admin":
+        return jsonify({"error": "Sin permisos"}), 403
+    conn = get_connection()
+    try:
+        conn.execute("DELETE FROM usuarios WHERE id=? AND cliente_id=?", (uid, cid_param))
+        conn.commit()
+    finally:
+        conn.close()
+    return jsonify({"ok": True})
+
+
 @app.route("/api/admin/clientes/<int:cid_param>", methods=["DELETE"])
 @login_required
 def api_delete_cliente(cid_param):

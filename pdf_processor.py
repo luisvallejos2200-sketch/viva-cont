@@ -318,13 +318,9 @@ BCP_FULL_RE = re.compile(
 )
 
 
-def _strategy_text_regex(pdf, banco, archivo):
-    """Extrae texto completo y aplica patrones regex."""
+def _strategy_text_regex_on_text(full_text: str, banco: str, archivo: str) -> list:
+    """Aplica patrones regex sobre texto ya extraído (sin abrir PDF)."""
     txs = []
-    full_text = ""
-    for page in pdf.pages:
-        t = page.extract_text(x_tolerance=3, y_tolerance=3) or ""
-        full_text += t + "\n"
 
     # --- Scotiabank: fecha-mes-año + num_op + desc + cargo + abono + saldo ---
     for m in SCOTIABANK_RE.finditer(full_text):
@@ -431,6 +427,15 @@ def _strategy_text_regex(pdf, banco, archivo):
         txs.append(_make_tx(fecha_dt, fecha_str, desc, importe, saldo, banco, archivo))
 
     return txs
+
+
+def _strategy_text_regex(pdf, banco, archivo):
+    """Extrae texto con pdfplumber y delega a _strategy_text_regex_on_text."""
+    full_text = ""
+    for page in pdf.pages:
+        t = page.extract_text(x_tolerance=3, y_tolerance=3) or ""
+        full_text += t + "\n"
+    return _strategy_text_regex_on_text(full_text, banco, archivo)
 
 
 # ══════════════════════════════════════════════════════════════
@@ -828,9 +833,35 @@ def extract_bcp_soles(pdf_path: str, banco: str = "BCP SOLES") -> dict:
                 "transactions": []}
 
     debug_info = []
-    full_txt = ""  # extraído una sola vez, reutilizado por todas las estrategias
+    full_txt = ""
 
-    # Abrimos pdfplumber UNA SOLA VEZ y ejecutamos todas las estrategias dentro
+    # ── Ruta rápida: pypdf primero (3-5× más veloz que pdfplumber) ───────────
+    try:
+        from pypdf import PdfReader
+        _reader = PdfReader(pdf_path)
+        _pypdf_text = "\n".join(p.extract_text() or "" for p in _reader.pages)
+        if _pypdf_text.strip():
+            full_txt = _pypdf_text
+            try:
+                txs = _strategy_scotiabank(_pypdf_text, banco, archivo)
+                debug_info.append(f"pypdf+scotiabank: {len(txs)}")
+                if len(txs) >= 2:
+                    return {"transactions": txs, "total": len(txs),
+                            "strategy": "pypdf+scotiabank", "raw_text": _pypdf_text}
+            except Exception as _e:
+                debug_info.append(f"pypdf+scotiabank falló: {_e}")
+            try:
+                txs = _strategy_text_regex_on_text(_pypdf_text, banco, archivo)
+                debug_info.append(f"pypdf+text_regex: {len(txs)}")
+                if len(txs) >= 2:
+                    return {"transactions": txs, "total": len(txs),
+                            "strategy": "pypdf+text_regex", "raw_text": _pypdf_text}
+            except Exception as _e:
+                debug_info.append(f"pypdf+text_regex falló: {_e}")
+    except Exception as _e:
+        debug_info.append(f"pypdf falló: {_e}")
+
+    # ── Fallback: pdfplumber (soporta PDFs complejos, tablas, etc.) ──────────
     try:
         with pdfplumber.open(pdf_path) as pdf:
             num_pages = len(pdf.pages)
@@ -909,16 +940,6 @@ def extract_bcp_soles(pdf_path: str, banco: str = "BCP SOLES") -> dict:
 
     except Exception as e:
         debug_info.append(f"No se pudo abrir el PDF: {e}")
-
-    # ── Estrategia 4: pypdf (librería distinta, fuera del bloque pdfplumber) ──
-    try:
-        txs = _strategy_pypdf(pdf_path, banco, archivo)
-        debug_info.append(f"pypdf: {len(txs)}")
-        if len(txs) >= 2:
-            return {"transactions": txs, "total": len(txs),
-                    "strategy": "pypdf", "raw_text": full_txt}
-    except Exception as e:
-        debug_info.append(f"pypdf falló: {e}")
 
     return {
         "transactions": [], "total": 0, "strategy": "none",

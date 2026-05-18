@@ -419,38 +419,83 @@ function switchImportTab(btn, tabId) {
   document.getElementById(tabId).classList.add('active');
 }
 
-// Import Excel
+// ── Client-side Excel parsing (SheetJS) — no upload, no server round-trip ──
 let _erpPendingTxs = [];
 let _erpPendingFile = '';
 
-function _xhrUpload(url, formData, onProgress) {
+const _INVALIDS_XLS = new Set(['', '0', 'nan', 'None', 'NaT', '00:00:00']);
+const _TIPO_MAP_XLS = {
+  'TRAN':'TRANSFERENCIA','TRANSF':'TRANSFERENCIA','TRANSFER':'TRANSFERENCIA',
+  'ITF':'COBRO','MANT':'COBRO','MANTENIM':'COBRO','COM.':'COBRO',
+  'COMISION':'COBRO','ENVIO':'COBRO','INTERES':'COBRO','PORTE':'COBRO',
+  'CARGO':'COBRO','COBRO':'COBRO',
+  'PAGO':'PAGO','MOV':'PAGO','MOVI':'PAGO','TDPC':'PAGO',
+  'ABONO':'ABONO','DEPOSITO':'ABONO','YAPE':'YAPE','PLIN':'YAPE',
+};
+function _detectTipoXls(texto) {
+  const up = (texto || '').toUpperCase();
+  for (const [k, v] of Object.entries(_TIPO_MAP_XLS)) { if (up.includes(k)) return v; }
+  return 'OTRO';
+}
+function _safeS(v) {
+  if (v === null || v === undefined) return '';
+  const s = String(v).trim();
+  return ['nan','None','NaT'].includes(s) ? '' : s;
+}
+function _safeF(v) { const f = parseFloat(v); return (isNaN(f) || !isFinite(f)) ? 0 : f; }
+
+function _parseExcelClient(file) {
   return new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    xhr.upload.addEventListener('progress', e => {
-      if (e.lengthComputable) onProgress(Math.round(e.loaded / e.total * 100));
-    });
-    xhr.addEventListener('load', () => {
-      try { resolve(JSON.parse(xhr.responseText)); }
-      catch { reject(new Error('Respuesta inválida')); }
-    });
-    xhr.addEventListener('error', () => reject(new Error('Error de red')));
-    xhr.open('POST', url);
-    xhr.send(formData);
+    const reader = new FileReader();
+    reader.onload = e => {
+      try {
+        const wb = XLSX.read(e.target.result, { type: 'array', cellDates: false });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        // header=1 in pandas → row 0 = title, row 1 = col headers, row 2+ = data
+        const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: '' });
+        const records = [];
+        for (let i = 2; i < rows.length; i++) {
+          const r = rows[i];
+          const g = p => _safeS(r[p]);
+          const fechaOp = g(0);
+          if (_INVALIDS_XLS.has(fechaOp)) continue;
+          const desc = g(9);
+          const t11 = g(11), t10 = g(10);
+          const tipo = (!_INVALIDS_XLS.has(t11) && t11) ? t11
+                     : (!_INVALIDS_XLS.has(t10) && t10) ? t10
+                     : _detectTipoXls(desc);
+          const moneda = g(2);
+          records.push({
+            fecha_operacion:   fechaOp,
+            referencia:        g(1),
+            moneda:            (_INVALIDS_XLS.has(moneda) || !moneda) ? 'PEN' : moneda,
+            importe:           _safeF(r[3]),
+            num_operacion:     g(4),
+            periodo:           g(5),
+            banco:             g(6),
+            fecha:             g(7),
+            mes:               g(8),
+            descripcion:       desc,
+            tipo,
+            detalle:           g(12) || desc,
+            op:                g(13),
+            tipo_doc:          g(14),
+            ruc:               g(15),
+            cliente_proveedor: g(16),
+            num_documento:     g(17),
+            saldo:             _safeF(r[18]),
+            doc_cont:          g(19),
+            comprobante:       g(20) || '',
+            archivo_origen:    file.name,
+          });
+        }
+        resolve({ transactions: records, total: records.length, nombre_archivo: file.name });
+      } catch(e) { reject(e); }
+    };
+    reader.onerror = reject;
+    reader.readAsArrayBuffer(file);
   });
 }
-
-const _xlsMsgs = ['Leyendo columnas...','Validando registros...','Procesando importes...','Detectando períodos...','Casi listo...'];
-let _xlsTicker = null;
-function _startXlsTicker(msgEl, barEl) {
-  let i = 0, w = 70;
-  barEl.style.width = '70%';
-  _xlsTicker = setInterval(() => {
-    msgEl.textContent = _xlsMsgs[i++ % _xlsMsgs.length];
-    w = Math.min(w + 4, 95);
-    barEl.style.width = w + '%';
-  }, 800);
-}
-function _stopXlsTicker() { clearInterval(_xlsTicker); _xlsTicker = null; }
 
 initUploadZone('excelZone', 'excelInput', async (file) => {
   const progressEl = document.getElementById('excelProgress');
@@ -458,28 +503,21 @@ initUploadZone('excelZone', 'excelInput', async (file) => {
   const barEl      = document.getElementById('excelProgressBar');
   const pctEl      = document.getElementById('excelProgressPct');
   progressEl.style.display = 'block';
-  barEl.style.width = '0%';
-  msgEl.textContent = `Subiendo "${file.name}"...`;
-
-  const formData = new FormData();
-  formData.append('file', file);
-
+  barEl.style.width = '40%';
+  pctEl.textContent = '';
+  msgEl.textContent = `Analizando "${file.name}"...`;
   let data;
   try {
-    data = await _xhrUpload('/api/importar/excel', formData, pct => {
-      barEl.style.width = pct + '%';
-      pctEl.textContent = pct + '%';
-      if (pct === 100) { pctEl.textContent = ''; _startXlsTicker(msgEl, barEl); }
-    });
+    data = await _parseExcelClient(file);
+    barEl.style.width = '100%';
   } catch(e) {
-    _stopXlsTicker();
     progressEl.style.display = 'none';
-    showToast('error','Error de red', e.message); return;
+    showToast('error', 'Error al leer archivo', e.message); return;
   }
-  _stopXlsTicker();
   progressEl.style.display = 'none';
-  if (data.error) { showToast('error','Error al importar', data.error); return; }
-  if (!data.transactions?.length) { showToast('warning','Sin datos','No se encontraron transacciones en el archivo'); return; }
+  if (!data.transactions?.length) {
+    showToast('warning', 'Sin datos', 'No se encontraron transacciones en el archivo'); return;
+  }
   showErpPreview(data.transactions, data.nombre_archivo || file.name);
 });
 

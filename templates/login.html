@@ -4,9 +4,46 @@
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>VIVA CONT | Iniciar Sesión</title>
-  <link rel="stylesheet" href="/static/css/outfit.css"/>
-  <link rel="stylesheet" href="/static/fontawesome/css/all.min.css"/>
   <style>
+    /* ── Outfit font (local, solo latin) ── */
+    @font-face {
+      font-family: 'Outfit';
+      font-style: normal;
+      font-weight: 300 800;
+      font-display: swap;
+      src: url('/static/fonts/outfit-latin.woff2') format('woff2');
+      unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+    }
+
+    /* ── Iconos mínimos (2 KB vs 392 KB de Font Awesome completo) ── */
+    @font-face {
+      font-family: 'FA-Solid';
+      font-style: normal;
+      font-weight: 900;
+      font-display: block;
+      src: url('/static/fontawesome/webfonts/fa-solid-900.woff2') format('woff2');
+    }
+    @font-face {
+      font-family: 'FA-Regular';
+      font-style: normal;
+      font-weight: 400;
+      font-display: block;
+      src: url('/static/fontawesome/webfonts/fa-regular-400.woff2') format('woff2');
+    }
+    .fai { display:inline-block; font-style:normal; font-variant:normal; text-rendering:auto; line-height:1; -webkit-font-smoothing:antialiased; }
+    .fai-s { font-family:'FA-Solid'; font-weight:900; }
+    .fai-r { font-family:'FA-Regular'; font-weight:400; }
+    .fai-user::before          { content:"\f007"; }
+    .fai-lock::before          { content:"\f023"; }
+    .fai-eye::before           { content:"\f06e"; }
+    .fai-eye-slash::before     { content:"\f070"; }
+    .fai-signin::before        { content:"\f2f6"; }
+    .fai-alert::before         { content:"\f06a"; }
+    .fai-chart-line::before    { content:"\f201"; }
+    .fai-scale::before         { content:"\f24e"; }
+    .fai-invoice::before       { content:"\f571"; }
+    .fai-bar-chart::before     { content:"\e0e3"; }
+
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     body {
@@ -16,7 +53,6 @@
       background: #f0f4fa;
     }
 
-    /* Panel izquierdo — marca */
     .login-brand {
       width: 52%;
       background: linear-gradient(155deg, #0A096F 0%, #00309B 55%, #211FA9 100%);
@@ -80,7 +116,6 @@
       font-size: 11px; color: rgba(255,255,255,.3);
     }
 
-    /* Panel derecho — formulario */
     .login-form-panel {
       width: 48%;
       display: flex;
@@ -149,7 +184,7 @@
       box-shadow: 0 6px 20px rgba(0,48,155,.4);
     }
     .btn-login:active { transform: translateY(0); }
-    .btn-login i { margin-right: 8px; }
+    .btn-login .fai { margin-right: 8px; }
 
     .error-alert {
       display: flex; align-items: center; gap: 10px;
@@ -161,7 +196,7 @@
       margin-bottom: 20px;
       font-size: 13px; color: #c53030;
     }
-    .error-alert i { color: #e03c3c; flex-shrink: 0; }
+    .error-alert .fai { color: #e03c3c; flex-shrink: 0; }
 
     .login-footer {
       margin-top: 32px;
@@ -194,7 +229,6 @@
 </head>
 <body>
 
-  <!-- Panel de marca -->
   <div class="login-brand">
     <div class="brand-content">
       <img src="/static/images/viva_logo_white.svg" alt="Viva Consulting" class="brand-logo-img"/>
@@ -202,20 +236,19 @@
       <div class="brand-tagline">Impulsamos el crecimiento<br>de negocios con estrategia<br>y visión empresarial</div>
       <div class="brand-sub">Sistema de gestión financiera y contable<br>diseñado para líderes empresariales</div>
       <div class="brand-badges">
-        <span class="brand-badge"><i class="fa-solid fa-chart-line"></i> Análisis Bancario</span>
-        <span class="brand-badge"><i class="fa-solid fa-scale-balanced"></i> Balance General</span>
-        <span class="brand-badge"><i class="fa-solid fa-file-invoice-dollar"></i> Facturación</span>
+        <span class="brand-badge"><i class="fai fai-s fai-chart-line"></i> Análisis Bancario</span>
+        <span class="brand-badge"><i class="fai fai-s fai-scale"></i> Balance General</span>
+        <span class="brand-badge"><i class="fai fai-s fai-invoice"></i> Facturación</span>
       </div>
     </div>
     <div class="brand-footer">© 2026 Viva Consulting Empresas S.A.C. · Todos los derechos reservados</div>
   </div>
 
-  <!-- Formulario -->
   <div class="login-form-panel">
     <div class="login-box">
 
       <div class="system-badge">
-        <i class="fa-solid fa-chart-column"></i> VIVA CONT
+        <i class="fai fai-s fai-bar-chart"></i> VIVA CONT
       </div>
 
       <div class="login-header">
@@ -225,7 +258,7 @@
 
       {% if error %}
       <div class="error-alert">
-        <i class="fa-solid fa-circle-exclamation"></i>
+        <i class="fai fai-s fai-alert"></i>
         {{ error }}
       </div>
       {% endif %}
@@ -234,7 +267,7 @@
         <div class="form-group">
           <label class="form-label">Usuario o correo electrónico</label>
           <div class="input-wrap">
-            <i class="fa-solid fa-user input-icon"></i>
+            <i class="fai fai-s fai-user input-icon"></i>
             <input type="text" name="username" class="form-control"
                    placeholder="luisvallejos o vivacont@vivaempresasglobal.com"
                    autocomplete="username" required autofocus/>
@@ -244,17 +277,17 @@
         <div class="form-group">
           <label class="form-label">Contraseña</label>
           <div class="input-wrap">
-            <i class="fa-solid fa-lock input-icon"></i>
+            <i class="fai fai-s fai-lock input-icon"></i>
             <input type="password" name="password" id="passwordField" class="form-control"
                    placeholder="••••••••••••" autocomplete="current-password" required/>
             <button type="button" class="toggle-pass" onclick="togglePass()">
-              <i class="fa-regular fa-eye" id="eyeIcon"></i>
+              <i class="fai fai-r fai-eye" id="eyeIcon"></i>
             </button>
           </div>
         </div>
 
         <button type="submit" class="btn-login">
-          <i class="fa-solid fa-right-to-bracket"></i> Ingresar al sistema
+          <i class="fai fai-s fai-signin"></i> Ingresar al sistema
         </button>
       </form>
 
@@ -272,10 +305,10 @@
       const i = document.getElementById('eyeIcon');
       if (f.type === 'password') {
         f.type = 'text';
-        i.className = 'fa-regular fa-eye-slash';
+        i.className = 'fai fai-r fai-eye-slash';
       } else {
         f.type = 'password';
-        i.className = 'fa-regular fa-eye';
+        i.className = 'fai fai-r fai-eye';
       }
     }
   </script>

@@ -13,4 +13,4 @@ services:
         value: production
       - key: PYTHON_VERSION
         value: 3.11.0
-# enterprise-audit v2
+# enterprise-audit v3

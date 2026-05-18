@@ -25,7 +25,13 @@ app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "viva-cont-2026-xK9#mP@qL2")
 app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024  # 50 MB
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 31536000  # 1 año caché para estáticos
+# Cloudflare termina TLS — el proxy llega en HTTP al servidor; esto fija url_for con https
+app.config["PREFERRED_URL_SCHEME"] = "https"
 CORS(app)
+
+# Confiar en X-Forwarded-Proto de Cloudflare/Render para que session cookies funcionen en HTTPS
+from werkzeug.middleware.proxy_fix import ProxyFix
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 
 init_db()
 

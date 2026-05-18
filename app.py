@@ -575,21 +575,11 @@ def api_kpis():
     conn = get_connection()
     c = conn.cursor()
 
-    # Determine period filter
-    archivo_filtro = None
-    if importacion_id:
-        row = conn.execute(
-            "SELECT nombre_archivo FROM importaciones WHERE id=? AND cliente_id=?",
-            (importacion_id, _cid)
-        ).fetchone()
-        if row:
-            archivo_filtro = row["nombre_archivo"]
-
     base = "modulo='erp' AND cliente_id=?"
     p = [_cid]
-    if archivo_filtro:
-        base += " AND archivo_origen=?"
-        p.append(archivo_filtro)
+    if importacion_id:
+        base += " AND importacion_id=?"
+        p.append(importacion_id)
 
     c.execute(f"SELECT COALESCE(SUM(CASE WHEN importe>0 THEN importe ELSE 0 END),0) FROM transacciones WHERE {base}", p)
     total_ingresos = c.fetchone()[0]
@@ -705,8 +695,8 @@ def api_confirmar_excel():
                     (cliente_id, modulo, fecha_operacion, referencia, moneda, importe,
                      num_operacion, periodo, banco, fecha, mes, descripcion, tipo, detalle,
                      op, tipo_doc, ruc, cliente_proveedor, num_documento, saldo,
-                     doc_cont, comprobante, archivo_origen)
-                    VALUES (?,'erp',?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                     doc_cont, comprobante, archivo_origen, importacion_id)
+                    VALUES (?,'erp',?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 """, (
                     _cid,
                     tx.get("fecha_operacion"), tx.get("referencia"), tx.get("moneda"),
@@ -715,7 +705,7 @@ def api_confirmar_excel():
                     tx.get("tipo"), tx.get("detalle"), tx.get("op"), tx.get("tipo_doc"),
                     tx.get("ruc"), tx.get("cliente_proveedor"), tx.get("num_documento"),
                     tx.get("saldo"), tx.get("doc_cont"), tx.get("comprobante"),
-                    nombre_archivo,
+                    nombre_archivo, importacion_id,
                 ))
                 inserted += 1
             except Exception:
@@ -758,8 +748,8 @@ def api_eliminar_importacion(imp_id):
         if not row:
             return jsonify({"error": "No encontrado"}), 404
         nombre = row["nombre_archivo"]
-        conn.execute("DELETE FROM transacciones WHERE cliente_id=? AND modulo='erp' AND archivo_origen=?",
-                     (_cid, nombre))
+        conn.execute("DELETE FROM transacciones WHERE cliente_id=? AND modulo='erp' AND importacion_id=?",
+                     (_cid, imp_id))
         conn.execute("DELETE FROM importaciones WHERE id=? AND cliente_id=?", (imp_id, _cid))
         conn.commit()
         return jsonify({"success": True})

@@ -279,6 +279,7 @@ def init_db():
         "CREATE INDEX IF NOT EXISTS idx_er_cliente            ON estados_resultados(cliente_id)",
         "CREATE INDEX IF NOT EXISTS idx_bg_cliente            ON balance_general(cliente_id)",
         "CREATE INDEX IF NOT EXISTS idx_importaciones_cliente ON importaciones(cliente_id)",
+        "CREATE INDEX IF NOT EXISTS idx_transacciones_importacion ON transacciones(importacion_id)",
         "CREATE INDEX IF NOT EXISTS idx_usuarios_cliente      ON usuarios(cliente_id)",
         "CREATE INDEX IF NOT EXISTS idx_usuarios_username     ON usuarios(username)",
     ]:
@@ -297,6 +298,7 @@ def init_db():
 
     _migrate(conn, "ALTER TABLE transacciones ADD COLUMN modulo TEXT DEFAULT 'banco'")
     _migrate(conn, "ALTER TABLE transacciones ADD COLUMN periodo_id INTEGER")
+    _migrate(conn, "ALTER TABLE transacciones ADD COLUMN importacion_id INTEGER")
     _migrate(conn, "ALTER TABLE usuarios ADD COLUMN privilegios TEXT DEFAULT '[]'")
     _migrate(conn, "ALTER TABLE empresa ADD COLUMN cliente_id INTEGER UNIQUE")
 

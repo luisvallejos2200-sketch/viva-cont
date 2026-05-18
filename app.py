@@ -24,6 +24,7 @@ ALLOWED_EXCEL = {"xlsx", "xls", "csv"}
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "viva-cont-2026-xK9#mP@qL2")
 app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024  # 50 MB
+app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 31536000  # 1 año caché para estáticos
 CORS(app)
 
 init_db()

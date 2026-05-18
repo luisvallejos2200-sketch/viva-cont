@@ -11,7 +11,7 @@ jobs:
     steps:
       - name: Ping VIVA CONT
         run: |
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 https://vivacont.vivaempresasglobal.com/login)
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 https://vivacont.vivaempresasglobal.com/health)
           echo "HTTP Status: $STATUS"
           if [ "$STATUS" != "200" ]; then
             echo "Warning: service returned $STATUS"

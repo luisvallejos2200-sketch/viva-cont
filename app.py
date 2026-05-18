@@ -82,6 +82,11 @@ def logout():
     return redirect(url_for("login"))
 
 
+@app.route("/health")
+def health():
+    return jsonify({"status": "ok"}), 200
+
+
 # ─────────────────────────────────────────────────────────
 # API: GESTIÓN DE USUARIOS (solo super_admin)
 # ─────────────────────────────────────────────────────────

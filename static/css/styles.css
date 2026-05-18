@@ -196,6 +196,27 @@ body {
 .sidebar.collapsed .sidebar-logout { display:none; }
 .sidebar.collapsed .sidebar-footer { justify-content:center; }
 
+/* ══ PROGRESS BAR SPA ══════════════════════════════════════ */
+#viva-npbar {
+  position:fixed; top:0; left:0; z-index:9999;
+  height:3px; width:0; opacity:0;
+  background:linear-gradient(90deg,#2ea3f2,#00309B,#211FA9);
+  border-radius:0 2px 2px 0;
+  box-shadow:0 0 10px rgba(46,163,242,.7);
+  pointer-events:none;
+  transition:width .35s ease, opacity .25s ease;
+}
+#viva-npbar.active { opacity:1; }
+
+/* ══ PAGE TRANSITION ════════════════════════════════════════ */
+.page-content {
+  transition:opacity .14s ease, transform .14s ease;
+}
+.page-content.leaving {
+  opacity:0 !important;
+  transform:translateY(5px) !important;
+}
+
 /* ══ MAIN WRAPPER ═══════════════════════════════════════════ */
 .main-wrapper {
   margin-left:var(--sidebar-w);

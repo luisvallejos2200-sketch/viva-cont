@@ -240,3 +240,143 @@ function setLoading(btnId, loading, text = '') {
     btn.disabled = false;
   }
 }
+
+// ══ SPA NAVIGATION ═══════════════════════════════════════════
+(function initSPA() {
+  const _cache    = new Map();
+  const _inflight = new Map();
+  const NAV_PATHS = ['/', '/estados-cuenta', '/analisis-bancario',
+                     '/estados-resultados', '/balance-general',
+                     '/facturador', '/configuracion'];
+
+  /* ── Progress bar ── */
+  const _bar = document.createElement('div');
+  _bar.id = 'viva-npbar';
+  document.body.prepend(_bar);
+
+  let _barTimer;
+  function npStart() {
+    clearTimeout(_barTimer);
+    _bar.style.transition = 'none';
+    _bar.style.width = '0';
+    _bar.classList.add('active');
+    requestAnimationFrame(() => {
+      _bar.style.transition = 'width .35s ease, opacity .25s ease';
+      _bar.style.width = '65%';
+    });
+  }
+  function npDone() {
+    _bar.style.width = '100%';
+    _barTimer = setTimeout(() => {
+      _bar.style.opacity = '0';
+      setTimeout(() => { _bar.classList.remove('active'); _bar.style.width = '0'; _bar.style.opacity = '1'; }, 280);
+    }, 200);
+  }
+
+  /* ── Fetch with dedup ── */
+  function fetchPage(url) {
+    if (_cache.has(url)) return Promise.resolve(_cache.get(url));
+    if (_inflight.has(url)) return _inflight.get(url);
+    const p = fetch(url, { headers: { 'X-VIVA-SPA': '1' } })
+      .then(r => { if (!r.ok) throw new Error(r.status); return r.text(); })
+      .then(html => { _cache.set(url, html); _inflight.delete(url); return html; })
+      .catch(e => { _inflight.delete(url); throw e; });
+    _inflight.set(url, p);
+    return p;
+  }
+
+  function prefetch(url) {
+    if (!NAV_PATHS.includes(url) || _cache.has(url) || _inflight.has(url)) return;
+    fetchPage(url).catch(() => {});
+  }
+
+  /* ── Parse fetched HTML ── */
+  function parsePage(html) {
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    return {
+      content:    doc.querySelector('.page-content')?.innerHTML || '',
+      title:      doc.title,
+      breadcrumb: doc.querySelector('.breadcrumb-current')?.textContent?.trim() || '',
+      scripts:    [...doc.querySelectorAll('body script:not([src])')].map(s => s.textContent),
+    };
+  }
+
+  /* ── Destroy active Chart.js instances ── */
+  function destroyCharts() {
+    if (!window.Chart) return;
+    document.querySelectorAll('canvas').forEach(c => {
+      try { const ch = Chart.getChart(c); if (ch) ch.destroy(); } catch (e) {}
+    });
+  }
+
+  /* ── Execute scripts in new content ── */
+  function runScripts(scripts) {
+    scripts.forEach(code => {
+      try {
+        const el = document.createElement('script');
+        el.textContent = code;
+        document.body.appendChild(el);
+        document.body.removeChild(el);
+      } catch (e) {}
+    });
+  }
+
+  /* ── Core navigate ── */
+  async function navigate(url, push = true) {
+    if (url === window.location.pathname) return;
+    npStart();
+    try {
+      const html = await fetchPage(url);
+      const { content, title, breadcrumb, scripts } = parsePage(html);
+
+      destroyCharts();
+
+      const mainEl = document.querySelector('.page-content');
+      mainEl.classList.add('leaving');
+      await new Promise(r => setTimeout(r, 100));
+
+      mainEl.innerHTML = content;
+      mainEl.classList.remove('leaving');
+
+      document.title = title;
+      const bc = document.querySelector('.breadcrumb-current');
+      if (bc) bc.textContent = breadcrumb;
+
+      document.querySelectorAll('.nav-item[href]').forEach(a => {
+        a.classList.toggle('active', a.getAttribute('href') === url);
+      });
+
+      if (push) history.pushState({ url }, title, url);
+      window.scrollTo(0, 0);
+      npDone();
+      runScripts(scripts);
+    } catch (e) {
+      npDone();
+      window.location.href = url;
+    }
+  }
+
+  /* ── Intercept nav clicks ── */
+  document.addEventListener('click', e => {
+    const link = e.target.closest('a[href]');
+    if (!link) return;
+    const href = link.getAttribute('href');
+    if (!NAV_PATHS.includes(href)) return;
+    e.preventDefault();
+    navigate(href);
+  });
+
+  /* ── Prefetch on hover ── */
+  document.querySelectorAll('.nav-item[href]').forEach(a => {
+    a.addEventListener('mouseenter', () => prefetch(a.getAttribute('href')));
+  });
+
+  /* ── Back / Forward ── */
+  window.addEventListener('popstate', e => {
+    const url = e.state?.url || window.location.pathname;
+    navigate(url, false);
+  });
+
+  /* ── Seed current state ── */
+  history.replaceState({ url: window.location.pathname }, document.title, window.location.pathname);
+})();

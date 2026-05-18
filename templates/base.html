@@ -37,6 +37,9 @@
   </div>
 
   <nav class="sidebar-nav">
+    {% set rol = session.get('user_rol', '') %}
+    {% set privs = session.get('privilegios', '[]') %}
+
     <div class="nav-section-label">PRINCIPAL</div>
 
     <a href="/" class="nav-item {% if request.path == '/' %}active{% endif %}">
@@ -46,38 +49,64 @@
 
     <div class="nav-section-label">MÓDULOS</div>
 
+    {% if rol in ('super_admin','admin') or 'estados_cuenta' in privs %}
     <a href="/estados-cuenta" class="nav-item {% if request.path == '/estados-cuenta' %}active{% endif %}">
       <span class="nav-icon"><i class="fa-solid fa-building-columns"></i></span>
       <span class="nav-label">Estados de Cuenta</span>
       <span class="nav-badge" id="badge-ec"></span>
     </a>
+    {% endif %}
 
+    {% if rol in ('super_admin','admin') or 'analisis_bancario' in privs %}
     <a href="/analisis-bancario" class="nav-item {% if request.path == '/analisis-bancario' %}active{% endif %}">
       <span class="nav-icon"><i class="fa-solid fa-chart-bar"></i></span>
       <span class="nav-label">Análisis Bancario</span>
     </a>
+    {% endif %}
 
+    {% if rol in ('super_admin','admin') or 'estados_resultados' in privs %}
     <a href="/estados-resultados" class="nav-item {% if request.path == '/estados-resultados' %}active{% endif %}">
       <span class="nav-icon"><i class="fa-solid fa-chart-line"></i></span>
       <span class="nav-label">Estado de Resultados</span>
     </a>
+    {% endif %}
 
+    {% if rol in ('super_admin','admin') or 'balance_general' in privs %}
     <a href="/balance-general" class="nav-item {% if request.path == '/balance-general' %}active{% endif %}">
       <span class="nav-icon"><i class="fa-solid fa-scale-balanced"></i></span>
       <span class="nav-label">Balance General</span>
     </a>
+    {% endif %}
 
+    {% if rol in ('super_admin','admin') or 'facturador' in privs %}
     <a href="/facturador" class="nav-item {% if request.path == '/facturador' %}active{% endif %}">
       <span class="nav-icon"><i class="fa-solid fa-file-invoice-dollar"></i></span>
       <span class="nav-label">Facturador Electrónico</span>
     </a>
+    {% endif %}
 
     <div class="nav-section-label">SISTEMA</div>
 
+    {% if rol in ('super_admin','admin') %}
+    <a href="/usuarios" class="nav-item {% if request.path == '/usuarios' %}active{% endif %}">
+      <span class="nav-icon"><i class="fa-solid fa-users"></i></span>
+      <span class="nav-label">Usuarios</span>
+    </a>
+    {% endif %}
+
+    {% if rol in ('super_admin','admin') %}
     <a href="/configuracion" class="nav-item {% if request.path == '/configuracion' %}active{% endif %}">
       <span class="nav-icon"><i class="fa-solid fa-gear"></i></span>
       <span class="nav-label">Configuración</span>
     </a>
+    {% endif %}
+
+    {% if rol == 'super_admin' %}
+    <a href="/admin/clientes" class="nav-item {% if '/admin/clientes' in request.path %}active{% endif %}">
+      <span class="nav-icon"><i class="fa-solid fa-building"></i></span>
+      <span class="nav-label">Clientes</span>
+    </a>
+    {% endif %}
   </nav>
 
   <div class="sidebar-footer">

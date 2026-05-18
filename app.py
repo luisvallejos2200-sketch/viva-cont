@@ -60,6 +60,28 @@ def allowed_file(filename, allowed):
 
 
 # ─────────────────────────────────────────────────────────
+# HELPERS MULTI-TENANT
+# ─────────────────────────────────────────────────────────
+
+def cid():
+    """Retorna el cliente_id del usuario en sesión (aislamiento de datos)."""
+    return session.get("cliente_id")
+
+
+def is_admin_or_above():
+    return session.get("user_rol") in ("super_admin", "admin")
+
+
+def has_privilege(modulo):
+    rol = session.get("user_rol")
+    if rol in ("super_admin", "admin"):
+        return True
+    import json as _j
+    privs = _j.loads(session.get("privilegios") or "[]")
+    return modulo in privs
+
+
+# ─────────────────────────────────────────────────────────
 # AUTENTICACIÓN
 # ─────────────────────────────────────────────────────────
 
@@ -87,10 +109,12 @@ def login():
         ).fetchone()
         conn.close()
         if user and check_password_hash(user["password_hash"], password):
-            session["user_id"]   = user["id"]
-            session["user_name"] = user["nombre"]
-            session["user_rol"]  = user["rol"]
-            session["user_email"]= user["email"]
+            session["user_id"]     = user["id"]
+            session["user_name"]   = user["nombre"]
+            session["user_rol"]    = user["rol"]
+            session["user_email"]  = user["email"]
+            session["cliente_id"]  = user["cliente_id"]
+            session["privilegios"] = user["privilegios"] or "[]"
             conn = get_connection()
             conn.execute("UPDATE usuarios SET ultimo_acceso=? WHERE id=?",
                          (datetime.now().isoformat(), user["id"]))
@@ -114,18 +138,143 @@ def health():
 
 
 # ─────────────────────────────────────────────────────────
-# API: GESTIÓN DE USUARIOS (solo super_admin)
+# API: GESTIÓN DE CLIENTES (solo super_admin)
+# ─────────────────────────────────────────────────────────
+
+@app.route("/api/admin/clientes", methods=["GET"])
+@login_required
+def api_get_clientes():
+    if session.get("user_rol") != "super_admin":
+        return jsonify({"error": "Sin permisos"}), 403
+    conn = get_connection()
+    rows = rows_to_list(conn.execute("""
+        SELECT c.*, COUNT(u.id) as total_usuarios
+        FROM clientes c
+        LEFT JOIN usuarios u ON u.cliente_id = c.id AND u.rol != 'super_admin'
+        GROUP BY c.id ORDER BY c.created_at DESC
+    """).fetchall())
+    conn.close()
+    return jsonify(rows)
+
+
+@app.route("/api/admin/clientes", methods=["POST"])
+@login_required
+def api_crear_cliente():
+    if session.get("user_rol") != "super_admin":
+        return jsonify({"error": "Sin permisos"}), 403
+    import json as _j
+    d = request.json or {}
+    razon_social = d.get("razon_social", "").strip()
+    ruc          = d.get("ruc", "").strip()
+    email        = d.get("email", "").strip().lower()
+    telefono     = d.get("telefono", "").strip()
+    plan         = d.get("plan", "basic")
+    # Datos del admin inicial
+    admin_nombre   = d.get("admin_nombre", "").strip()
+    admin_email    = d.get("admin_email", "").strip().lower()
+    admin_username = d.get("admin_username", "").strip().lower()
+    admin_password = d.get("admin_password", "")
+
+    if not all([razon_social, admin_nombre, admin_email, admin_username, admin_password]):
+        return jsonify({"error": "razon_social, datos del admin son requeridos"}), 400
+
+    _all_privs = _j.dumps(["estados_cuenta","analisis_bancario",
+                            "estados_resultados","balance_general","facturador"])
+    try:
+        conn = get_connection()
+        c = conn.cursor()
+        # Crear cliente
+        c.execute("""
+            INSERT INTO clientes (razon_social, ruc, email, telefono, plan)
+            VALUES (?,?,?,?,?)
+        """, (razon_social, ruc, email, telefono, plan))
+        cliente_id = c.lastrowid
+
+        # Crear empresa del cliente
+        c.execute("""
+            INSERT INTO empresa (cliente_id, ruc, razon_social, email, telefono)
+            VALUES (?,?,?,?,?)
+        """, (cliente_id, ruc, razon_social, email, telefono))
+
+        # Crear admin del cliente
+        c.execute("""
+            INSERT INTO usuarios (cliente_id, nombre, email, username, password_hash, rol, privilegios)
+            VALUES (?,?,?,?,?,?,?)
+        """, (cliente_id, admin_nombre, admin_email, admin_username,
+              generate_password_hash(admin_password, method='pbkdf2:sha256:50000'),
+              'admin', _all_privs))
+
+        conn.commit()
+        conn.close()
+        return jsonify({"ok": True, "cliente_id": cliente_id})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
+
+@app.route("/api/admin/clientes/<int:cid_param>", methods=["PUT"])
+@login_required
+def api_update_cliente(cid_param):
+    if session.get("user_rol") != "super_admin":
+        return jsonify({"error": "Sin permisos"}), 403
+    d = request.json or {}
+    fields = ["razon_social", "ruc", "email", "telefono", "plan", "activo"]
+    sets = ", ".join(f"{f}=?" for f in fields if f in d)
+    vals = [d[f] for f in fields if f in d]
+    if not sets:
+        return jsonify({"error": "Nada que actualizar"}), 400
+    conn = get_connection()
+    conn.execute(f"UPDATE clientes SET {sets} WHERE id=?", vals + [cid_param])
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/admin/clientes/<int:cid_param>", methods=["DELETE"])
+@login_required
+def api_delete_cliente(cid_param):
+    if session.get("user_rol") != "super_admin":
+        return jsonify({"error": "Sin permisos"}), 403
+    if cid_param == 1:
+        return jsonify({"error": "No puedes eliminar el cliente raíz"}), 400
+    conn = get_connection()
+    conn.execute("UPDATE clientes SET activo=0 WHERE id=?", (cid_param,))
+    conn.execute("UPDATE usuarios SET activo=0 WHERE cliente_id=?", (cid_param,))
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True})
+
+
+# ─────────────────────────────────────────────────────────
+# API: GESTIÓN DE USUARIOS (super_admin y admin)
 # ─────────────────────────────────────────────────────────
 
 @app.route("/api/usuarios", methods=["GET"])
 @login_required
 def api_get_usuarios():
-    if session.get("user_rol") != "super_admin":
-        return jsonify({"error": "Sin permisos"}), 403
+    rol = session.get("user_rol")
     conn = get_connection()
-    rows = rows_to_list(conn.execute(
-        "SELECT id,nombre,email,username,rol,activo,ultimo_acceso,created_at FROM usuarios ORDER BY created_at"
-    ).fetchall())
+    if rol == "super_admin":
+        # Ve todos los usuarios de su propio cliente (Viva)
+        rows = rows_to_list(conn.execute("""
+            SELECT u.id, u.cliente_id, u.nombre, u.email, u.username, u.rol,
+                   u.privilegios, u.activo, u.ultimo_acceso, u.created_at,
+                   c.razon_social as cliente_nombre
+            FROM usuarios u
+            LEFT JOIN clientes c ON c.id = u.cliente_id
+            WHERE u.cliente_id = ? AND u.rol != 'super_admin'
+            ORDER BY u.created_at DESC
+        """, (cid(),)).fetchall())
+    elif rol == "admin":
+        rows = rows_to_list(conn.execute("""
+            SELECT id, cliente_id, nombre, email, username, rol,
+                   privilegios, activo, ultimo_acceso, created_at
+            FROM usuarios
+            WHERE cliente_id=? AND rol='usuario'
+            ORDER BY created_at DESC
+        """, (cid(),)).fetchall())
+    else:
+        conn.close()
+        return jsonify({"error": "Sin permisos"}), 403
     conn.close()
     return jsonify(rows)
 
@@ -133,22 +282,35 @@ def api_get_usuarios():
 @app.route("/api/usuarios", methods=["POST"])
 @login_required
 def api_crear_usuario():
-    if session.get("user_rol") != "super_admin":
+    import json as _j
+    rol_sesion = session.get("user_rol")
+    if rol_sesion not in ("super_admin", "admin"):
         return jsonify({"error": "Sin permisos"}), 403
     d = request.json or {}
     nombre   = d.get("nombre", "").strip()
-    email    = d.get("email", "").strip().lower()
+    email    = d.get("admin_email" if "admin_email" in d else "email", "").strip().lower()
+    if not email:
+        email = d.get("email", "").strip().lower()
     username = d.get("username", "").strip().lower()
     password = d.get("password", "")
-    rol      = d.get("rol", "admin")
+    rol_nuevo = d.get("rol", "usuario")
+    privs    = d.get("privilegios", ["estados_cuenta","analisis_bancario",
+                                     "estados_resultados","balance_general","facturador"])
+
+    # admin solo puede crear 'usuario', no otro 'admin'
+    if rol_sesion == "admin" and rol_nuevo != "usuario":
+        rol_nuevo = "usuario"
+
     if not all([nombre, email, username, password]):
         return jsonify({"error": "Todos los campos son requeridos"}), 400
     try:
         conn = get_connection()
-        conn.execute(
-            "INSERT INTO usuarios (nombre,email,username,password_hash,rol) VALUES (?,?,?,?,?)",
-            (nombre, email, username, generate_password_hash(password, method='pbkdf2:sha256:50000'), rol)
-        )
+        conn.execute("""
+            INSERT INTO usuarios (cliente_id, nombre, email, username, password_hash, rol, privilegios)
+            VALUES (?,?,?,?,?,?,?)
+        """, (cid(), nombre, email, username,
+              generate_password_hash(password, method='pbkdf2:sha256:50000'),
+              rol_nuevo, _j.dumps(privs)))
         conn.commit()
         conn.close()
         return jsonify({"ok": True})
@@ -159,17 +321,41 @@ def api_crear_usuario():
 @app.route("/api/usuarios/<int:uid>", methods=["PUT"])
 @login_required
 def api_update_usuario(uid):
-    if session.get("user_rol") != "super_admin":
+    import json as _j
+    rol_sesion = session.get("user_rol")
+    if rol_sesion not in ("super_admin", "admin"):
         return jsonify({"error": "Sin permisos"}), 403
     d = request.json or {}
+
+    # Verificar que el usuario pertenece al mismo cliente
     conn = get_connection()
+    target = conn.execute("SELECT cliente_id, rol FROM usuarios WHERE id=?", (uid,)).fetchone()
+    if not target or target["cliente_id"] != cid():
+        conn.close()
+        return jsonify({"error": "Sin permisos"}), 403
+
+    privs = _j.dumps(d.get("privilegios", [])) if "privilegios" in d else None
+
     if d.get("password"):
-        conn.execute("UPDATE usuarios SET nombre=?,email=?,rol=?,activo=?,password_hash=? WHERE id=?",
-                     (d["nombre"], d["email"], d["rol"], d.get("activo",1),
-                      generate_password_hash(d["password"], method='pbkdf2:sha256:50000'), uid))
+        if privs is not None:
+            conn.execute(
+                "UPDATE usuarios SET nombre=?,email=?,activo=?,privilegios=?,password_hash=? WHERE id=?",
+                (d["nombre"], d["email"], d.get("activo",1), privs,
+                 generate_password_hash(d["password"], method='pbkdf2:sha256:50000'), uid))
+        else:
+            conn.execute(
+                "UPDATE usuarios SET nombre=?,email=?,activo=?,password_hash=? WHERE id=?",
+                (d["nombre"], d["email"], d.get("activo",1),
+                 generate_password_hash(d["password"], method='pbkdf2:sha256:50000'), uid))
     else:
-        conn.execute("UPDATE usuarios SET nombre=?,email=?,rol=?,activo=? WHERE id=?",
-                     (d["nombre"], d["email"], d["rol"], d.get("activo",1), uid))
+        if privs is not None:
+            conn.execute(
+                "UPDATE usuarios SET nombre=?,email=?,activo=?,privilegios=? WHERE id=?",
+                (d["nombre"], d["email"], d.get("activo",1), privs, uid))
+        else:
+            conn.execute(
+                "UPDATE usuarios SET nombre=?,email=?,activo=? WHERE id=?",
+                (d["nombre"], d["email"], d.get("activo",1), uid))
     conn.commit()
     conn.close()
     return jsonify({"ok": True})
@@ -178,11 +364,16 @@ def api_update_usuario(uid):
 @app.route("/api/usuarios/<int:uid>", methods=["DELETE"])
 @login_required
 def api_delete_usuario(uid):
-    if session.get("user_rol") != "super_admin":
+    rol_sesion = session.get("user_rol")
+    if rol_sesion not in ("super_admin", "admin"):
         return jsonify({"error": "Sin permisos"}), 403
     if uid == session.get("user_id"):
         return jsonify({"error": "No puedes eliminarte a ti mismo"}), 400
     conn = get_connection()
+    target = conn.execute("SELECT cliente_id FROM usuarios WHERE id=?", (uid,)).fetchone()
+    if not target or target["cliente_id"] != cid():
+        conn.close()
+        return jsonify({"error": "Sin permisos"}), 403
     conn.execute("DELETE FROM usuarios WHERE id=?", (uid,))
     conn.commit()
     conn.close()
@@ -223,6 +414,22 @@ def analisis_bancario():
     return render_template("analisis_bancario.html")
 
 
+@app.route("/admin/clientes")
+@login_required
+def admin_clientes():
+    if session.get("user_rol") != "super_admin":
+        return redirect(url_for("dashboard"))
+    return render_template("admin_clientes.html")
+
+
+@app.route("/usuarios")
+@login_required
+def admin_usuarios():
+    if not is_admin_or_above():
+        return redirect(url_for("dashboard"))
+    return render_template("admin_usuarios.html")
+
+
 # ─────────────────────────────────────────────────────────
 # API: DASHBOARD KPIs
 # ─────────────────────────────────────────────────────────
@@ -233,44 +440,45 @@ def api_kpis():
     conn = get_connection()
     c = conn.cursor()
 
-    c.execute("SELECT COALESCE(SUM(CASE WHEN importe > 0 THEN importe ELSE 0 END), 0) FROM transacciones WHERE modulo='erp'")
+    _cid = cid()
+    c.execute("SELECT COALESCE(SUM(CASE WHEN importe > 0 THEN importe ELSE 0 END), 0) FROM transacciones WHERE modulo='erp' AND cliente_id=?", (_cid,))
     total_ingresos = c.fetchone()[0]
 
-    c.execute("SELECT COALESCE(SUM(CASE WHEN importe < 0 THEN ABS(importe) ELSE 0 END), 0) FROM transacciones WHERE modulo='erp'")
+    c.execute("SELECT COALESCE(SUM(CASE WHEN importe < 0 THEN ABS(importe) ELSE 0 END), 0) FROM transacciones WHERE modulo='erp' AND cliente_id=?", (_cid,))
     total_egresos = c.fetchone()[0]
 
-    c.execute("SELECT COUNT(*) FROM transacciones WHERE modulo='erp'")
+    c.execute("SELECT COUNT(*) FROM transacciones WHERE modulo='erp' AND cliente_id=?", (_cid,))
     total_transacciones = c.fetchone()[0]
 
-    c.execute("SELECT COUNT(*) FROM facturas WHERE estado != 'ANULADA'")
+    c.execute("SELECT COUNT(*) FROM facturas WHERE estado != 'ANULADA' AND cliente_id=?", (_cid,))
     total_facturas = c.fetchone()[0]
 
-    c.execute("SELECT COALESCE(SUM(total), 0) FROM facturas WHERE estado = 'EMITIDA'")
+    c.execute("SELECT COALESCE(SUM(total), 0) FROM facturas WHERE estado = 'EMITIDA' AND cliente_id=?", (_cid,))
     total_facturado = c.fetchone()[0]
 
     c.execute("""
         SELECT mes, SUM(CASE WHEN importe > 0 THEN importe ELSE 0 END) as ingresos,
                SUM(CASE WHEN importe < 0 THEN ABS(importe) ELSE 0 END) as egresos
         FROM transacciones
-        WHERE modulo='erp' AND mes != '' AND mes IS NOT NULL
+        WHERE modulo='erp' AND mes != '' AND mes IS NOT NULL AND cliente_id=?
         GROUP BY mes
         ORDER BY MIN(fecha_operacion)
         LIMIT 12
-    """)
+    """, (_cid,))
     flujo_mensual = rows_to_list(c.fetchall())
 
     c.execute("""
         SELECT tipo, COUNT(*) as cantidad, SUM(ABS(importe)) as monto
         FROM transacciones
-        WHERE modulo='erp' AND tipo != '' AND tipo IS NOT NULL
+        WHERE modulo='erp' AND tipo != '' AND tipo IS NOT NULL AND cliente_id=?
         GROUP BY tipo
-    """)
+    """, (_cid,))
     por_tipo = rows_to_list(c.fetchall())
 
     c.execute("""
-        SELECT * FROM transacciones WHERE modulo='erp'
+        SELECT * FROM transacciones WHERE modulo='erp' AND cliente_id=?
         ORDER BY created_at DESC LIMIT 10
-    """)
+    """, (_cid,))
     ultimas = rows_to_list(c.fetchall())
 
     conn.close()
@@ -480,11 +688,12 @@ def api_confirmar_transacciones():
         try:
             c.execute("""
                 INSERT INTO transacciones
-                (modulo, fecha_operacion, referencia, moneda, importe, num_operacion, periodo,
+                (cliente_id, modulo, fecha_operacion, referencia, moneda, importe, num_operacion, periodo,
                  banco, fecha, mes, descripcion, tipo, detalle, op, tipo_doc, ruc,
                  cliente_proveedor, num_documento, saldo, doc_cont, comprobante, archivo_origen)
-                VALUES ('banco',?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                VALUES (?, 'banco',?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """, (
+                cid(),
                 tx.get("fecha_operacion"), tx.get("referencia"), tx.get("moneda"),
                 tx.get("importe"), tx.get("num_operacion"), tx.get("periodo"),
                 tx.get("banco"), tx.get("fecha"), tx.get("mes"), tx.get("descripcion"),
@@ -517,8 +726,8 @@ def api_get_transacciones():
     c = conn.cursor()
 
     periodo_id = request.args.get("periodo_id", "")
-    conditions = ["modulo='banco'"]
-    params = []
+    conditions = ["modulo='banco'", "cliente_id=?"]
+    params = [cid()]
     if periodo_id and periodo_id != "all":
         conditions.append("periodo_id = ?")
         params.append(int(periodo_id))
@@ -566,7 +775,7 @@ def api_update_transaccion(tx_id):
         return jsonify({"error": "Nada que actualizar"}), 400
 
     conn = get_connection()
-    conn.execute(f"UPDATE transacciones SET {sets} WHERE id = ?", vals + [tx_id])
+    conn.execute(f"UPDATE transacciones SET {sets} WHERE id=? AND cliente_id=?", vals + [tx_id, cid()])
     conn.commit()
     conn.close()
     return jsonify({"success": True})
@@ -580,7 +789,7 @@ def api_exportar_excel():
 
     conn = get_connection()
     c = conn.cursor()
-    c.execute("SELECT * FROM transacciones ORDER BY fecha_operacion")
+    c.execute("SELECT * FROM transacciones WHERE cliente_id=? ORDER BY fecha_operacion", (cid(),))
     rows = rows_to_list(c.fetchall())
     conn.close()
 
@@ -629,10 +838,14 @@ def api_get_facturas():
     conn = get_connection()
     c = conn.cursor()
 
-    where = "WHERE estado = ?" if estado else ""
-    params = [estado] if estado else []
+    conditions = ["f.cliente_id=?"]
+    params = [cid()]
+    if estado:
+        conditions.append("f.estado=?")
+        params.append(estado)
+    where = "WHERE " + " AND ".join(conditions)
 
-    c.execute(f"SELECT COUNT(*) FROM facturas {where}", params)
+    c.execute(f"SELECT COUNT(*) FROM facturas f {where}", params)
     total = c.fetchone()[0]
 
     c.execute(f"""
@@ -665,12 +878,13 @@ def api_crear_factura():
 
     c.execute("""
         INSERT INTO facturas
-        (serie, correlativo, tipo_comprobante, fecha_emision, fecha_vencimiento,
+        (cliente_id, serie, correlativo, tipo_comprobante, fecha_emision, fecha_vencimiento,
          ruc_emisor, razon_social_emisor, direccion_emisor,
          ruc_cliente, razon_social_cliente, direccion_cliente,
          moneda, subtotal, igv, total, estado, observaciones)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     """, (
+        cid(),
         data.get("serie", "F001"),
         data.get("correlativo", "1"),
         data.get("tipo_comprobante", "FACTURA"),
@@ -711,7 +925,7 @@ def api_crear_factura():
 def api_get_factura(fid):
     conn = get_connection()
     c = conn.cursor()
-    c.execute("SELECT * FROM facturas WHERE id = ?", (fid,))
+    c.execute("SELECT * FROM facturas WHERE id=? AND cliente_id=?", (fid, cid()))
     factura = row_to_dict(c.fetchone())
     if not factura:
         conn.close()
@@ -740,7 +954,7 @@ def api_actualizar_factura(fid):
     vals = [data[f] for f in fields if f in data]
 
     if sets:
-        c.execute(f"UPDATE facturas SET {sets} WHERE id = ?", vals + [fid])
+        c.execute(f"UPDATE facturas SET {sets} WHERE id=? AND cliente_id=?", vals + [fid, cid()])
 
     if items is not None:
         c.execute("DELETE FROM factura_items WHERE factura_id = ?", (fid,))
@@ -771,7 +985,7 @@ def api_actualizar_factura(fid):
 @login_required
 def api_emitir_factura(fid):
     conn = get_connection()
-    conn.execute("UPDATE facturas SET estado='EMITIDA' WHERE id=?", (fid,))
+    conn.execute("UPDATE facturas SET estado='EMITIDA' WHERE id=? AND cliente_id=?", (fid, cid()))
     conn.commit()
     conn.close()
     return jsonify({"success": True, "estado": "EMITIDA"})
@@ -781,7 +995,7 @@ def api_emitir_factura(fid):
 @login_required
 def api_anular_factura(fid):
     conn = get_connection()
-    conn.execute("UPDATE facturas SET estado='ANULADA' WHERE id=?", (fid,))
+    conn.execute("UPDATE facturas SET estado='ANULADA' WHERE id=? AND cliente_id=?", (fid, cid()))
     conn.commit()
     conn.close()
     return jsonify({"success": True, "estado": "ANULADA"})
@@ -796,7 +1010,7 @@ def api_anular_factura(fid):
 def api_get_empresa():
     conn = get_connection()
     c = conn.cursor()
-    c.execute("SELECT * FROM empresa ORDER BY id DESC LIMIT 1")
+    c.execute("SELECT * FROM empresa WHERE cliente_id=?", (cid(),))
     row = row_to_dict(c.fetchone())
     conn.close()
     return jsonify(row or {})
@@ -810,7 +1024,15 @@ def api_update_empresa():
     sets = ", ".join(f"{f} = ?" for f in fields if f in data)
     vals = [data[f] for f in fields if f in data]
     conn = get_connection()
-    conn.execute(f"UPDATE empresa SET {sets}, updated_at=CURRENT_TIMESTAMP WHERE id=1", vals)
+    # Upsert: si no existe empresa para este cliente, la crea
+    existing = conn.execute("SELECT id FROM empresa WHERE cliente_id=?", (cid(),)).fetchone()
+    if existing:
+        conn.execute(f"UPDATE empresa SET {sets}, updated_at=CURRENT_TIMESTAMP WHERE cliente_id=?",
+                     vals + [cid()])
+    else:
+        conn.execute("INSERT INTO empresa (cliente_id) VALUES (?)", (cid(),))
+        conn.execute(f"UPDATE empresa SET {sets}, updated_at=CURRENT_TIMESTAMP WHERE cliente_id=?",
+                     vals + [cid()])
     conn.commit()
     conn.close()
     return jsonify({"success": True})
@@ -842,11 +1064,12 @@ def api_importar_template():
         try:
             c.execute("""
                 INSERT INTO transacciones
-                (modulo, fecha_operacion, referencia, moneda, importe, num_operacion, periodo,
+                (cliente_id, modulo, fecha_operacion, referencia, moneda, importe, num_operacion, periodo,
                  banco, fecha, mes, descripcion, tipo, detalle, op, tipo_doc, ruc,
                  cliente_proveedor, num_documento, saldo, doc_cont, comprobante, archivo_origen)
-                VALUES ('erp',?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                VALUES (?,'erp',?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """, (
+                cid(),
                 tx.get("fecha_operacion"), tx.get("referencia"), tx.get("moneda"),
                 tx.get("importe"), tx.get("num_operacion"), tx.get("periodo"),
                 tx.get("banco"), tx.get("fecha"), tx.get("mes"), tx.get("descripcion"),
@@ -956,7 +1179,8 @@ def api_get_periodos():
     """Lista todos los períodos cargados."""
     conn = get_connection()
     rows = rows_to_list(conn.execute(
-        "SELECT * FROM periodos_cargados ORDER BY anio DESC, created_at DESC"
+        "SELECT * FROM periodos_cargados WHERE cliente_id=? ORDER BY anio DESC, created_at DESC",
+        (cid(),)
     ).fetchall())
     conn.close()
     return jsonify(rows)
@@ -968,17 +1192,19 @@ def api_periodo_analysis(pid):
     """Devuelve el análisis guardado de un período específico."""
     conn = get_connection()
     row = row_to_dict(conn.execute(
-        "SELECT * FROM periodos_cargados WHERE id=?", (pid,)
+        "SELECT * FROM periodos_cargados WHERE id=? AND cliente_id=?", (pid, cid())
     ).fetchone())
     conn.close()
     if not row:
         return jsonify({"error": "Período no encontrado"}), 404
     import json as _json
     analysis = _json.loads(row["analysis_json"]) if row.get("analysis_json") else {}
-    txs = rows_to_list(get_connection().execute(
-        "SELECT * FROM transacciones WHERE periodo_id=? ORDER BY fecha_operacion", (pid,)
+    conn2 = get_connection()
+    txs = rows_to_list(conn2.execute(
+        "SELECT * FROM transacciones WHERE periodo_id=? AND cliente_id=? ORDER BY fecha_operacion",
+        (pid, cid())
     ).fetchall())
-    get_connection().close()
+    conn2.close()
     return jsonify({"periodo": row, "analysis": analysis, "transactions": txs})
 
 
@@ -988,10 +1214,12 @@ def api_periodo_consolidado():
     """Devuelve análisis consolidado de todos los períodos bancarios."""
     conn = get_connection()
     txs = rows_to_list(conn.execute(
-        "SELECT * FROM transacciones WHERE modulo='banco' ORDER BY fecha_operacion"
+        "SELECT * FROM transacciones WHERE modulo='banco' AND cliente_id=? ORDER BY fecha_operacion",
+        (cid(),)
     ).fetchall())
     periodos = rows_to_list(conn.execute(
-        "SELECT * FROM periodos_cargados ORDER BY anio, created_at"
+        "SELECT * FROM periodos_cargados WHERE cliente_id=? ORDER BY anio, created_at",
+        (cid(),)
     ).fetchall())
     conn.close()
     if not txs:
@@ -1030,10 +1258,11 @@ def api_analisis_guardar():
     # Crear registro de período
     c.execute("""
         INSERT INTO periodos_cargados
-        (label, mes, anio, banco, archivo, total_transacciones,
+        (cliente_id, label, mes, anio, banco, archivo, total_transacciones,
          total_ingresos, total_egresos, saldo_inicial, saldo_final, analysis_json)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
     """, (
+        cid(),
         label, mes_label, anio, banco, filename, len(txs),
         analysis.get("total_ingresos", 0), analysis.get("total_egresos", 0),
         analysis.get("saldo_inicial", 0), analysis.get("saldo_final", 0),
@@ -1047,19 +1276,20 @@ def api_analisis_guardar():
         try:
             c.execute("""
                 SELECT COUNT(*) FROM transacciones
-                WHERE fecha_operacion=? AND importe=? AND saldo=? AND banco=?
-            """, (tx.get("fecha_operacion"), tx.get("importe"), tx.get("saldo"), tx.get("banco")))
+                WHERE cliente_id=? AND fecha_operacion=? AND importe=? AND saldo=? AND banco=?
+            """, (cid(), tx.get("fecha_operacion"), tx.get("importe"), tx.get("saldo"), tx.get("banco")))
             if c.fetchone()[0] > 0:
                 skipped += 1
                 continue
             c.execute("""
                 INSERT INTO transacciones
-                (modulo, periodo_id, fecha_operacion, referencia, moneda, importe,
+                (cliente_id, modulo, periodo_id, fecha_operacion, referencia, moneda, importe,
                  num_operacion, periodo, banco, fecha, mes, descripcion, tipo, detalle,
                  op, tipo_doc, ruc, cliente_proveedor, num_documento, saldo,
                  doc_cont, comprobante, archivo_origen)
-                VALUES ('banco',?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                VALUES (?,'banco',?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """, (
+                cid(),
                 periodo_id,
                 tx.get("fecha_operacion"), tx.get("referencia"), tx.get("moneda"),
                 tx.get("importe"), tx.get("num_operacion"), tx.get("periodo"),
@@ -1825,7 +2055,8 @@ def api_er_template():
 def api_er_list():
     conn = get_connection()
     rows = rows_to_list(conn.execute(
-        "SELECT * FROM estados_resultados ORDER BY anio DESC, created_at DESC"
+        "SELECT * FROM estados_resultados WHERE cliente_id=? ORDER BY anio DESC, created_at DESC",
+        (cid(),)
     ).fetchall())
     conn.close()
     return jsonify(rows)
@@ -1836,7 +2067,7 @@ def api_er_list():
 def api_er_get(rid):
     conn = get_connection()
     row = row_to_dict(conn.execute(
-        "SELECT * FROM estados_resultados WHERE id=?", (rid,)
+        "SELECT * FROM estados_resultados WHERE id=? AND cliente_id=?", (rid, cid())
     ).fetchone())
     conn.close()
     return jsonify(row or {})
@@ -1846,7 +2077,7 @@ def api_er_get(rid):
 @login_required
 def api_er_delete(rid):
     conn = get_connection()
-    conn.execute("DELETE FROM estados_resultados WHERE id=?", (rid,))
+    conn.execute("DELETE FROM estados_resultados WHERE id=? AND cliente_id=?", (rid, cid()))
     conn.commit()
     conn.close()
     return jsonify({"success": True})
@@ -1895,7 +2126,7 @@ def api_er_importar():
     c = conn.cursor()
     c.execute("""
         INSERT INTO estados_resultados
-        (periodo_label, mes, anio, moneda,
+        (cliente_id, periodo_label, mes, anio, moneda,
          ventas_netas, otros_ingresos, total_ingresos,
          costo_ventas, utilidad_bruta,
          gastos_administrativos, gastos_ventas, total_gastos_operativos,
@@ -1903,8 +2134,9 @@ def api_er_importar():
          gastos_financieros, otros_gastos_netos,
          utilidad_antes_impuestos, impuesto_renta, utilidad_neta,
          archivo_origen)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     """, (
+        cid(),
         p.get("periodo_label"), p.get("mes"), p.get("anio"), p.get("moneda", "PEN"),
         p.get("ventas_netas", 0), p.get("otros_ingresos", 0), p.get("total_ingresos", 0),
         p.get("costo_ventas", 0), p.get("utilidad_bruta", 0),
@@ -1928,7 +2160,8 @@ def api_er_exportar():
     import io as _io
     conn = get_connection()
     rows = rows_to_list(conn.execute(
-        "SELECT * FROM estados_resultados ORDER BY anio, created_at"
+        "SELECT * FROM estados_resultados WHERE cliente_id=? ORDER BY anio, created_at",
+        (cid(),)
     ).fetchall())
     conn.close()
     if not rows:
@@ -1963,7 +2196,8 @@ def api_bg_template():
 def api_bg_list():
     conn = get_connection()
     rows = rows_to_list(conn.execute(
-        "SELECT * FROM balance_general ORDER BY anio DESC, created_at DESC"
+        "SELECT * FROM balance_general WHERE cliente_id=? ORDER BY anio DESC, created_at DESC",
+        (cid(),)
     ).fetchall())
     conn.close()
     return jsonify(rows)
@@ -1974,7 +2208,7 @@ def api_bg_list():
 def api_bg_get(rid):
     conn = get_connection()
     row = row_to_dict(conn.execute(
-        "SELECT * FROM balance_general WHERE id=?", (rid,)
+        "SELECT * FROM balance_general WHERE id=? AND cliente_id=?", (rid, cid())
     ).fetchone())
     conn.close()
     return jsonify(row or {})
@@ -1984,7 +2218,7 @@ def api_bg_get(rid):
 @login_required
 def api_bg_delete(rid):
     conn = get_connection()
-    conn.execute("DELETE FROM balance_general WHERE id=?", (rid,))
+    conn.execute("DELETE FROM balance_general WHERE id=? AND cliente_id=?", (rid, cid()))
     conn.commit()
     conn.close()
     return jsonify({"success": True})
@@ -2039,7 +2273,7 @@ def api_bg_importar():
     c = conn.cursor()
     c.execute("""
         INSERT INTO balance_general
-        (periodo_label, mes, anio, moneda,
+        (cliente_id, periodo_label, mes, anio, moneda,
          caja_bancos, cuentas_cobrar, inventarios, otros_ac, total_activo_corriente,
          inmueble_maquinaria, depreciacion_acumulada, activos_intangibles, otros_anc,
          total_activo_no_corriente, total_activo,
@@ -2047,8 +2281,9 @@ def api_bg_importar():
          deuda_lp, otros_pnc, total_pasivo_no_corriente, total_pasivo,
          capital_social, reservas, utilidades_retenidas, resultado_ejercicio,
          total_patrimonio, total_pasivo_patrimonio, archivo_origen)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     """, (
+        cid(),
         p.get("periodo_label"), p.get("mes"), p.get("anio"), p.get("moneda", "PEN"),
         p.get("caja_bancos", 0), p.get("cuentas_cobrar", 0), p.get("inventarios", 0),
         p.get("otros_ac", 0), p.get("total_activo_corriente", 0),
@@ -2077,7 +2312,8 @@ def api_bg_exportar():
     import io as _io
     conn = get_connection()
     rows = rows_to_list(conn.execute(
-        "SELECT * FROM balance_general ORDER BY anio, created_at"
+        "SELECT * FROM balance_general WHERE cliente_id=? ORDER BY anio, created_at",
+        (cid(),)
     ).fetchall())
     conn.close()
     if not rows:

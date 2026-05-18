@@ -1,7 +1,6 @@
 import sqlite3
 import os
 
-# Render y Vercel usan /tmp para escritura persistente entre requests
 _base = "/tmp" if (os.environ.get("VERCEL") or os.environ.get("RENDER")) else os.path.dirname(__file__)
 DB_PATH = os.path.join(_base, "viva_cont.db")
 
@@ -14,14 +13,58 @@ def get_connection():
     return conn
 
 
+def _migrate(conn, sql, *alt_sqls):
+    """Run a DDL migration silently if it fails (column already exists, etc.)."""
+    for s in [sql] + list(alt_sqls):
+        try:
+            conn.execute(s)
+            conn.commit()
+        except Exception:
+            pass
+
+
 def init_db():
     conn = get_connection()
     c = conn.cursor()
 
-    # Tabla principal de transacciones
+    # ── CLIENTES (tenants) ────────────────────────────────
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS clientes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            razon_social TEXT NOT NULL,
+            nombre_comercial TEXT,
+            ruc TEXT,
+            email TEXT,
+            telefono TEXT,
+            plan TEXT DEFAULT 'basic',
+            activo INTEGER DEFAULT 1,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    # ── USUARIOS ──────────────────────────────────────────
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS usuarios (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            cliente_id INTEGER,
+            nombre TEXT NOT NULL,
+            email TEXT UNIQUE NOT NULL,
+            username TEXT UNIQUE NOT NULL,
+            password_hash TEXT NOT NULL,
+            rol TEXT DEFAULT 'usuario',
+            privilegios TEXT DEFAULT '[]',
+            activo INTEGER DEFAULT 1,
+            ultimo_acceso TIMESTAMP,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (cliente_id) REFERENCES clientes(id)
+        )
+    """)
+
+    # ── TRANSACCIONES ─────────────────────────────────────
     c.execute("""
         CREATE TABLE IF NOT EXISTS transacciones (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            cliente_id INTEGER,
             modulo TEXT DEFAULT 'banco',
             fecha_operacion TEXT,
             referencia TEXT,
@@ -44,20 +87,16 @@ def init_db():
             doc_cont TEXT,
             comprobante TEXT,
             archivo_origen TEXT,
+            periodo_id INTEGER,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
-    # Migración: agregar columna modulo si no existe
-    try:
-        c.execute("ALTER TABLE transacciones ADD COLUMN modulo TEXT DEFAULT 'banco'")
-        conn.commit()
-    except Exception:
-        pass
 
-    # Tabla de facturas electrónicas
+    # ── FACTURAS ──────────────────────────────────────────
     c.execute("""
         CREATE TABLE IF NOT EXISTS facturas (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            cliente_id INTEGER,
             serie TEXT NOT NULL,
             correlativo TEXT NOT NULL,
             tipo_comprobante TEXT DEFAULT 'FACTURA',
@@ -79,7 +118,7 @@ def init_db():
         )
     """)
 
-    # Tabla de items de facturas
+    # ── FACTURA ITEMS ─────────────────────────────────────
     c.execute("""
         CREATE TABLE IF NOT EXISTS factura_items (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -96,10 +135,11 @@ def init_db():
         )
     """)
 
-    # Tabla de cuentas bancarias
+    # ── CUENTAS BANCARIAS ─────────────────────────────────
     c.execute("""
         CREATE TABLE IF NOT EXISTS cuentas_bancarias (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            cliente_id INTEGER,
             banco TEXT NOT NULL,
             numero_cuenta TEXT,
             moneda TEXT DEFAULT 'PEN',
@@ -109,10 +149,11 @@ def init_db():
         )
     """)
 
-    # Tabla de períodos cargados (un período = un estado de cuenta subido)
+    # ── PERÍODOS CARGADOS ─────────────────────────────────
     c.execute("""
         CREATE TABLE IF NOT EXISTS periodos_cargados (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            cliente_id INTEGER,
             label TEXT,
             mes TEXT,
             anio INTEGER,
@@ -127,17 +168,12 @@ def init_db():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
-    # Migración: agregar periodo_id a transacciones si no existe
-    try:
-        c.execute("ALTER TABLE transacciones ADD COLUMN periodo_id INTEGER")
-        conn.commit()
-    except Exception:
-        pass
 
-    # Tabla de importaciones de datos
+    # ── IMPORTACIONES ─────────────────────────────────────
     c.execute("""
         CREATE TABLE IF NOT EXISTS importaciones (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            cliente_id INTEGER,
             nombre_archivo TEXT,
             tipo_fuente TEXT,
             url_fuente TEXT,
@@ -147,10 +183,11 @@ def init_db():
         )
     """)
 
-    # Tabla de configuración de la empresa
+    # ── EMPRESA (configuración por cliente) ───────────────
     c.execute("""
         CREATE TABLE IF NOT EXISTS empresa (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            cliente_id INTEGER UNIQUE,
             ruc TEXT,
             razon_social TEXT,
             nombre_comercial TEXT,
@@ -163,19 +200,11 @@ def init_db():
         )
     """)
 
-    # Seed empresa por defecto si no existe
-    c.execute("SELECT COUNT(*) FROM empresa")
-    if c.fetchone()[0] == 0:
-        c.execute("""
-            INSERT INTO empresa (ruc, razon_social, nombre_comercial, direccion, telefono, email)
-            VALUES ('20600000000', 'VIVA CONSULTING EMPRESAS S.A.C.', 'VIVA CONSULTING',
-                    'Lima, Perú', '+51 999 999 999', 'contacto@vivaconsulting.pe')
-        """)
-
-    # Tabla Estado de Resultados
+    # ── ESTADO DE RESULTADOS ──────────────────────────────
     c.execute("""
         CREATE TABLE IF NOT EXISTS estados_resultados (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            cliente_id INTEGER,
             periodo_label TEXT,
             mes TEXT,
             anio INTEGER,
@@ -201,10 +230,11 @@ def init_db():
         )
     """)
 
-    # Tabla Balance General
+    # ── BALANCE GENERAL ───────────────────────────────────
     c.execute("""
         CREATE TABLE IF NOT EXISTS balance_general (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            cliente_id INTEGER,
             periodo_label TEXT,
             mes TEXT,
             anio INTEGER,
@@ -239,38 +269,69 @@ def init_db():
         )
     """)
 
-    # Tabla de usuarios del sistema
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS usuarios (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            nombre TEXT NOT NULL,
-            email TEXT UNIQUE NOT NULL,
-            username TEXT UNIQUE NOT NULL,
-            password_hash TEXT NOT NULL,
-            rol TEXT DEFAULT 'admin',
-            activo INTEGER DEFAULT 1,
-            ultimo_acceso TIMESTAMP,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    """)
+    conn.commit()
 
-    # Super Admin por defecto: Luis Vallejos
-    # pbkdf2:sha256:50000 → ~0.1s en CPU lenta (vs 260000 iter → 2.6s en Render free)
+    # ── MIGRACIONES (tablas preexistentes) ────────────────
+    for tbl in ["usuarios", "transacciones", "facturas", "periodos_cargados",
+                "importaciones", "estados_resultados", "balance_general",
+                "cuentas_bancarias"]:
+        _migrate(conn, f"ALTER TABLE {tbl} ADD COLUMN cliente_id INTEGER")
+
+    _migrate(conn, "ALTER TABLE transacciones ADD COLUMN modulo TEXT DEFAULT 'banco'")
+    _migrate(conn, "ALTER TABLE transacciones ADD COLUMN periodo_id INTEGER")
+    _migrate(conn, "ALTER TABLE usuarios ADD COLUMN privilegios TEXT DEFAULT '[]'")
+    _migrate(conn, "ALTER TABLE empresa ADD COLUMN cliente_id INTEGER UNIQUE")
+
+    # ── CLIENTE RAÍZ: Viva Consulting (id=1) ──────────────
+    c.execute("SELECT COUNT(*) FROM clientes WHERE id=1")
+    if c.fetchone()[0] == 0:
+        c.execute("""
+            INSERT INTO clientes (id, razon_social, nombre_comercial, ruc, email, plan)
+            VALUES (1, 'VIVA CONSULTING EMPRESAS S.A.C.', 'VIVA CONSULTING',
+                    '20600000000', 'contacto@vivaconsulting.pe', 'enterprise')
+        """)
+        conn.commit()
+
+    # ── EMPRESA de Viva Consulting ────────────────────────
+    c.execute("SELECT COUNT(*) FROM empresa WHERE cliente_id=1")
+    if c.fetchone()[0] == 0:
+        c.execute("""
+            INSERT INTO empresa (cliente_id, ruc, razon_social, nombre_comercial, direccion, telefono, email)
+            VALUES (1, '20600000000', 'VIVA CONSULTING EMPRESAS S.A.C.', 'VIVA CONSULTING',
+                    'Lima, Perú', '+51 999 999 999', 'contacto@vivaconsulting.pe')
+        """)
+        conn.commit()
+
+    # ── Asignar datos huérfanos a cliente_id=1 ────────────
+    for tbl in ["transacciones", "facturas", "periodos_cargados",
+                "importaciones", "estados_resultados", "balance_general",
+                "cuentas_bancarias"]:
+        conn.execute(f"UPDATE {tbl} SET cliente_id=1 WHERE cliente_id IS NULL")
+    conn.execute("UPDATE empresa SET cliente_id=1 WHERE cliente_id IS NULL")
+    conn.commit()
+
+    # ── SUPER ADMIN: Luis Vallejos ────────────────────────
     from werkzeug.security import generate_password_hash
     _fast_hash = generate_password_hash('VivaAdmin2026!', method='pbkdf2:sha256:50000')
+    _all_privs = '["estados_cuenta","analisis_bancario","estados_resultados","balance_general","facturador"]'
 
     c.execute("SELECT COUNT(*) FROM usuarios WHERE rol='super_admin'")
     if c.fetchone()[0] == 0:
         c.execute("""
-            INSERT INTO usuarios (nombre, email, username, password_hash, rol)
-            VALUES (?, ?, ?, ?, 'super_admin')
+            INSERT INTO usuarios (cliente_id, nombre, email, username, password_hash, rol, privilegios)
+            VALUES (1, ?, ?, ?, ?, 'super_admin', ?)
         """, ('Luis Vallejos Rodriguez', 'vivacont@vivaempresasglobal.com',
-              'luisvallejos', _fast_hash))
+              'luisvallejos', _fast_hash, _all_privs))
     else:
-        # Migrar hash lento al hash rápido usando Python para parsear el formato
+        # Asegurar cliente_id=1 y privilegios completos en super_admin
+        conn.execute(
+            "UPDATE usuarios SET cliente_id=1, privilegios=? WHERE rol='super_admin' AND cliente_id IS NULL",
+            (_all_privs,)
+        )
+        # Migrar hash lento al hash rápido
         row = c.execute("SELECT password_hash FROM usuarios WHERE username='luisvallejos'").fetchone()
         if row:
-            parts = row[0].split(':')  # pbkdf2:sha256:260000$salt$hash
+            parts = row[0].split(':')
             if len(parts) >= 3:
                 iters = parts[2].split('$')[0]
                 if iters.isdigit() and int(iters) > 100000:

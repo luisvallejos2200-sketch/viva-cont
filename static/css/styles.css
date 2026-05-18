@@ -728,3 +728,17 @@ body {
 .mt-16        { margin-top:16px; }
 .mb-16        { margin-bottom:16px; }
 .clearfix::after { content:''; display:table; clear:both; }
+
+/* ══ ADMIN / USER MANAGEMENT ════════════════════════════════ */
+.error-msg {
+  background:#fff5f5; border:1px solid #fed7d7; border-left:3px solid #e03c3c;
+  border-radius:8px; padding:10px 14px; margin-top:12px;
+  font-size:13px; color:#c53030;
+}
+.modal-actions {
+  display:flex; justify-content:flex-end; gap:10px;
+  padding-top:16px; margin-top:16px; border-top:1px solid #e8eef8;
+}
+.modulo-check-wrap:has(input:checked) {
+  border-color:#00309B; background:rgba(0,48,155,.04);
+}

@@ -1,0 +1,285 @@
+{% extends "base.html" %}
+{% block title %}Usuarios{% endblock %}
+{% block breadcrumb %}Usuarios{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Gestión de Usuarios</h1>
+    <p class="page-subtitle">
+      {% if session.get('user_rol') == 'super_admin' %}
+        Usuarios de tu organización
+      {% else %}
+        Gestiona los usuarios y sus permisos de acceso al sistema
+      {% endif %}
+    </p>
+  </div>
+  <button class="btn btn-primary" onclick="openModalNuevoUsuario()">
+    <i class="fa-solid fa-plus"></i> Nuevo Usuario
+  </button>
+</div>
+
+<div class="card">
+  <div class="card-body" style="padding:0">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Usuario</th>
+          <th>Email</th>
+          <th>Rol</th>
+          <th>Módulos de acceso</th>
+          <th>Estado</th>
+          <th>Último acceso</th>
+          <th>Acciones</th>
+        </tr>
+      </thead>
+      <tbody id="tbodyUsuarios">
+        <tr><td colspan="7" style="text-align:center;padding:32px;color:#888">Cargando...</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const MODULOS = [
+  {key:'estados_cuenta',      label:'Estados de Cuenta',    icon:'fa-building-columns'},
+  {key:'analisis_bancario',   label:'Análisis Bancario',    icon:'fa-chart-bar'},
+  {key:'estados_resultados',  label:'Estado de Resultados', icon:'fa-chart-line'},
+  {key:'balance_general',     label:'Balance General',      icon:'fa-scale-balanced'},
+  {key:'facturador',          label:'Facturador',           icon:'fa-file-invoice-dollar'},
+];
+
+let usuariosData = [];
+
+async function cargarUsuarios() {
+  const res = await fetch('/api/usuarios');
+  usuariosData = await res.json();
+  renderTabla();
+}
+
+function renderTabla() {
+  const tbody = document.getElementById('tbodyUsuarios');
+  if (!usuariosData.length) {
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:32px;color:#888">No hay usuarios registrados aún</td></tr>';
+    return;
+  }
+  tbody.innerHTML = usuariosData.map(u => {
+    let privs = [];
+    try { privs = JSON.parse(u.privilegios || '[]'); } catch(e) {}
+    const badges = MODULOS
+      .filter(m => privs.includes(m.key))
+      .map(m => `<span class="badge badge-info" style="font-size:10px"><i class="fa-solid ${m.icon}" style="font-size:9px"></i> ${m.label}</span>`)
+      .join('');
+    const acceso = u.ultimo_acceso
+      ? new Date(u.ultimo_acceso).toLocaleDateString('es-PE', {day:'2-digit',month:'short',year:'numeric'})
+      : 'Nunca';
+    return `
+      <tr>
+        <td>
+          <div style="display:flex;align-items:center;gap:10px">
+            <div style="width:34px;height:34px;border-radius:50%;background:linear-gradient(135deg,#0A096F,#00309B);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:13px;flex-shrink:0">
+              ${u.nombre.charAt(0).toUpperCase()}
+            </div>
+            <div>
+              <div style="font-weight:600;color:#0d1a3a">${u.nombre}</div>
+              <div style="font-size:12px;color:#888">@${u.username}</div>
+            </div>
+          </div>
+        </td>
+        <td style="font-size:13px">${u.email}</td>
+        <td><span class="badge ${u.rol==='admin'?'badge-warning':'badge-info'}">${u.rol==='admin'?'Admin':'Usuario'}</span></td>
+        <td>
+          <div style="display:flex;gap:4px;flex-wrap:wrap">
+            ${u.rol === 'admin'
+              ? '<span class="badge badge-success" style="font-size:10px"><i class="fa-solid fa-shield-halved" style="font-size:9px"></i> Acceso completo</span>'
+              : (badges || '<span style="color:#aaa;font-size:12px">Sin módulos</span>')}
+          </div>
+        </td>
+        <td>${u.activo ? '<span class="badge badge-success">Activo</span>' : '<span class="badge badge-danger">Inactivo</span>'}</td>
+        <td style="font-size:12px;color:#888">${acceso}</td>
+        <td>
+          <div style="display:flex;gap:6px">
+            <button class="btn btn-sm btn-outline" onclick="editarUsuario(${u.id})" title="Editar">
+              <i class="fa-solid fa-pen"></i>
+            </button>
+            <button class="btn btn-sm btn-outline" style="color:#e03c3c" onclick="eliminarUsuario(${u.id},'${u.nombre.replace(/'/g,"&#39;")}')" title="Eliminar">
+              <i class="fa-solid fa-trash"></i>
+            </button>
+          </div>
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+function openModalNuevoUsuario() {
+  openModal('Nuevo Usuario', `
+    <form id="formNuevoUsuario" onsubmit="crearUsuario(event)">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+        <div class="form-group" style="grid-column:1/-1">
+          <label class="form-label">Nombre completo *</label>
+          <input class="form-control" name="nombre" required placeholder="María García">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Email *</label>
+          <input class="form-control" name="email" type="email" required placeholder="maria@empresa.pe">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Usuario *</label>
+          <input class="form-control" name="username" required placeholder="maria.garcia">
+        </div>
+        <div class="form-group" style="grid-column:1/-1">
+          <label class="form-label">Contraseña *</label>
+          <input class="form-control" name="password" type="password" required placeholder="Mínimo 8 caracteres">
+        </div>
+      </div>
+      <div style="border-top:1px solid #e8eef8;margin:12px -24px;padding:16px 24px 0">
+        <div style="font-weight:700;color:#0d1a3a;margin-bottom:14px;font-size:13px;letter-spacing:.3px;text-transform:uppercase">
+          <i class="fa-solid fa-lock" style="color:#00309B;margin-right:6px"></i>Módulos de acceso
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          ${MODULOS.map(m => `
+            <label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px 12px;border:1.5px solid #e8eef8;border-radius:8px;transition:border-color .2s" class="modulo-check-wrap">
+              <input type="checkbox" name="privs" value="${m.key}" checked style="width:16px;height:16px;accent-color:#00309B">
+              <span style="display:flex;align-items:center;gap:6px;font-size:13px">
+                <i class="fa-solid ${m.icon}" style="color:#00309B;font-size:13px;width:14px"></i>
+                ${m.label}
+              </span>
+            </label>
+          `).join('')}
+        </div>
+      </div>
+      <div id="errNuevoUsuario" class="error-msg" style="display:none"></div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-outline" onclick="closeModal()">Cancelar</button>
+        <button type="submit" class="btn btn-primary">Crear Usuario</button>
+      </div>
+    </form>
+  `);
+}
+
+async function crearUsuario(e) {
+  e.preventDefault();
+  const fd = new FormData(e.target);
+  const privs = [...document.querySelectorAll('input[name="privs"]:checked')].map(cb => cb.value);
+  const body = {
+    nombre:   fd.get('nombre'),
+    email:    fd.get('email'),
+    username: fd.get('username'),
+    password: fd.get('password'),
+    rol: 'usuario',
+    privilegios: privs,
+  };
+  const res = await fetch('/api/usuarios', {
+    method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)
+  });
+  const data = await res.json();
+  if (data.ok) {
+    closeModal();
+    showToast('Usuario creado correctamente', 'success');
+    cargarUsuarios();
+  } else {
+    document.getElementById('errNuevoUsuario').textContent = data.error || 'Error al crear';
+    document.getElementById('errNuevoUsuario').style.display = 'block';
+  }
+}
+
+function editarUsuario(id) {
+  const u = usuariosData.find(x => x.id === id);
+  if (!u) return;
+  let privs = [];
+  try { privs = JSON.parse(u.privilegios || '[]'); } catch(e) {}
+
+  openModal(`Editar Usuario — ${u.nombre}`, `
+    <form id="formEditarUsuario" onsubmit="guardarUsuario(event,${id})">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+        <div class="form-group" style="grid-column:1/-1">
+          <label class="form-label">Nombre completo</label>
+          <input class="form-control" name="nombre" required value="${u.nombre}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Email</label>
+          <input class="form-control" name="email" type="email" required value="${u.email}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Nueva contraseña</label>
+          <input class="form-control" name="password" type="password" placeholder="Dejar vacío para no cambiar">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Estado</label>
+          <select class="form-control" name="activo">
+            <option value="1" ${u.activo ? 'selected' : ''}>Activo</option>
+            <option value="0" ${!u.activo ? 'selected' : ''}>Inactivo</option>
+          </select>
+        </div>
+      </div>
+      ${u.rol === 'usuario' ? `
+      <div style="border-top:1px solid #e8eef8;margin:12px -24px;padding:16px 24px 0">
+        <div style="font-weight:700;color:#0d1a3a;margin-bottom:14px;font-size:13px;letter-spacing:.3px;text-transform:uppercase">
+          <i class="fa-solid fa-lock" style="color:#00309B;margin-right:6px"></i>Módulos de acceso
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          ${MODULOS.map(m => `
+            <label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px 12px;border:1.5px solid #e8eef8;border-radius:8px">
+              <input type="checkbox" name="privs" value="${m.key}" ${privs.includes(m.key)?'checked':''} style="width:16px;height:16px;accent-color:#00309B">
+              <span style="display:flex;align-items:center;gap:6px;font-size:13px">
+                <i class="fa-solid ${m.icon}" style="color:#00309B;font-size:13px;width:14px"></i>
+                ${m.label}
+              </span>
+            </label>
+          `).join('')}
+        </div>
+      </div>
+      ` : ''}
+      <div id="errEditarUsuario" class="error-msg" style="display:none"></div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-outline" onclick="closeModal()">Cancelar</button>
+        <button type="submit" class="btn btn-primary">Guardar cambios</button>
+      </div>
+    </form>
+  `);
+}
+
+async function guardarUsuario(e, id) {
+  e.preventDefault();
+  const fd = new FormData(e.target);
+  const privsChecks = [...document.querySelectorAll('input[name="privs"]:checked')];
+  const body = {
+    nombre:  fd.get('nombre'),
+    email:   fd.get('email'),
+    activo:  parseInt(fd.get('activo')),
+  };
+  if (fd.get('password')) body.password = fd.get('password');
+  if (privsChecks.length >= 0) body.privilegios = privsChecks.map(cb => cb.value);
+
+  const res = await fetch(`/api/usuarios/${id}`, {
+    method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)
+  });
+  const data = await res.json();
+  if (data.ok) {
+    closeModal();
+    showToast('Usuario actualizado', 'success');
+    cargarUsuarios();
+  } else {
+    document.getElementById('errEditarUsuario').textContent = data.error || 'Error al guardar';
+    document.getElementById('errEditarUsuario').style.display = 'block';
+  }
+}
+
+async function eliminarUsuario(id, nombre) {
+  if (!confirm(`¿Eliminar usuario "${nombre}"? Esta acción no se puede deshacer.`)) return;
+  const res = await fetch(`/api/usuarios/${id}`, {method:'DELETE'});
+  const data = await res.json();
+  if (data.ok) {
+    showToast('Usuario eliminado', 'success');
+    cargarUsuarios();
+  } else {
+    showToast(data.error || 'Error al eliminar', 'error');
+  }
+}
+
+cargarUsuarios();
+</script>
+{% endblock %}

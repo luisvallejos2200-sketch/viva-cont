@@ -5,44 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>VIVA CONT | Iniciar Sesión</title>
   <style>
-    /* ── Outfit font (local, solo latin) ── */
     @font-face {
       font-family: 'Outfit';
       font-style: normal;
       font-weight: 300 800;
       font-display: swap;
       src: url('/static/fonts/outfit-latin.woff2') format('woff2');
-      unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
     }
-
-    /* ── Iconos mínimos (2 KB vs 392 KB de Font Awesome completo) ── */
-    @font-face {
-      font-family: 'FA-Solid';
-      font-style: normal;
-      font-weight: 900;
-      font-display: block;
-      src: url('/static/fontawesome/webfonts/fa-solid-900.woff2') format('woff2');
-    }
-    @font-face {
-      font-family: 'FA-Regular';
-      font-style: normal;
-      font-weight: 400;
-      font-display: block;
-      src: url('/static/fontawesome/webfonts/fa-regular-400.woff2') format('woff2');
-    }
-    .fai { display:inline-block; font-style:normal; font-variant:normal; text-rendering:auto; line-height:1; -webkit-font-smoothing:antialiased; }
-    .fai-s { font-family:'FA-Solid'; font-weight:900; }
-    .fai-r { font-family:'FA-Regular'; font-weight:400; }
-    .fai-user::before          { content:"\f007"; }
-    .fai-lock::before          { content:"\f023"; }
-    .fai-eye::before           { content:"\f06e"; }
-    .fai-eye-slash::before     { content:"\f070"; }
-    .fai-signin::before        { content:"\f2f6"; }
-    .fai-alert::before         { content:"\f06a"; }
-    .fai-chart-line::before    { content:"\f201"; }
-    .fai-scale::before         { content:"\f24e"; }
-    .fai-invoice::before       { content:"\f571"; }
-    .fai-bar-chart::before     { content:"\e0e3"; }
 
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -82,24 +51,10 @@
     }
     .brand-content { position: relative; z-index: 1; text-align: center; max-width: 400px; }
     .brand-logo-img { width: 200px; margin-bottom: 36px; filter: brightness(0) invert(1); }
-    .brand-divider {
-      width: 48px; height: 3px;
-      background: rgba(255,255,255,.35);
-      border-radius: 2px;
-      margin: 20px auto 24px;
-    }
-    .brand-tagline {
-      font-size: 22px; font-weight: 700; color: #fff;
-      line-height: 1.4; margin-bottom: 12px;
-    }
-    .brand-sub {
-      font-size: 14px; color: rgba(255,255,255,.6);
-      font-weight: 300; line-height: 1.6;
-    }
-    .brand-badges {
-      display: flex; gap: 12px; justify-content: center;
-      margin-top: 40px; flex-wrap: wrap;
-    }
+    .brand-divider { width: 48px; height: 3px; background: rgba(255,255,255,.35); border-radius: 2px; margin: 20px auto 24px; }
+    .brand-tagline { font-size: 22px; font-weight: 700; color: #fff; line-height: 1.4; margin-bottom: 12px; }
+    .brand-sub { font-size: 14px; color: rgba(255,255,255,.6); font-weight: 300; line-height: 1.6; }
+    .brand-badges { display: flex; gap: 12px; justify-content: center; margin-top: 40px; flex-wrap: wrap; }
     .brand-badge {
       background: rgba(255,255,255,.1);
       border: 1px solid rgba(255,255,255,.18);
@@ -109,60 +64,41 @@
       color: rgba(255,255,255,.8);
       letter-spacing: .4px;
       text-transform: uppercase;
+      display: inline-flex; align-items: center; gap: 6px;
     }
-    .brand-footer {
-      position: absolute; bottom: 28px; left: 0; right: 0;
-      text-align: center;
-      font-size: 11px; color: rgba(255,255,255,.3);
-    }
+    .brand-badge svg { width: 11px; height: 11px; fill: currentColor; }
+    .brand-footer { position: absolute; bottom: 28px; left: 0; right: 0; text-align: center; font-size: 11px; color: rgba(255,255,255,.3); }
 
-    .login-form-panel {
-      width: 48%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 48px 40px;
-    }
+    .login-form-panel { width: 48%; display: flex; align-items: center; justify-content: center; padding: 48px 40px; }
     .login-box { width: 100%; max-width: 400px; }
-
     .login-header { margin-bottom: 36px; }
-    .login-title {
-      font-size: 26px; font-weight: 800;
-      color: #0d1a3a; margin-bottom: 6px;
-    }
+    .login-title { font-size: 26px; font-weight: 800; color: #0d1a3a; margin-bottom: 6px; }
     .login-subtitle { font-size: 14px; color: #6b7a99; font-weight: 400; }
 
     .form-group { margin-bottom: 20px; }
-    .form-label {
-      display: block; font-size: 12.5px; font-weight: 600;
-      color: #0d1a3a; margin-bottom: 8px; letter-spacing: .2px;
-    }
+    .form-label { display: block; font-size: 12.5px; font-weight: 600; color: #0d1a3a; margin-bottom: 8px; letter-spacing: .2px; }
     .input-wrap { position: relative; }
-    .input-icon {
-      position: absolute; left: 14px; top: 50%; transform: translateY(-50%);
-      color: #a0aec0; font-size: 14px;
-    }
+    .input-icon { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: #a0aec0; width: 14px; height: 14px; fill: currentColor; }
     .form-control {
       width: 100%;
       padding: 12px 14px 12px 40px;
       border: 1.5px solid #d8e0f0;
       border-radius: 10px;
-      font-family: 'Outfit', sans-serif;
+      font-family: 'Outfit', system-ui, sans-serif;
       font-size: 14px; color: #0d1a3a;
       background: #fff;
       transition: border-color .2s, box-shadow .2s;
       outline: none;
     }
-    .form-control:focus {
-      border-color: #00309B;
-      box-shadow: 0 0 0 3px rgba(0,48,155,.1);
-    }
+    .form-control:focus { border-color: #00309B; box-shadow: 0 0 0 3px rgba(0,48,155,.1); }
     .toggle-pass {
       position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
       background: none; border: none; cursor: pointer;
-      color: #a0aec0; font-size: 14px; padding: 4px;
+      color: #a0aec0; padding: 4px;
+      display: flex; align-items: center;
     }
     .toggle-pass:hover { color: #00309B; }
+    .toggle-pass svg { width: 16px; height: 16px; fill: currentColor; }
 
     .btn-login {
       width: 100%;
@@ -170,52 +106,39 @@
       background: linear-gradient(135deg, #0A096F 0%, #00309B 50%, #211FA9 100%);
       color: #fff;
       border: none; border-radius: 10px;
-      font-family: 'Outfit', sans-serif;
+      font-family: 'Outfit', system-ui, sans-serif;
       font-size: 15px; font-weight: 700;
       cursor: pointer;
       transition: filter .2s, transform .15s, box-shadow .2s;
       box-shadow: 0 4px 14px rgba(0,48,155,.3);
       letter-spacing: .3px;
       margin-top: 8px;
+      display: flex; align-items: center; justify-content: center; gap: 8px;
     }
-    .btn-login:hover {
-      filter: brightness(1.08);
-      transform: translateY(-1px);
-      box-shadow: 0 6px 20px rgba(0,48,155,.4);
-    }
+    .btn-login:hover { filter: brightness(1.08); transform: translateY(-1px); box-shadow: 0 6px 20px rgba(0,48,155,.4); }
     .btn-login:active { transform: translateY(0); }
-    .btn-login .fai { margin-right: 8px; }
+    .btn-login svg { width: 16px; height: 16px; fill: currentColor; }
 
     .error-alert {
       display: flex; align-items: center; gap: 10px;
-      background: #fff5f5;
-      border: 1px solid #fed7d7;
-      border-left: 3px solid #e03c3c;
-      border-radius: 8px;
-      padding: 12px 14px;
-      margin-bottom: 20px;
+      background: #fff5f5; border: 1px solid #fed7d7;
+      border-left: 3px solid #e03c3c; border-radius: 8px;
+      padding: 12px 14px; margin-bottom: 20px;
       font-size: 13px; color: #c53030;
     }
-    .error-alert .fai { color: #e03c3c; flex-shrink: 0; }
+    .error-alert svg { width: 16px; height: 16px; fill: #e03c3c; flex-shrink: 0; }
 
-    .login-footer {
-      margin-top: 32px;
-      text-align: center;
-      font-size: 11.5px; color: #a0aec0;
-    }
+    .login-footer { margin-top: 32px; text-align: center; font-size: 11.5px; color: #a0aec0; }
     .login-footer span { color: #00309B; font-weight: 600; }
 
     .system-badge {
       display: inline-flex; align-items: center; gap: 6px;
-      background: rgba(0,48,155,.07);
-      border: 1px solid rgba(0,48,155,.15);
-      border-radius: 20px;
-      padding: 5px 14px;
-      font-size: 11px; font-weight: 700;
-      color: #00309B; letter-spacing: .5px;
-      text-transform: uppercase;
-      margin-bottom: 20px;
+      background: rgba(0,48,155,.07); border: 1px solid rgba(0,48,155,.15);
+      border-radius: 20px; padding: 5px 14px;
+      font-size: 11px; font-weight: 700; color: #00309B;
+      letter-spacing: .5px; text-transform: uppercase; margin-bottom: 20px;
     }
+    .system-badge svg { width: 11px; height: 11px; fill: currentColor; }
 
     @media (max-width: 768px) {
       body { flex-direction: column; }
@@ -236,9 +159,18 @@
       <div class="brand-tagline">Impulsamos el crecimiento<br>de negocios con estrategia<br>y visión empresarial</div>
       <div class="brand-sub">Sistema de gestión financiera y contable<br>diseñado para líderes empresariales</div>
       <div class="brand-badges">
-        <span class="brand-badge"><i class="fai fai-s fai-chart-line"></i> Análisis Bancario</span>
-        <span class="brand-badge"><i class="fai fai-s fai-scale"></i> Balance General</span>
-        <span class="brand-badge"><i class="fai fai-s fai-invoice"></i> Facturación</span>
+        <span class="brand-badge">
+          <svg viewBox="0 0 512 512"><path d="M64 64c0-17.7-14.3-32-32-32S0 46.3 0 64V400c0 44.2 35.8 80 80 80H480c17.7 0 32-14.3 32-32s-14.3-32-32-32H80c-8.8 0-16-7.2-16-16V64zm406.6 86.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0L320 210.7l-57.4-57.4c-12.5-12.5-32.8-12.5-45.3 0l-112 112c-12.5 12.5-12.5 32.8 0 45.3s32.8 12.5 45.3 0L240 221.3l57.4 57.4c12.5 12.5 32.8 12.5 45.3 0l128-128z"/></svg>
+          Análisis Bancario
+        </span>
+        <span class="brand-badge">
+          <svg viewBox="0 0 640 512"><path d="M535.2 226.2c4.8 13 7.8 26.9 7.8 41.8c0 61.9-44.9 113.6-104 123.9L439 400l17-57.5C406.7 323.4 384 293 384 256c0-61.9 50.1-112 112-112c4.8 0 9.4 .3 14 .8L535.2 226.2zM496 160A96 96 0 1 0 496 352A96 96 0 1 0 496 160zM0 256C0 167.6 65.1 95.1 149.3 80.9L152 80l-.4 0C152 53.5 173.5 32 200 32s48 21.5 48 48l0 .4 2.7 .9C334.9 95.1 400 167.6 400 256l0 176c0 44.2-35.8 80-80 80H80c-44.2 0-80-35.8-80-80V256zm200-144c-79.5 0-144 64.5-144 144v176c0 8.8 7.2 16 16 16h256c8.8 0 16-7.2 16-16V256c0-79.5-64.5-144-144-144z"/></svg>
+          Balance General
+        </span>
+        <span class="brand-badge">
+          <svg viewBox="0 0 384 512"><path d="M64 0C28.7 0 0 28.7 0 64V448c0 35.3 28.7 64 64 64H320c35.3 0 64-28.7 64-64V160H256c-17.7 0-32-14.3-32-32V0H64zM256 0V128H384L256 0zM80 224H304c8.8 0 16 7.2 16 16s-7.2 16-16 16H80c-8.8 0-16-7.2-16-16s7.2-16 16-16zm0 64H304c8.8 0 16 7.2 16 16s-7.2 16-16 16H80c-8.8 0-16-7.2-16-16s7.2-16 16-16zm96 96c0 17.7-14.3 32-32 32H80c-8.8 0-16-7.2-16-16s7.2-16 16-16h64c0-8.8 7.2-16 16-16s16 7.2 16 16z"/></svg>
+          Facturación
+        </span>
       </div>
     </div>
     <div class="brand-footer">© 2026 Viva Consulting Empresas S.A.C. · Todos los derechos reservados</div>
@@ -248,7 +180,8 @@
     <div class="login-box">
 
       <div class="system-badge">
-        <i class="fai fai-s fai-bar-chart"></i> VIVA CONT
+        <svg viewBox="0 0 448 512"><path d="M160 80c0-26.5 21.5-48 48-48h32c26.5 0 48 21.5 48 48V432c0 26.5-21.5 48-48 48H208c-26.5 0-48-21.5-48-48V80zM0 272c0-26.5 21.5-48 48-48H80c26.5 0 48 21.5 48 48V432c0 26.5-21.5 48-48 48H48c-26.5 0-48-21.5-48-48V272zM368 96h32c26.5 0 48 21.5 48 48V432c0 26.5-21.5 48-48 48H368c-26.5 0-48-21.5-48-48V144c0-26.5 21.5-48 48-48z"/></svg>
+        VIVA CONT
       </div>
 
       <div class="login-header">
@@ -258,7 +191,7 @@
 
       {% if error %}
       <div class="error-alert">
-        <i class="fai fai-s fai-alert"></i>
+        <svg viewBox="0 0 512 512"><path d="M256 512A256 256 0 1 0 256 0a256 256 0 1 0 0 512zm0-384c13.3 0 24 10.7 24 24V264c0 13.3-10.7 24-24 24s-24-10.7-24-24V152c0-13.3 10.7-24 24-24zm-24 224a24 24 0 1 1 48 0 24 24 0 1 1 -48 0z"/></svg>
         {{ error }}
       </div>
       {% endif %}
@@ -267,7 +200,7 @@
         <div class="form-group">
           <label class="form-label">Usuario o correo electrónico</label>
           <div class="input-wrap">
-            <i class="fai fai-s fai-user input-icon"></i>
+            <svg class="input-icon" viewBox="0 0 448 512"><path d="M224 256A128 128 0 1 0 224 0a128 128 0 1 0 0 256zm-45.7 48C79.8 304 0 383.8 0 482.3C0 498.7 13.3 512 29.7 512l388.6 0c16.4 0 29.7-13.3 29.7-29.7C448 383.8 368.2 304 269.7 304l-91.4 0z"/></svg>
             <input type="text" name="username" class="form-control"
                    placeholder="luisvallejos o vivacont@vivaempresasglobal.com"
                    autocomplete="username" required autofocus/>
@@ -277,17 +210,18 @@
         <div class="form-group">
           <label class="form-label">Contraseña</label>
           <div class="input-wrap">
-            <i class="fai fai-s fai-lock input-icon"></i>
+            <svg class="input-icon" viewBox="0 0 448 512"><path d="M144 144v48H304V144c0-44.2-35.8-80-80-80s-80 35.8-80 80zM80 192V144C80 64.5 144.5 0 224 0s144 64.5 144 144v48h16c35.3 0 64 28.7 64 64V448c0 35.3-28.7 64-64 64H64c-35.3 0-64-28.7-64-64V256c0-35.3 28.7-64 64-64H80z"/></svg>
             <input type="password" name="password" id="passwordField" class="form-control"
                    placeholder="••••••••••••" autocomplete="current-password" required/>
-            <button type="button" class="toggle-pass" onclick="togglePass()">
-              <i class="fai fai-r fai-eye" id="eyeIcon"></i>
+            <button type="button" class="toggle-pass" onclick="togglePass()" id="eyeBtn">
+              <svg id="eyeIcon" viewBox="0 0 576 512"><path d="M288 32c-80.8 0-145.5 36.8-192.6 80.6C48.6 156 17.3 208 2.5 243.7c-3.3 7.9-3.3 16.7 0 24.6C17.3 304 48.6 356 95.4 399.4C142.5 443.2 207.2 480 288 480s145.5-36.8 192.6-80.6c46.8-43.5 78.1-95.4 93-131.1c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C433.5 68.8 368.8 32 288 32zM144 256a144 144 0 1 1 288 0 144 144 0 1 1 -288 0zm144-64c0 35.3-28.7 64-64 64c-7.1 0-13.9-1.2-20.3-3.3c-5.5-1.8-11.9 1.6-11.7 7.4c.3 6.9 1.3 13.8 3.2 20.7c13.7 51.2 66.4 81.6 117.6 67.9s81.6-66.4 67.9-117.6c-11.1-41.5-47.8-69.4-88.6-71.1c-5.8-.2-9.2 6.1-7.4 11.7c2.1 6.4 3.3 13.2 3.3 20.3z"/></svg>
             </button>
           </div>
         </div>
 
         <button type="submit" class="btn-login">
-          <i class="fai fai-s fai-signin"></i> Ingresar al sistema
+          <svg viewBox="0 0 512 512"><path d="M217.9 105.9L340.7 228.7c7.2 7.2 11.3 17.1 11.3 27.3s-4.1 20.1-11.3 27.3L217.9 406.1c-6.4 6.4-15 9.9-24 9.9c-18.7 0-33.9-15.2-33.9-33.9l0-62.1L32 320c-17.7 0-32-14.3-32-32l0-64c0-17.7 14.3-32 32-32l128 0 0-62.1c0-18.7 15.2-33.9 33.9-33.9c9 0 17.6 3.6 24 9.9zM352 416l64 0c17.7 0 32-14.3 32-32l0-256c0-17.7-14.3-32-32-32l-64 0c-17.7 0-32-14.3-32-32s14.3-32 32-32l64 0c53 0 96 43 96 96l0 256c0 53-43 96-96 96l-64 0c-17.7 0-32-14.3-32-32s14.3-32 32-32z"/></svg>
+          Ingresar al sistema
         </button>
       </form>
 
@@ -300,16 +234,15 @@
   </div>
 
   <script>
+    const EYE = '<path d="M288 32c-80.8 0-145.5 36.8-192.6 80.6C48.6 156 17.3 208 2.5 243.7c-3.3 7.9-3.3 16.7 0 24.6C17.3 304 48.6 356 95.4 399.4C142.5 443.2 207.2 480 288 480s145.5-36.8 192.6-80.6c46.8-43.5 78.1-95.4 93-131.1c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C433.5 68.8 368.8 32 288 32zM144 256a144 144 0 1 1 288 0 144 144 0 1 1 -288 0zm144-64c0 35.3-28.7 64-64 64c-7.1 0-13.9-1.2-20.3-3.3c-5.5-1.8-11.9 1.6-11.7 7.4c.3 6.9 1.3 13.8 3.2 20.7c13.7 51.2 66.4 81.6 117.6 67.9s81.6-66.4 67.9-117.6c-11.1-41.5-47.8-69.4-88.6-71.1c-5.8-.2-9.2 6.1-7.4 11.7c2.1 6.4 3.3 13.2 3.3 20.3z"/>';
+    const EYEOFF = '<path d="M38.8 5.1C28.4-3.1 13.3-1.2 5.1 9.2S-1.2 34.7 9.2 42.9l592 464c10.4 8.2 25.5 6.3 33.7-4.1s6.3-25.5-4.1-33.7L525.6 386.7c39.6-40.6 66.4-86.1 79.9-118.4c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C465.5 68.8 400.8 32 320 32c-68.2 0-125 26.3-169.3 60.8L38.8 5.1zM223.1 149.5C248.6 126.2 282.7 112 320 112c79.5 0 144 64.5 144 144c0 24.9-6.3 48.3-17.4 68.7L408 294.5c8.4-19.3 10.6-41.4 4.8-63.3c-11.1-41.5-47.8-69.4-88.6-71.1c-5.8-.2-9.2 6.1-7.4 11.7c2.1 6.4 3.3 13.2 3.3 20.3c0 10.2-2.4 19.8-6.6 28.3l-90.3-70.8zM373 389.9c-16.4 6.5-34.3 10.1-53 10.1c-79.5 0-144-64.5-144-144c0-6.9.5-13.6 1.4-20.2L83.1 161.5C60.3 191.2 44 220.8 34.5 243.7c-3.3 7.9-3.3 16.7 0 24.6c14.9 35.7 46.2 87.7 93 131.1C174.5 443.2 239.2 480 320 480c47.8 0 89.9-12.9 126.2-32.5L373 389.9z"/>';
+    let visible = false;
     function togglePass() {
-      const f = document.getElementById('passwordField');
-      const i = document.getElementById('eyeIcon');
-      if (f.type === 'password') {
-        f.type = 'text';
-        i.className = 'fai fai-r fai-eye-slash';
-      } else {
-        f.type = 'password';
-        i.className = 'fai fai-r fai-eye';
-      }
+      visible = !visible;
+      document.getElementById('passwordField').type = visible ? 'text' : 'password';
+      const svg = document.getElementById('eyeIcon');
+      svg.setAttribute('viewBox', visible ? '0 0 640 512' : '0 0 576 512');
+      svg.innerHTML = visible ? EYEOFF : EYE;
     }
   </script>
 </body>

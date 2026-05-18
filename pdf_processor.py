@@ -855,17 +855,7 @@ def extract_bcp_soles(pdf_path: str, banco: str = "BCP SOLES") -> dict:
             except Exception as e:
                 debug_info.append(f"Scotiabank falló: {e}")
 
-            # ── Estrategia 1: Tablas ─────────────────────────
-            try:
-                txs = _strategy_tables(pdf, banco, archivo)
-                debug_info.append(f"Tables: {len(txs)}")
-                if len(txs) >= 2:
-                    return {"transactions": txs, "total": len(txs),
-                            "strategy": "tables", "raw_text": full_txt}
-            except Exception as e:
-                debug_info.append(f"Tables falló: {e}")
-
-            # ── Estrategia 2: Regex sobre texto ──────────────
+            # ── Estrategia 1: Regex sobre texto (rápida) ─────
             try:
                 txs = _strategy_text_regex(pdf, banco, archivo)
                 debug_info.append(f"Regex: {len(txs)}")
@@ -875,7 +865,7 @@ def extract_bcp_soles(pdf_path: str, banco: str = "BCP SOLES") -> dict:
             except Exception as e:
                 debug_info.append(f"Regex falló: {e}")
 
-            # ── Estrategia 3: Ventana deslizante ─────────────
+            # ── Estrategia 2: Ventana deslizante (rápida) ────
             try:
                 txs = _strategy_sliding_window(pdf, banco, archivo)
                 debug_info.append(f"Sliding: {len(txs)}")
@@ -885,7 +875,7 @@ def extract_bcp_soles(pdf_path: str, banco: str = "BCP SOLES") -> dict:
             except Exception as e:
                 debug_info.append(f"Sliding falló: {e}")
 
-            # ── Estrategia 5: Coordenadas X/Y (antes abría PDF de nuevo) ──
+            # ── Estrategia 3: Coordenadas X/Y ────────────────
             try:
                 txs = _strategy_coords(pdf, banco, archivo)
                 debug_info.append(f"Coords: {len(txs)}")
@@ -896,7 +886,7 @@ def extract_bcp_soles(pdf_path: str, banco: str = "BCP SOLES") -> dict:
             except Exception as e:
                 debug_info.append(f"Coords falló: {e}")
 
-            # ── Estrategia 6: Cualquier línea fecha+número (antes abría PDF de nuevo) ──
+            # ── Estrategia 4: Cualquier línea fecha+número ───
             try:
                 txs = _strategy_any_line(pdf, banco, archivo)
                 debug_info.append(f"Any_line: {len(txs)}")
@@ -906,6 +896,16 @@ def extract_bcp_soles(pdf_path: str, banco: str = "BCP SOLES") -> dict:
                             "strategy": "any_line", "raw_text": full_txt}
             except Exception as e:
                 debug_info.append(f"Any_line falló: {e}")
+
+            # ── Estrategia 5: Tablas (lenta — último recurso) ─
+            try:
+                txs = _strategy_tables(pdf, banco, archivo)
+                debug_info.append(f"Tables: {len(txs)}")
+                if len(txs) >= 2:
+                    return {"transactions": txs, "total": len(txs),
+                            "strategy": "tables", "raw_text": full_txt}
+            except Exception as e:
+                debug_info.append(f"Tables falló: {e}")
 
     except Exception as e:
         debug_info.append(f"No se pudo abrir el PDF: {e}")
@@ -994,67 +994,54 @@ def extract_from_excel(file_path: str) -> dict:
             return 0.0
 
     try:
-        df = pd.read_excel(file_path, header=1)
-        df = df.dropna(how="all")
-        # Nombre de columnas por posición (el template tiene 21 columnas)
-        cols = list(df.columns)
+        df = pd.read_excel(file_path, header=1, dtype=str)
+        df = df.dropna(how="all").reset_index(drop=True)
 
-        def gcol(i, default=""):
-            return df.iloc[:, i] if i < len(cols) else default
+        # Pad to 21 columns so position access is safe
+        while len(df.columns) < 21:
+            df[f"_pad{len(df.columns)}"] = ""
+
+        # Vectorized column extraction
+        c = df.iloc
+        col = lambda i: df.iloc[:, i].fillna("").astype(str).str.strip()
+
+        fecha_ops   = col(0)
+        descrips    = col(9)
+
+        _INVALIDOS = {"", "0", "nan", "None", "NaT", "00:00:00"}
+        mask = ~(fecha_ops.isin(_INVALIDOS) | (fecha_ops == ""))
+        df = df[mask].reset_index(drop=True)
 
         records = []
-        for _, row in df.iterrows():
-            vals = [row.iloc[i] if i < len(row) else "" for i in range(min(21, len(row)))]
-            fecha_op   = safe(vals[0])
-            referencia = safe(vals[1])
-            moneda     = safe(vals[2]) or "PEN"
-            moneda     = moneda if moneda not in ("nan","None","NaT","") else "PEN"
-            importe    = safe_float(vals[3])
-            num_ope    = safe(vals[4])
-            periodo    = safe(vals[5])
-            banco      = safe(vals[6])
-            fecha      = safe(vals[7])
-            mes        = safe(vals[8])
-            descripcion= safe(vals[9])
-            tipo       = safe(vals[11]) or safe(vals[10])  # col 11 = TIPO real
-            detalle    = safe(vals[12])
-            op         = safe(vals[13])
-            tipo_doc   = safe(vals[14])
-            ruc        = safe(vals[15])
-            cli_prov   = safe(vals[16])
-            num_doc    = safe(vals[17])
-            saldo      = safe_float(vals[18])
-            doc_cont   = safe(vals[19])
-            comprobante= safe(vals[20]) if len(vals) > 20 else ""
-
-            _INVALIDOS = {"", "0", "nan", "None", "NaT", "00:00:00"}
-            if fecha_op in _INVALIDOS and descripcion in _INVALIDOS:
-                continue
-            if fecha_op in _INVALIDOS:
-                continue
-
+        for i in range(len(df)):
+            r = df.iloc[i]
+            def g(pos): return safe(r.iloc[pos] if pos < len(r) else "")
+            moneda = g(2) or "PEN"
+            if moneda in ("nan", "None", "NaT", ""): moneda = "PEN"
+            tipo = g(11) or g(10)
+            desc = g(9)
             records.append({
-                "fecha_operacion":    fecha_op,
-                "referencia":         referencia,
-                "moneda":             moneda,
-                "importe":            importe,
-                "num_operacion":      num_ope,
-                "periodo":            periodo,
-                "banco":              banco,
-                "fecha":              fecha,
-                "mes":                mes,
-                "descripcion":        descripcion,
-                "tipo":               tipo if tipo not in ("", "nan") else _detect_tipo(descripcion),
-                "detalle":            detalle or descripcion,
-                "op":                 op,
-                "tipo_doc":           tipo_doc,
-                "ruc":                ruc,
-                "cliente_proveedor":  cli_prov,
-                "num_documento":      num_doc,
-                "saldo":              saldo,
-                "doc_cont":           doc_cont,
-                "comprobante":        comprobante,
-                "archivo_origen":     file_path,
+                "fecha_operacion":   g(0),
+                "referencia":        g(1),
+                "moneda":            moneda,
+                "importe":           safe_float(r.iloc[3] if 3 < len(r) else 0),
+                "num_operacion":     g(4),
+                "periodo":           g(5),
+                "banco":             g(6),
+                "fecha":             g(7),
+                "mes":               g(8),
+                "descripcion":       desc,
+                "tipo":              tipo if tipo not in ("", "nan") else _detect_tipo(desc),
+                "detalle":           g(12) or desc,
+                "op":                g(13),
+                "tipo_doc":          g(14),
+                "ruc":               g(15),
+                "cliente_proveedor": g(16),
+                "num_documento":     g(17),
+                "saldo":             safe_float(r.iloc[18] if 18 < len(r) else 0),
+                "doc_cont":          g(19),
+                "comprobante":       g(20) if len(r) > 20 else "",
+                "archivo_origen":    file_path,
             })
         return {"transactions": records, "total": len(records)}
     except Exception as e:

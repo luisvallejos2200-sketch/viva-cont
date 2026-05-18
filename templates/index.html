@@ -175,9 +175,15 @@
         </div>
         <input type="file" id="excelInput" accept=".xlsx,.xls,.csv" style="display:none" />
         <div id="excelProgress" style="display:none;margin-top:12px;">
-          <div style="display:flex;align-items:center;gap:10px;padding:12px;background:var(--surface2);border-radius:var(--radius-xs);">
-            <span class="spinner"></span>
-            <span id="excelProgressText" style="font-size:12.5px;color:var(--text-muted)">Procesando archivo...</span>
+          <div style="padding:12px 14px;background:var(--surface2);border-radius:var(--radius-xs);">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+              <span class="spinner"></span>
+              <span id="excelProgressText" style="font-size:12.5px;color:var(--text-muted);flex:1">Preparando...</span>
+              <span id="excelProgressPct" style="font-size:11px;font-weight:700;color:var(--primary)"></span>
+            </div>
+            <div style="height:4px;background:var(--border);border-radius:4px;overflow:hidden;">
+              <div id="excelProgressBar" style="height:100%;width:0%;background:var(--primary);border-radius:4px;transition:width .2s ease;"></div>
+            </div>
           </div>
         </div>
         <p style="font-size:11px;color:var(--text-muted);margin-top:10px;">
@@ -417,22 +423,64 @@ function switchImportTab(btn, tabId) {
 let _erpPendingTxs = [];
 let _erpPendingFile = '';
 
+function _xhrUpload(url, formData, onProgress) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.upload.addEventListener('progress', e => {
+      if (e.lengthComputable) onProgress(Math.round(e.loaded / e.total * 100));
+    });
+    xhr.addEventListener('load', () => {
+      try { resolve(JSON.parse(xhr.responseText)); }
+      catch { reject(new Error('Respuesta inválida')); }
+    });
+    xhr.addEventListener('error', () => reject(new Error('Error de red')));
+    xhr.open('POST', url);
+    xhr.send(formData);
+  });
+}
+
+const _xlsMsgs = ['Leyendo columnas...','Validando registros...','Procesando importes...','Detectando períodos...','Casi listo...'];
+let _xlsTicker = null;
+function _startXlsTicker(msgEl, barEl) {
+  let i = 0, w = 70;
+  barEl.style.width = '70%';
+  _xlsTicker = setInterval(() => {
+    msgEl.textContent = _xlsMsgs[i++ % _xlsMsgs.length];
+    w = Math.min(w + 4, 95);
+    barEl.style.width = w + '%';
+  }, 800);
+}
+function _stopXlsTicker() { clearInterval(_xlsTicker); _xlsTicker = null; }
+
 initUploadZone('excelZone', 'excelInput', async (file) => {
-  document.getElementById('excelProgress').style.display = 'block';
-  document.getElementById('excelProgressText').textContent = `Procesando "${file.name}"...`;
+  const progressEl = document.getElementById('excelProgress');
+  const msgEl      = document.getElementById('excelProgressText');
+  const barEl      = document.getElementById('excelProgressBar');
+  const pctEl      = document.getElementById('excelProgressPct');
+  progressEl.style.display = 'block';
+  barEl.style.width = '0%';
+  msgEl.textContent = `Subiendo "${file.name}"...`;
+
   const formData = new FormData();
   formData.append('file', file);
+
+  let data;
   try {
-    const res = await fetch('/api/importar/excel', { method:'POST', body:formData });
-    const data = await res.json();
-    document.getElementById('excelProgress').style.display = 'none';
-    if (data.error) { showToast('error','Error al importar', data.error); return; }
-    if (!data.transactions?.length) { showToast('warning','Sin datos','No se encontraron transacciones en el archivo'); return; }
-    showErpPreview(data.transactions, data.nombre_archivo || file.name);
-  } catch (e) {
-    document.getElementById('excelProgress').style.display = 'none';
-    showToast('error','Error', e.message);
+    data = await _xhrUpload('/api/importar/excel', formData, pct => {
+      barEl.style.width = pct + '%';
+      pctEl.textContent = pct + '%';
+      if (pct === 100) { pctEl.textContent = ''; _startXlsTicker(msgEl, barEl); }
+    });
+  } catch(e) {
+    _stopXlsTicker();
+    progressEl.style.display = 'none';
+    showToast('error','Error de red', e.message); return;
   }
+  _stopXlsTicker();
+  progressEl.style.display = 'none';
+  if (data.error) { showToast('error','Error al importar', data.error); return; }
+  if (!data.transactions?.length) { showToast('warning','Sin datos','No se encontraron transacciones en el archivo'); return; }
+  showErpPreview(data.transactions, data.nombre_archivo || file.name);
 });
 
 function showErpPreview(txs, filename) {

@@ -197,9 +197,15 @@ Ejemplo:
 
       <!-- Progress -->
       <div id="pdfProgress" style="display:none;margin-top:12px;">
-        <div style="display:flex;align-items:center;gap:10px;padding:12px;background:var(--surface2);border-radius:var(--radius-xs);">
-          <span class="spinner"></span>
-          <span id="pdfProgressMsg" style="font-size:12.5px;color:var(--text-muted)">Procesando...</span>
+        <div style="padding:12px 14px;background:var(--surface2);border-radius:var(--radius-xs);">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+            <span class="spinner"></span>
+            <span id="pdfProgressMsg" style="font-size:12.5px;color:var(--text-muted);flex:1">Preparando...</span>
+            <span id="pdfProgressPct" style="font-size:11px;font-weight:700;color:var(--primary)"></span>
+          </div>
+          <div style="height:4px;background:var(--border);border-radius:4px;overflow:hidden;">
+            <div id="pdfProgressBar" style="height:100%;width:0%;background:var(--primary);border-radius:4px;transition:width .2s ease;"></div>
+          </div>
         </div>
       </div>
 
@@ -431,20 +437,65 @@ function switchUploadTab(btn, tabId) {
 }
 
 // ── UPLOAD PDF ────────────────────────────────────────────────
+function _xhrUpload(url, formData, onProgress) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.upload.addEventListener('progress', e => {
+      if (e.lengthComputable) onProgress(Math.round(e.loaded / e.total * 100));
+    });
+    xhr.addEventListener('load', () => {
+      try { resolve(JSON.parse(xhr.responseText)); }
+      catch { reject(new Error('Respuesta inválida del servidor')); }
+    });
+    xhr.addEventListener('error', () => reject(new Error('Error de red')));
+    xhr.open('POST', url);
+    xhr.send(formData);
+  });
+}
+
+const _processMsgs = ['Leyendo estructura...','Extrayendo texto...','Analizando transacciones...','Detectando fechas y montos...','Casi listo...'];
+let _processTicker = null;
+function _startProcessTicker(msgEl, barEl, pctEl) {
+  let i = 0, w = 70;
+  pctEl.textContent = '';
+  barEl.style.width = '70%';
+  _processTicker = setInterval(() => {
+    msgEl.textContent = _processMsgs[i++ % _processMsgs.length];
+    w = Math.min(w + 3, 95);
+    barEl.style.width = w + '%';
+  }, 900);
+}
+function _stopProcessTicker() { clearInterval(_processTicker); _processTicker = null; }
+
 async function handleUploadFile(file) {
-  document.getElementById('pdfProgress').style.display    = 'block';
+  const progressEl = document.getElementById('pdfProgress');
+  const msgEl      = document.getElementById('pdfProgressMsg');
+  const barEl      = document.getElementById('pdfProgressBar');
+  const pctEl      = document.getElementById('pdfProgressPct');
+  progressEl.style.display = 'block';
   document.getElementById('uploadErrorPanel').style.display = 'none';
-  document.getElementById('pdfProgressMsg').textContent   = `Procesando "${file.name}"...`;
+  barEl.style.width = '0%';
+  msgEl.textContent = `Subiendo "${file.name}"...`;
 
   const banco = document.getElementById('pdfBanco').value;
   const formData = new FormData();
   formData.append('file', file);
   formData.append('banco', banco);
 
+  let data;
   try {
-    const res  = await fetch('/api/estados-cuenta/upload', { method:'POST', body:formData });
-    const data = await res.json();
-    document.getElementById('pdfProgress').style.display = 'none';
+    data = await _xhrUpload('/api/estados-cuenta/upload', formData, pct => {
+      barEl.style.width = pct + '%';
+      pctEl.textContent = pct + '%';
+      if (pct === 100) { pctEl.textContent = ''; _startProcessTicker(msgEl, barEl, pctEl); }
+    });
+  } catch(e) {
+    _stopProcessTicker();
+    progressEl.style.display = 'none';
+    showToast('error', 'Error de red', e.message); return;
+  }
+  _stopProcessTicker();
+  document.getElementById('pdfProgress').style.display = 'none';
 
     if (data.error && !data.no_data) {
       showToast('error', 'Error al procesar', data.error); return;
@@ -505,14 +556,10 @@ async function handleUploadFile(file) {
       return;
     }
 
-    closeUploadModal();
-    showToast('info', `${data.total} transacciones extraídas`,
-      `Estrategia: ${data.strategy || 'automática'} · Revisa y confirma`);
-    showPreview(data.transactions);
-  } catch (e) {
-    document.getElementById('pdfProgress').style.display = 'none';
-    showToast('error', 'Error de red', e.message);
-  }
+  closeUploadModal();
+  showToast('info', `${data.total} transacciones extraídas`,
+    `Estrategia: ${data.strategy || 'automática'} · Revisa y confirma`);
+  showPreview(data.transactions);
 }
 
 initUploadZone('pdfZone',     'pdfInput',     handleUploadFile);

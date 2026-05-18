@@ -13,3 +13,4 @@ services:
         value: production
       - key: PYTHON_VERSION
         value: 3.11.0
+# multi-tenant v1

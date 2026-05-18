@@ -1,0 +1,39 @@
+# Base de datos local (Railway usa filesystem efímero — se recrea en cada deploy)
+*.db
+*.db-shm
+*.db-wal
+
+# Archivos subidos por usuarios
+uploads/
+
+# Exports temporales
+exports/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Entorno virtual
+venv/
+env/
+.env
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Editor
+.vscode/
+.idea/
+*.swp
+
+# Claude internal
+.claude/

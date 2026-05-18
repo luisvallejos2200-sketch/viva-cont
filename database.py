@@ -1,8 +1,8 @@
 import sqlite3
 import os
 
-# En Vercel/serverless el filesystem raíz es read-only; usar /tmp
-_base = "/tmp" if os.environ.get("VERCEL") else os.path.dirname(__file__)
+# Render y Vercel usan /tmp para escritura persistente entre requests
+_base = "/tmp" if (os.environ.get("VERCEL") or os.environ.get("RENDER")) else os.path.dirname(__file__)
 DB_PATH = os.path.join(_base, "viva_cont.db")
 
 

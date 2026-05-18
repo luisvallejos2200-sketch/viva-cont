@@ -13,9 +13,11 @@ sys.path.insert(0, os.path.dirname(__file__))
 from database import init_db, get_connection, row_to_dict, rows_to_list
 from pdf_processor import extract_bcp_soles, extract_from_excel, extract_from_text, extract_raw_text
 
-_tmp_base = "/tmp" if os.environ.get("VERCEL") else os.path.dirname(__file__)
+_tmp_base = "/tmp" if (os.environ.get("VERCEL") or os.environ.get("RENDER")) else os.path.dirname(__file__)
 UPLOAD_FOLDER = os.path.join(_tmp_base, "uploads")
 EXPORT_FOLDER = os.path.join(_tmp_base, "exports")
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+os.makedirs(EXPORT_FOLDER, exist_ok=True)
 ALLOWED_PDF = {"pdf"}
 ALLOWED_EXCEL = {"xlsx", "xls", "csv"}
 

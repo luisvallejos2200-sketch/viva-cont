@@ -262,20 +262,22 @@ async function loadPeriodTabsERP() {
       <i class="fa-solid fa-layer-group"></i> Consolidado
       <span style="font-size:10px;opacity:.7">(todos)</span>
     </button>
-    ${rows.map(r => `
-      <span class="period-tab ${_activeImportacionId === r.id ? 'active' : ''}"
-        style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;"
-        onclick="selectPeriodoERP(${r.id}, this)">
-        <i class="fa-solid fa-file-excel"></i>
-        ${r.nombre_archivo.replace(/\.[^.]+$/, '')}
-        <span style="font-size:10px;opacity:.7">${r.registros_importados} reg</span>
-        <i class="fa-solid fa-xmark" title="Eliminar período"
-          style="margin-left:4px;font-size:11px;opacity:.55;padding:2px 3px;border-radius:3px;"
-          onmouseenter="this.style.opacity=1;this.style.background='rgba(224,60,60,.18)'"
-          onmouseleave="this.style.opacity='.55';this.style.background=''"
-          onclick="event.stopPropagation();eliminarImportacion(${r.id},'${r.nombre_archivo.replace(/'/g,"\\'").replace(/\.[^.]+$/, '')}')">
-        </i>
-      </span>`).join('')}`;
+    ${rows.map(r => {
+      const name = r.nombre_archivo.replace(/\.[^.]+$/, '');
+      const safe = name.replace(/'/g, "\\'");
+      const active = _activeImportacionId === r.id ? 'active' : '';
+      return `
+        <button class="period-tab ${active}" data-imp-id="${r.id}"
+          onclick="selectPeriodoERP(${r.id}, this)">
+          <i class="fa-solid fa-file-excel"></i>
+          ${name}
+          <span style="font-size:10px;opacity:.7">${r.registros_importados} reg</span>
+        </button>
+        <button class="period-tab-del" title="Eliminar período"
+          onclick="eliminarImportacion(${r.id},'${safe}')">
+          <i class="fa-solid fa-xmark"></i>
+        </button>`;
+    }).join('')}`;
 }
 
 function selectPeriodoERP(id, btn) {
@@ -284,6 +286,7 @@ function selectPeriodoERP(id, btn) {
   btn.classList.add('active');
   loadKPIs();
 }
+
 
 async function eliminarImportacion(id, nombre) {
   if (!confirm(`¿Eliminar el período "${nombre}" y todas sus transacciones? Esta acción no se puede deshacer.`)) return;

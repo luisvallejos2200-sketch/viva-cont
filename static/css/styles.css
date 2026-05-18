@@ -742,3 +742,24 @@ body {
 .modulo-check-wrap:has(input:checked) {
   border-color:#00309B; background:rgba(0,48,155,.04);
 }
+
+/* ══ PERIOD TABS (shared: Dashboard + Estados de Cuenta) ════ */
+.period-tab {
+  padding:7px 14px; border-radius:20px; border:1.5px solid var(--border);
+  background:var(--surface2); font-size:12px; font-weight:600;
+  color:var(--text-muted); cursor:pointer; font-family:inherit;
+  transition:all var(--transition); white-space:nowrap;
+  display:inline-flex; align-items:center; gap:6px;
+}
+.period-tab:hover { border-color:var(--primary); color:var(--primary); }
+.period-tab.active {
+  background:var(--primary); border-color:var(--primary);
+  color:#fff; box-shadow:0 3px 10px rgba(26,60,110,.3);
+}
+.period-tab-del {
+  padding:4px 7px; border-radius:20px; border:1.5px solid transparent;
+  background:transparent; font-size:11px; color:var(--text-muted);
+  cursor:pointer; line-height:1; transition:all var(--transition);
+  display:inline-flex; align-items:center;
+}
+.period-tab-del:hover { background:rgba(224,60,60,.12); color:var(--danger); border-color:rgba(224,60,60,.25); }

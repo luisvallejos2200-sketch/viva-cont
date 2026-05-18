@@ -255,18 +255,24 @@ def init_db():
     """)
 
     # Super Admin por defecto: Luis Vallejos
+    # pbkdf2:sha256:50000 → ~0.1s en CPU lenta (vs 260000 iter → 2.6s en Render free)
     from werkzeug.security import generate_password_hash
+    _fast_hash = generate_password_hash('VivaAdmin2026!', method='pbkdf2:sha256:50000')
+
     c.execute("SELECT COUNT(*) FROM usuarios WHERE rol='super_admin'")
     if c.fetchone()[0] == 0:
         c.execute("""
             INSERT INTO usuarios (nombre, email, username, password_hash, rol)
             VALUES (?, ?, ?, ?, 'super_admin')
-        """, (
-            'Luis Vallejos Rodriguez',
-            'vivacont@vivaempresasglobal.com',
-            'luisvallejos',
-            generate_password_hash('VivaAdmin2026!', method='pbkdf2:sha256')
-        ))
+        """, ('Luis Vallejos Rodriguez', 'vivacont@vivaempresasglobal.com',
+              'luisvallejos', _fast_hash))
+    else:
+        # Migrar hash lento (260000 iter) al hash rápido (50000 iter)
+        c.execute("""
+            UPDATE usuarios SET password_hash=?
+            WHERE username='luisvallejos' AND password_hash LIKE 'pbkdf2:sha256:%'
+            AND CAST(SUBSTR(password_hash, 14, INSTR(SUBSTR(password_hash,14),'$')-1) AS INTEGER) > 100000
+        """, (_fast_hash,))
 
     conn.commit()
     conn.close()

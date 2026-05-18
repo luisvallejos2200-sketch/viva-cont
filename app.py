@@ -147,7 +147,7 @@ def api_crear_usuario():
         conn = get_connection()
         conn.execute(
             "INSERT INTO usuarios (nombre,email,username,password_hash,rol) VALUES (?,?,?,?,?)",
-            (nombre, email, username, generate_password_hash(password, method='pbkdf2:sha256'), rol)
+            (nombre, email, username, generate_password_hash(password, method='pbkdf2:sha256:50000'), rol)
         )
         conn.commit()
         conn.close()
@@ -166,7 +166,7 @@ def api_update_usuario(uid):
     if d.get("password"):
         conn.execute("UPDATE usuarios SET nombre=?,email=?,rol=?,activo=?,password_hash=? WHERE id=?",
                      (d["nombre"], d["email"], d["rol"], d.get("activo",1),
-                      generate_password_hash(d["password"]), uid))
+                      generate_password_hash(d["password"], method='pbkdf2:sha256:50000'), uid))
     else:
         conn.execute("UPDATE usuarios SET nombre=?,email=?,rol=?,activo=? WHERE id=?",
                      (d["nombre"], d["email"], d["rol"], d.get("activo",1), uid))

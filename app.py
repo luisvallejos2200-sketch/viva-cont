@@ -26,11 +26,21 @@ ALLOWED_EXCEL = {"xlsx", "xls", "csv"}
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "viva-cont-2026-xK9#mP@qL2")
-app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024  # 50 MB
-app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 31536000  # 1 año caché para estáticos
-# Cloudflare termina TLS — el proxy llega en HTTP al servidor; esto fija url_for con https
+app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024
+app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 31536000
 app.config["PREFERRED_URL_SCHEME"] = "https"
-CORS(app)
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+app.config["SESSION_COOKIE_SECURE"] = bool(os.environ.get("RENDER") or os.environ.get("VERCEL"))
+app.config["PERMANENT_SESSION_LIFETIME"] = 43200  # 12 horas
+
+_ALLOWED_ORIGINS = [
+    "https://vivacont.vivaempresasglobal.com",
+    "https://vivaos.vivaempresasglobal.com",
+]
+if not (os.environ.get("RENDER") or os.environ.get("VERCEL")):
+    _ALLOWED_ORIGINS += ["http://localhost:5050", "http://127.0.0.1:5050"]
+CORS(app, origins=_ALLOWED_ORIGINS, supports_credentials=True)
 
 # Confiar en X-Forwarded-Proto de Cloudflare/Render para que session cookies funcionen en HTTPS
 from werkzeug.middleware.proxy_fix import ProxyFix
@@ -56,7 +66,27 @@ if os.environ.get("RENDER"):
 
 
 def allowed_file(filename, allowed):
+    if not filename:
+        return False
     return "." in filename and filename.rsplit(".", 1)[1].lower() in allowed
+
+
+# ── Simple in-memory rate limiter (no extra dependency)
+import collections
+_login_attempts: dict = collections.defaultdict(list)
+_LOGIN_LIMIT = 10       # max attempts
+_LOGIN_WINDOW = 300     # in 5-minute window
+
+
+def _is_rate_limited(ip: str) -> bool:
+    now = _time.time()
+    attempts = _login_attempts[ip]
+    # Remove old entries
+    _login_attempts[ip] = [t for t in attempts if now - t < _LOGIN_WINDOW]
+    if len(_login_attempts[ip]) >= _LOGIN_LIMIT:
+        return True
+    _login_attempts[ip].append(now)
+    return False
 
 
 # ─────────────────────────────────────────────────────────
@@ -76,8 +106,7 @@ def has_privilege(modulo):
     rol = session.get("user_rol")
     if rol in ("super_admin", "admin"):
         return True
-    import json as _j
-    privs = _j.loads(session.get("privilegios") or "[]")
+    privs = json.loads(session.get("privilegios") or "[]")
     return modulo in privs
 
 
@@ -100,14 +129,20 @@ def login():
         return redirect(url_for("dashboard"))
     error = None
     if request.method == "POST":
+        ip = request.remote_addr or "unknown"
+        if _is_rate_limited(ip):
+            error = "Demasiados intentos. Espera 5 minutos antes de intentar de nuevo."
+            return render_template("login.html", error=error), 429
         username = request.form.get("username", "").strip().lower()
         password = request.form.get("password", "")
         conn = get_connection()
-        user = conn.execute(
-            "SELECT * FROM usuarios WHERE (username=? OR email=?) AND activo=1",
-            (username, username)
-        ).fetchone()
-        conn.close()
+        try:
+            user = conn.execute(
+                "SELECT * FROM usuarios WHERE (username=? OR email=?) AND activo=1",
+                (username, username)
+            ).fetchone()
+        finally:
+            conn.close()
         if user and check_password_hash(user["password_hash"], password):
             session["user_id"]     = user["id"]
             session["user_name"]   = user["nombre"]
@@ -115,13 +150,20 @@ def login():
             session["user_email"]  = user["email"]
             session["cliente_id"]  = user["cliente_id"]
             session["privilegios"] = user["privilegios"] or "[]"
-            conn = get_connection()
-            conn.execute("UPDATE usuarios SET ultimo_acceso=? WHERE id=?",
-                         (datetime.now().isoformat(), user["id"]))
-            conn.commit()
-            conn.close()
-            next_url = request.args.get("next") or url_for("dashboard")
-            return redirect(next_url)
+            conn2 = get_connection()
+            try:
+                conn2.execute("UPDATE usuarios SET ultimo_acceso=? WHERE id=?",
+                              (datetime.now().isoformat(), user["id"]))
+                conn2.commit()
+            finally:
+                conn2.close()
+            # Validate next to prevent open redirect: only allow internal paths
+            next_url = request.args.get("next", "")
+            if next_url and (next_url.startswith("/") and not next_url.startswith("//")):
+                safe_next = next_url
+            else:
+                safe_next = url_for("dashboard")
+            return redirect(safe_next)
         error = "Usuario o contraseña incorrectos"
     return render_template("login.html", error=error)
 
@@ -162,7 +204,6 @@ def api_get_clientes():
 def api_crear_cliente():
     if session.get("user_rol") != "super_admin":
         return jsonify({"error": "Sin permisos"}), 403
-    import json as _j
     d = request.json or {}
     razon_social = d.get("razon_social", "").strip()
     ruc          = d.get("ruc", "").strip()
@@ -176,10 +217,14 @@ def api_crear_cliente():
     admin_password = d.get("admin_password", "")
 
     if not all([razon_social, admin_nombre, admin_email, admin_username, admin_password]):
-        return jsonify({"error": "razon_social, datos del admin son requeridos"}), 400
+        return jsonify({"error": "razon_social y datos del admin son requeridos"}), 400
+    if len(admin_password) < 8:
+        return jsonify({"error": "La contraseña del admin debe tener al menos 8 caracteres"}), 400
+    if plan not in ("basic", "standard", "premium", "enterprise"):
+        plan = "basic"
 
-    _all_privs = _j.dumps(["estados_cuenta","analisis_bancario",
-                            "estados_resultados","balance_general","facturador"])
+    _all_privs = json.dumps(["estados_cuenta","analisis_bancario",
+                             "estados_resultados","balance_general","facturador"])
     try:
         conn = get_connection()
         c = conn.cursor()
@@ -282,7 +327,6 @@ def api_get_usuarios():
 @app.route("/api/usuarios", methods=["POST"])
 @login_required
 def api_crear_usuario():
-    import json as _j
     rol_sesion = session.get("user_rol")
     if rol_sesion not in ("super_admin", "admin"):
         return jsonify({"error": "Sin permisos"}), 403
@@ -303,16 +347,22 @@ def api_crear_usuario():
 
     if not all([nombre, email, username, password]):
         return jsonify({"error": "Todos los campos son requeridos"}), 400
+    if len(password) < 8:
+        return jsonify({"error": "La contraseña debe tener al menos 8 caracteres"}), 400
+    if len(nombre) > 120 or len(email) > 120 or len(username) > 60:
+        return jsonify({"error": "Campos demasiado largos"}), 400
     try:
         conn = get_connection()
-        conn.execute("""
-            INSERT INTO usuarios (cliente_id, nombre, email, username, password_hash, rol, privilegios)
-            VALUES (?,?,?,?,?,?,?)
-        """, (cid(), nombre, email, username,
-              generate_password_hash(password, method='pbkdf2:sha256:50000'),
-              rol_nuevo, _j.dumps(privs)))
-        conn.commit()
-        conn.close()
+        try:
+            conn.execute("""
+                INSERT INTO usuarios (cliente_id, nombre, email, username, password_hash, rol, privilegios)
+                VALUES (?,?,?,?,?,?,?)
+            """, (cid(), nombre, email, username,
+                  generate_password_hash(password, method='pbkdf2:sha256:50000'),
+                  rol_nuevo, json.dumps(privs)))
+            conn.commit()
+        finally:
+            conn.close()
         return jsonify({"ok": True})
     except Exception as e:
         return jsonify({"error": str(e)}), 400
@@ -321,7 +371,6 @@ def api_crear_usuario():
 @app.route("/api/usuarios/<int:uid>", methods=["PUT"])
 @login_required
 def api_update_usuario(uid):
-    import json as _j
     rol_sesion = session.get("user_rol")
     if rol_sesion not in ("super_admin", "admin"):
         return jsonify({"error": "Sin permisos"}), 403
@@ -334,7 +383,7 @@ def api_update_usuario(uid):
         conn.close()
         return jsonify({"error": "Sin permisos"}), 403
 
-    privs = _j.dumps(d.get("privilegios", [])) if "privilegios" in d else None
+    privs = json.dumps(d.get("privilegios", [])) if "privilegios" in d else None
 
     if d.get("password"):
         if privs is not None:
@@ -516,36 +565,45 @@ def api_importar_excel():
     if "error" in result:
         return jsonify({"error": result["error"]}), 500
 
+    _cid = cid()
     conn = get_connection()
     c = conn.cursor()
     inserted = 0
-    for tx in result["transactions"]:
-        try:
-            c.execute("""
-                INSERT INTO transacciones
-                (modulo, fecha_operacion, referencia, moneda, importe, num_operacion, periodo,
-                 banco, fecha, mes, descripcion, tipo, detalle, op, tipo_doc, ruc,
-                 cliente_proveedor, num_documento, saldo, doc_cont, comprobante, archivo_origen)
-                VALUES ('erp',?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-            """, (
-                tx.get("fecha_operacion"), tx.get("referencia"), tx.get("moneda"),
-                tx.get("importe"), tx.get("num_operacion"), tx.get("periodo"),
-                tx.get("banco"), tx.get("fecha"), tx.get("mes"), tx.get("descripcion"),
-                tx.get("tipo"), tx.get("detalle"), tx.get("op"), tx.get("tipo_doc"),
-                tx.get("ruc"), tx.get("cliente_proveedor"), tx.get("num_documento"),
-                tx.get("saldo"), tx.get("doc_cont"), tx.get("comprobante"),
-                tx.get("archivo_origen"),
-            ))
-            inserted += 1
-        except Exception:
-            continue
+    try:
+        for tx in result["transactions"]:
+            try:
+                c.execute("""
+                    INSERT INTO transacciones
+                    (cliente_id, modulo, fecha_operacion, referencia, moneda, importe,
+                     num_operacion, periodo, banco, fecha, mes, descripcion, tipo, detalle,
+                     op, tipo_doc, ruc, cliente_proveedor, num_documento, saldo,
+                     doc_cont, comprobante, archivo_origen)
+                    VALUES (?,'erp',?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                """, (
+                    _cid,
+                    tx.get("fecha_operacion"), tx.get("referencia"), tx.get("moneda"),
+                    tx.get("importe"), tx.get("num_operacion"), tx.get("periodo"),
+                    tx.get("banco"), tx.get("fecha"), tx.get("mes"), tx.get("descripcion"),
+                    tx.get("tipo"), tx.get("detalle"), tx.get("op"), tx.get("tipo_doc"),
+                    tx.get("ruc"), tx.get("cliente_proveedor"), tx.get("num_documento"),
+                    tx.get("saldo"), tx.get("doc_cont"), tx.get("comprobante"),
+                    tx.get("archivo_origen"),
+                ))
+                inserted += 1
+            except Exception:
+                continue
 
-    c.execute("""
-        INSERT INTO importaciones (nombre_archivo, tipo_fuente, registros_importados, estado)
-        VALUES (?, 'EXCEL', ?, 'COMPLETADO')
-    """, (file.filename, inserted))
-    conn.commit()
-    conn.close()
+        c.execute("""
+            INSERT INTO importaciones (cliente_id, nombre_archivo, tipo_fuente, registros_importados, estado)
+            VALUES (?, ?, 'EXCEL', ?, 'COMPLETADO')
+        """, (_cid, file.filename, inserted))
+        conn.commit()
+    finally:
+        conn.close()
+        try:
+            os.remove(filepath)
+        except OSError:
+            pass
 
     return jsonify({"success": True, "imported": inserted, "total": result["total"]})
 
@@ -560,13 +618,15 @@ def api_importar_drive():
 
     conn = get_connection()
     c = conn.cursor()
-    c.execute("""
-        INSERT INTO importaciones (nombre_archivo, tipo_fuente, url_fuente, registros_importados, estado)
-        VALUES (?, 'GOOGLE_DRIVE', ?, 0, 'PENDIENTE')
-    """, (url.split("/")[-1][:100], url))
-    conn.commit()
-    import_id = c.lastrowid
-    conn.close()
+    try:
+        c.execute("""
+            INSERT INTO importaciones (cliente_id, nombre_archivo, tipo_fuente, url_fuente, registros_importados, estado)
+            VALUES (?, ?, 'GOOGLE_DRIVE', ?, 0, 'PENDIENTE')
+        """, (cid(), url.split("/")[-1][:100], url))
+        conn.commit()
+        import_id = c.lastrowid
+    finally:
+        conn.close()
 
     return jsonify({
         "success": True,
@@ -595,37 +655,42 @@ def api_upload_pdf():
     file.save(filepath)
 
     ext = file.filename.rsplit(".", 1)[-1].lower()
-    if ext in ALLOWED_EXCEL:
-        result = extract_from_excel(filepath)
-    else:
-        result = extract_bcp_soles(filepath, banco)
+    try:
+        if ext in ALLOWED_EXCEL:
+            result = extract_from_excel(filepath)
+        else:
+            result = extract_bcp_soles(filepath, banco)
 
-    transactions = result.get("transactions", [])
-    strategy     = result.get("strategy", "")
-    debug        = result.get("debug", "")
+        transactions = result.get("transactions", [])
+        strategy     = result.get("strategy", "")
+        debug        = result.get("debug", "")
 
-    if not transactions:
-        # Extraer texto crudo para pre-llenar el textarea de fallback
-        raw_text = ""
-        if ext not in ALLOWED_EXCEL:
-            raw_text = extract_raw_text(filepath)
+        if not transactions:
+            raw_text = ""
+            if ext not in ALLOWED_EXCEL:
+                raw_text = extract_raw_text(filepath)
+            return jsonify({
+                "success": False,
+                "transactions": [],
+                "total": 0,
+                "no_data": True,
+                "debug": debug,
+                "raw_text": raw_text,
+                "message": result.get("error", "No se encontraron transacciones. Usa la opción 'Pegar texto del PDF'."),
+            })
+
         return jsonify({
-            "success": False,
-            "transactions": [],
-            "total": 0,
-            "no_data": True,
-            "debug": debug,
-            "raw_text": raw_text,
-            "message": result.get("error", "No se encontraron transacciones. Usa la opción 'Pegar texto del PDF'."),
+            "success": True,
+            "transactions": transactions,
+            "total": len(transactions),
+            "strategy": strategy,
+            "preview": True,
         })
-
-    return jsonify({
-        "success": True,
-        "transactions": transactions,
-        "total": len(transactions),
-        "strategy": strategy,
-        "preview": True,
-    })
+    finally:
+        try:
+            os.remove(filepath)
+        except OSError:
+            pass
 
 
 @app.route("/api/estados-cuenta/debug-pdf", methods=["POST"])
@@ -638,10 +703,15 @@ def api_debug_pdf():
     filename = f"{uuid.uuid4()}_{file.filename}"
     filepath = os.path.join(UPLOAD_FOLDER, filename)
     file.save(filepath)
-    raw = extract_raw_text(filepath)
-    # También probar estrategias y mostrar cuántas transacciones saca cada una
-    banco = request.form.get("banco", "BCP SOLES")
-    result = extract_bcp_soles(filepath, banco)
+    try:
+        raw = extract_raw_text(filepath)
+        banco = request.form.get("banco", "BCP SOLES")
+        result = extract_bcp_soles(filepath, banco)
+    finally:
+        try:
+            os.remove(filepath)
+        except OSError:
+            pass
     return jsonify({
         "raw_text": raw,
         "raw_length": len(raw),
@@ -1107,13 +1177,20 @@ def api_analisis_upload():
     file.save(filepath)
 
     ext = file.filename.rsplit(".", 1)[-1].lower()
-    if ext == "pdf":
-        result = extract_bcp_soles(filepath, banco)
-    else:
-        result = extract_from_excel(filepath)
+    orig_filename = file.filename
+    try:
+        if ext == "pdf":
+            result = extract_bcp_soles(filepath, banco)
+        else:
+            result = extract_from_excel(filepath)
 
-    txs = result.get("transactions", [])
-    raw_text = extract_raw_text(filepath) if ext == "pdf" else ""
+        txs = result.get("transactions", [])
+        raw_text = extract_raw_text(filepath) if ext == "pdf" else ""
+    finally:
+        try:
+            os.remove(filepath)
+        except OSError:
+            pass
 
     if not txs:
         return jsonify({
@@ -1124,13 +1201,13 @@ def api_analisis_upload():
             "message": result.get("error", "No se encontraron transacciones. Pega el texto del PDF manualmente."),
         })
 
-    analysis = _compute_analysis(txs, banco, file.filename)
+    analysis = _compute_analysis(txs, banco, orig_filename)
     return jsonify({
         "success": True,
         "transactions": txs,
         "analysis": analysis,
-        "filename": file.filename,
-        "raw_text": raw_text,   # siempre incluido para diagnóstico
+        "filename": orig_filename,
+        "raw_text": raw_text,
         "strategy": result.get("strategy", ""),
     })
 
@@ -1197,8 +1274,7 @@ def api_periodo_analysis(pid):
     conn.close()
     if not row:
         return jsonify({"error": "Período no encontrado"}), 404
-    import json as _json
-    analysis = _json.loads(row["analysis_json"]) if row.get("analysis_json") else {}
+    analysis = json.loads(row["analysis_json"]) if row.get("analysis_json") else {}
     conn2 = get_connection()
     txs = rows_to_list(conn2.execute(
         "SELECT * FROM transacciones WHERE periodo_id=? AND cliente_id=? ORDER BY fecha_operacion",
@@ -1234,7 +1310,6 @@ def api_periodo_consolidado():
 @login_required
 def api_analisis_guardar():
     """Persiste las transacciones y crea un período en la BD principal."""
-    import json as _json
     data = request.get_json() or {}
     txs      = data.get("transactions", [])
     analysis = data.get("analysis", {})
@@ -1266,7 +1341,7 @@ def api_analisis_guardar():
         label, mes_label, anio, banco, filename, len(txs),
         analysis.get("total_ingresos", 0), analysis.get("total_egresos", 0),
         analysis.get("saldo_inicial", 0), analysis.get("saldo_final", 0),
-        _json.dumps(analysis),
+        json.dumps(analysis),
     ))
     periodo_id = c.lastrowid
 
@@ -2097,6 +2172,10 @@ def api_er_importar():
     file.save(filepath)
 
     parsed = _parse_financial_excel(filepath, _ER_MAP)
+    try:
+        os.remove(filepath)
+    except OSError:
+        pass
     if "error" in parsed:
         return jsonify({"error": parsed["error"]}), 500
 
@@ -2238,6 +2317,10 @@ def api_bg_importar():
     file.save(filepath)
 
     parsed = _parse_financial_excel(filepath, _BG_MAP)
+    try:
+        os.remove(filepath)
+    except OSError:
+        pass
     if "error" in parsed:
         return jsonify({"error": parsed["error"]}), 500
 
@@ -2327,6 +2410,25 @@ def api_bg_exportar():
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         as_attachment=True,
         download_name=f"VIVA_BalanceGeneral_{datetime.now().strftime('%Y%m%d')}.xlsx")
+
+
+@app.errorhandler(404)
+def not_found(e):
+    if request.path.startswith("/api/"):
+        return jsonify({"error": "Recurso no encontrado"}), 404
+    return render_template("login.html", error=None), 404
+
+
+@app.errorhandler(500)
+def server_error(e):
+    if request.path.startswith("/api/"):
+        return jsonify({"error": "Error interno del servidor"}), 500
+    return render_template("login.html", error="Error interno. Por favor recarga la página."), 500
+
+
+@app.errorhandler(413)
+def too_large(e):
+    return jsonify({"error": "Archivo demasiado grande. Máximo 50 MB."}), 413
 
 
 if __name__ == "__main__":

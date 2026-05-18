@@ -269,6 +269,24 @@ def init_db():
         )
     """)
 
+    # ── ÍNDICES DE RENDIMIENTO ────────────────────────────
+    for idx_sql in [
+        "CREATE INDEX IF NOT EXISTS idx_transacciones_cliente ON transacciones(cliente_id)",
+        "CREATE INDEX IF NOT EXISTS idx_transacciones_modulo  ON transacciones(cliente_id, modulo)",
+        "CREATE INDEX IF NOT EXISTS idx_transacciones_periodo ON transacciones(periodo_id)",
+        "CREATE INDEX IF NOT EXISTS idx_facturas_cliente      ON facturas(cliente_id)",
+        "CREATE INDEX IF NOT EXISTS idx_periodos_cliente      ON periodos_cargados(cliente_id)",
+        "CREATE INDEX IF NOT EXISTS idx_er_cliente            ON estados_resultados(cliente_id)",
+        "CREATE INDEX IF NOT EXISTS idx_bg_cliente            ON balance_general(cliente_id)",
+        "CREATE INDEX IF NOT EXISTS idx_importaciones_cliente ON importaciones(cliente_id)",
+        "CREATE INDEX IF NOT EXISTS idx_usuarios_cliente      ON usuarios(cliente_id)",
+        "CREATE INDEX IF NOT EXISTS idx_usuarios_username     ON usuarios(username)",
+    ]:
+        try:
+            conn.execute(idx_sql)
+        except Exception:
+            pass
+
     conn.commit()
 
     # ── MIGRACIONES (tablas preexistentes) ────────────────

@@ -345,6 +345,9 @@ function setLoading(btnId, loading, text = '') {
 
       destroyCharts();
 
+      // Apply styles BEFORE content is visible — eliminates flash of unstyled content
+      applyHeadStyles(headStyles);
+
       const mainEl = document.querySelector('.page-content');
       mainEl.classList.add('leaving');
       await new Promise(r => setTimeout(r, 100));
@@ -355,8 +358,6 @@ function setLoading(btnId, loading, text = '') {
       document.title = title;
       const bc = document.querySelector('.breadcrumb-current');
       if (bc) bc.textContent = breadcrumb;
-
-      applyHeadStyles(headStyles);
 
       document.querySelectorAll('.nav-item[href]').forEach(a => {
         a.classList.toggle('active', a.getAttribute('href') === url);

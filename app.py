@@ -1581,21 +1581,20 @@ def api_periodo_consolidado():
 @login_required
 def api_delete_periodo(pid):
     """Elimina un período y todas sus transacciones bancarias."""
-    _SQL_DEL_TX  = "DELETE FROM transacciones WHERE periodo_id=? AND cliente_id=? AND modulo='banco'"
-    _SQL_DEL_PER = "DELETE FROM periodos_cargados WHERE id=? AND cliente_id=?"
-    if _db._USE_TURSO and _db._turso_ok:
-        try:
-            _db._turso_post([
-                {"sql": _SQL_DEL_TX,  "args": _db._to_args([pid, cid()])},
-                {"sql": _SQL_DEL_PER, "args": _db._to_args([pid, cid()])},
-            ])
-        except Exception as e:
-            return jsonify({"error": str(e)}), 500
-    else:
-        conn = get_connection()
-        conn.execute(_SQL_DEL_TX,  (pid, cid()))
-        conn.execute(_SQL_DEL_PER, (pid, cid()))
+    conn = get_connection()
+    try:
+        conn.execute(
+            "DELETE FROM transacciones WHERE periodo_id=? AND cliente_id=? AND modulo='banco'",
+            (pid, cid())
+        )
+        conn.execute(
+            "DELETE FROM periodos_cargados WHERE id=? AND cliente_id=?",
+            (pid, cid())
+        )
         conn.commit()
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
         conn.close()
     return jsonify({"success": True})
 

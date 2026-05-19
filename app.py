@@ -14,6 +14,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 
 sys.path.insert(0, os.path.dirname(__file__))
 from database import init_db, get_connection, row_to_dict, rows_to_list
+import database as _db
 from pdf_processor import extract_bcp_soles, extract_from_excel, extract_from_text, extract_raw_text
 
 _tmp_base = "/tmp" if (os.environ.get("VERCEL") or os.environ.get("RENDER")) else os.path.dirname(__file__)

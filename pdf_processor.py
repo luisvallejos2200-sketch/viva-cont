@@ -605,6 +605,72 @@ def extract_from_text(raw_text: str, banco: str = "BCP SOLES") -> dict:
 
 
 # ══════════════════════════════════════════════════════════════
+# ESTRATEGIA BCP DD-MM: estado de cuenta con fechas DD-MM, cargo guión final
+# Ejemplo: 02-04 ... 64.00-  1,667.98   →  cargo de 64.00, saldo 1,667.98
+# Año extraído del encabezado: DEL01/04/2025AL30/04/2025
+# ══════════════════════════════════════════════════════════════
+
+_BCP_DDMM_YEAR_RE = re.compile(r"DEL\s*(\d{2})/(\d{2})/(\d{4})\s*AL", re.IGNORECASE)
+_BCP_DDMM_LINE_RE = re.compile(
+    r"^(\d{2})-(\d{2})"            # DD-MM (día-mes)
+    r"[ \t]+"
+    r"(.+?)"                         # descripción (no greedy)
+    r"[ \t]+"
+    r"([\d,]*\.\d{2}-?)"            # importe: cargo termina en -, abono no
+    r"[ \t]+"
+    r"([\d,]+\.\d{2})"              # saldo
+    r"[ \t]*$",
+    re.MULTILINE,
+)
+
+
+def _strategy_bcp_ddmm(full_text: str, banco: str, archivo: str) -> list:
+    """
+    Parser BCP Perú: estado de cuenta con fechas DD-MM (sin año).
+    - Año extraído de encabezado 'DEL01/04/2025AL30/04/2025'
+    - Cargo (débito): monto con guión final  → 64.00-
+    - Abono (crédito): monto sin guión       → 7,290.00
+    - Montos pequeños de tipo .10- (ITF) también soportados
+    - Última columna de cada línea es el saldo corriente
+    """
+    ym = _BCP_DDMM_YEAR_RE.search(full_text)
+    year = int(ym.group(3)) if ym else datetime.now().year
+
+    txs  = []
+    seen = set()
+
+    for m in _BCP_DDMM_LINE_RE.finditer(full_text):
+        dd     = int(m.group(1))
+        mm_num = int(m.group(2))
+        desc_raw  = m.group(3).strip()
+        amt_str   = m.group(4)
+        saldo_str = m.group(5)
+
+        try:
+            fecha_dt  = datetime(year, mm_num, dd)
+            fecha_iso = fecha_dt.strftime("%Y-%m-%d")
+        except ValueError:
+            continue
+
+        is_cargo  = amt_str.endswith("-")
+        amt_clean = amt_str.rstrip("-")
+        if amt_clean.startswith("."):          # .10 → 0.10
+            amt_clean = "0" + amt_clean
+        amt = _parse_amount(amt_clean)
+        saldo = _parse_amount(saldo_str)
+
+        importe = -amt if is_cargo else amt
+        desc = re.sub(r"\s+", " ", desc_raw)[:120]
+
+        key = (fecha_iso, round(importe, 2), round(saldo, 2))
+        if key not in seen:
+            seen.add(key)
+            txs.append(_make_tx(fecha_dt, fecha_iso, desc, importe, saldo, banco, archivo))
+
+    return txs
+
+
+# ══════════════════════════════════════════════════════════════
 # ESTRATEGIA SCOTIABANK PERÚ: formato DD/MM DD/MM COD DESC REF AMT SALDO
 # ══════════════════════════════════════════════════════════════
 
@@ -858,6 +924,14 @@ def extract_bcp_soles(pdf_path: str, banco: str = "BCP SOLES") -> dict:
                             "strategy": "pypdf+text_regex", "raw_text": _pypdf_text}
             except Exception as _e:
                 debug_info.append(f"pypdf+text_regex falló: {_e}")
+            try:
+                txs = _strategy_bcp_ddmm(_pypdf_text, banco, archivo)
+                debug_info.append(f"pypdf+bcp_ddmm: {len(txs)}")
+                if len(txs) >= 2:
+                    return {"transactions": txs, "total": len(txs),
+                            "strategy": "pypdf+bcp_ddmm", "raw_text": _pypdf_text}
+            except Exception as _e:
+                debug_info.append(f"pypdf+bcp_ddmm falló: {_e}")
     except Exception as _e:
         debug_info.append(f"pypdf falló: {_e}")
 
@@ -885,6 +959,16 @@ def extract_bcp_soles(pdf_path: str, banco: str = "BCP SOLES") -> dict:
                             "strategy": "scotiabank", "raw_text": full_txt}
             except Exception as e:
                 debug_info.append(f"Scotiabank falló: {e}")
+
+            # ── BCP DD-MM (fechas sin año, cargo con guión final) ──
+            try:
+                txs = _strategy_bcp_ddmm(full_txt, banco, archivo)
+                debug_info.append(f"BCP_DDMM: {len(txs)}")
+                if len(txs) >= 2:
+                    return {"transactions": txs, "total": len(txs),
+                            "strategy": "bcp_ddmm", "raw_text": full_txt}
+            except Exception as e:
+                debug_info.append(f"BCP_DDMM falló: {e}")
 
             # ── Estrategia 1: Regex sobre texto (rápida) ─────
             try:

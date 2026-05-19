@@ -194,6 +194,28 @@ def logout():
     return redirect(url_for("login"))
 
 
+@app.route("/api/debug/db")
+def debug_db():
+    import database as _db
+    status = {"use_turso": _db._USE_TURSO, "turso_url": (_db._TURSO_URL or "")[:40]}
+    if _db._USE_TURSO:
+        try:
+            import libsql_experimental as libsql   # type: ignore
+            status["libsql_imported"] = True
+            try:
+                conn = libsql.connect(database=_db._TURSO_URL, auth_token=_db._TURSO_TOKEN)
+                conn.execute("SELECT 1").fetchone()
+                conn.close()
+                status["turso_connected"] = True
+            except Exception as e:
+                status["turso_connected"] = False
+                status["turso_error"] = str(e)
+        except ImportError as e:
+            status["libsql_imported"] = False
+            status["import_error"] = str(e)
+    return jsonify(status)
+
+
 @app.route("/health")
 def health():
     return jsonify({"status": "ok"}), 200

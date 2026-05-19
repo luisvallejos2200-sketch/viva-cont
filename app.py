@@ -222,6 +222,25 @@ def health():
     }), 200
 
 
+@app.route("/api/debug/fechas")
+@login_required
+def debug_fechas():
+    """Diagnose fecha_operacion format in DB."""
+    conn = get_connection()
+    c = conn.cursor()
+    c.execute("""
+        SELECT mes, fecha_operacion, COUNT(*) as cnt
+        FROM transacciones
+        WHERE mes!='' AND mes IS NOT NULL AND modulo='erp'
+        GROUP BY mes, SUBSTR(fecha_operacion,1,10)
+        ORDER BY fecha_operacion
+        LIMIT 30
+    """)
+    rows = rows_to_list(c.fetchall())
+    conn.close()
+    return jsonify(rows)
+
+
 # ─────────────────────────────────────────────────────────
 # API: GESTIÓN DE CLIENTES (solo super_admin)
 # ─────────────────────────────────────────────────────────
@@ -621,18 +640,30 @@ def api_kpis():
 
     _MES_IDX = {"Enero":1,"Febrero":2,"Marzo":3,"Abril":4,"Mayo":5,"Junio":6,
                 "Julio":7,"Agosto":8,"Septiembre":9,"Octubre":10,"Noviembre":11,"Diciembre":12}
+
+    def _extract_year(fecha):
+        if not fecha: return ""
+        f = str(fecha).strip()
+        if len(f) >= 10:
+            if f[2] == '/':   return f[6:10]   # DD/MM/YYYY
+            if f[4] == '-':   return f[0:4]    # YYYY-MM-DD
+            if f[2] == '-':   return f[6:10]   # DD-MM-YYYY
+        return f[-4:] if len(f) >= 4 else ""
+
     c.execute(f"""
-        SELECT mes,
-               SUBSTR(MIN(fecha_operacion), 7, 4) as anio,
+        SELECT mes, MIN(fecha_operacion) as primera_fecha,
                SUM(CASE WHEN importe>0 THEN importe ELSE 0 END) as ingresos,
                SUM(CASE WHEN importe<0 THEN ABS(importe) ELSE 0 END) as egresos
         FROM transacciones
         WHERE {base} AND mes!='' AND mes IS NOT NULL
-        GROUP BY mes, SUBSTR(fecha_operacion, 7, 4)
+        GROUP BY mes
         LIMIT 24
     """, p)
     _fm_raw = rows_to_list(c.fetchall())
-    _fm_raw.sort(key=lambda r: (r.get("anio",""), _MES_IDX.get(r.get("mes",""), 99)))
+    _fm_raw.sort(key=lambda r: (
+        _extract_year(r.get("primera_fecha","")),
+        _MES_IDX.get(r.get("mes",""), 99)
+    ))
     flujo_mensual = [{"mes": r["mes"], "ingresos": round(r["ingresos"],2),
                       "egresos": round(r["egresos"],2)} for r in _fm_raw[:12]]
 

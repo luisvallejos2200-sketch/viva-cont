@@ -54,7 +54,7 @@ def _to_args(params):
         elif isinstance(p, int):
             out.append({"type": "integer", "value": str(p)})
         elif isinstance(p, float):
-            out.append({"type": "float", "value": str(p)})
+            out.append({"type": "float", "value": p if (p == p and abs(p) != float('inf')) else 0.0})
         else:
             out.append({"type": "text", "value": str(p)})
     return out

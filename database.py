@@ -30,45 +30,14 @@ class _Row:
     def __contains__(self, k):  return k in self._d
 
 
-# ── Turso wrapper: auto-sync after every commit ──────────────────────────────
-class _TursoConn:
-    """Thin wrapper around a libsql embedded-replica connection."""
-
-    def __init__(self, raw):
-        self._raw = raw
-
-    def execute(self, sql, params=()):
-        return self._raw.execute(sql, params)
-
-    def cursor(self):
-        return self._raw.cursor()
-
-    def commit(self):
-        self._raw.commit()
-        try:
-            self._raw.sync()          # push writes to Turso cloud
-        except Exception:
-            pass
-
-    def close(self):
-        self._raw.close()
-
-    def __getattr__(self, name):
-        return getattr(self._raw, name)
-
-
 def get_connection():
     if _USE_TURSO:
         try:
             import libsql_experimental as libsql          # type: ignore
-            raw = libsql.connect(DB_PATH, sync_url=_TURSO_URL, auth_token=_TURSO_TOKEN)
+            # Pure remote connection — no local file, fully persistent
+            raw = libsql.connect(database=_TURSO_URL, auth_token=_TURSO_TOKEN)
             raw.row_factory = _Row
-            try:
-                raw.sync()            # pull latest from Turso on open
-            except Exception:
-                pass
-            raw.execute("PRAGMA foreign_keys=ON")
-            return _TursoConn(raw)
+            return raw
         except Exception:
             pass                      # fall through to local SQLite on error
 

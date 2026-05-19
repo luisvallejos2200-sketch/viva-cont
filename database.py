@@ -189,8 +189,7 @@ def _migrate(conn, sql, *alt_sqls):
             pass
 
 
-def init_db():
-    conn = get_connection()
+def _do_init(conn):
     c = conn.cursor()
 
     # ── CLIENTES (tenants) ────────────────────────────────
@@ -526,6 +525,22 @@ def init_db():
 
     conn.commit()
     conn.close()
+
+
+def init_db():
+    global _turso_ok, _turso_err
+    try:
+        _do_init(get_connection())
+    except Exception as e:
+        # Turso failed during init — disable it and retry with local SQLite
+        _turso_ok = False
+        _turso_err = f"init_db Turso error: {e}"
+        try:
+            _do_init(_local_conn())
+        except Exception as e2:
+            # Log but don't crash — app must start
+            import sys
+            print(f"[database] init_db local fallback also failed: {e2}", file=sys.stderr)
 
 
 def row_to_dict(row):

@@ -466,15 +466,15 @@ function _parseExcelClient(file) {
     const reader = new FileReader();
     reader.onload = e => {
       try {
-        const wb = XLSX.read(e.target.result, { type: 'array', cellDates: true });
+        const wb = XLSX.read(e.target.result, { type: 'array', cellDates: false });
         const ws = wb.Sheets[wb.SheetNames[0]];
         // header=1 in pandas → row 0 = title, row 1 = col headers, row 2+ = data
-        const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: '' });
+        const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: '' });
         const records = [];
         for (let i = 2; i < rows.length; i++) {
           const r = rows[i];
           const g = p => _safeS(r[p]);
-          const fechaOp = _fmtExcelDate(r[0]) || g(0);
+          const fechaOp = g(0);
           if (_INVALIDS_XLS.has(fechaOp)) continue;
           const desc = g(9);
           const t11 = g(11), t10 = g(10);
@@ -488,9 +488,9 @@ function _parseExcelClient(file) {
             moneda:            (_INVALIDS_XLS.has(moneda) || !moneda) ? 'PEN' : moneda,
             importe:           _safeF(r[3]),
             num_operacion:     g(4),
-            periodo:           _fmtExcelDate(r[5]) || g(5),
+            periodo:           g(5),
             banco:             g(6),
-            fecha:             _fmtExcelDate(r[7]) || g(7),
+            fecha:             g(7),
             mes:               g(8),
             descripcion:       desc,
             tipo,

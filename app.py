@@ -750,31 +750,46 @@ def api_confirmar_excel():
         """, (_cid, nombre_archivo))
         importacion_id = c.lastrowid
 
-        for tx in transactions:
-            try:
-                c.execute("""
-                    INSERT INTO transacciones
-                    (cliente_id, modulo, fecha_operacion, referencia, moneda, importe,
-                     num_operacion, periodo, banco, fecha, mes, descripcion, tipo, detalle,
-                     op, tipo_doc, ruc, cliente_proveedor, num_documento, saldo,
-                     doc_cont, comprobante, archivo_origen, importacion_id)
-                    VALUES (?,'erp',?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-                """, (
-                    _cid,
-                    tx.get("fecha_operacion"), tx.get("referencia"), tx.get("moneda"),
-                    tx.get("importe"), tx.get("num_operacion"), label,
-                    tx.get("banco"), tx.get("fecha"), tx.get("mes"), tx.get("descripcion"),
-                    tx.get("tipo"), tx.get("detalle"), tx.get("op"), tx.get("tipo_doc"),
-                    tx.get("ruc"), tx.get("cliente_proveedor"), tx.get("num_documento"),
-                    tx.get("saldo"), tx.get("doc_cont"), tx.get("comprobante"),
-                    nombre_archivo, importacion_id,
-                ))
-                inserted += 1
-            except Exception:
-                continue
+        _SQL_TX = """
+            INSERT INTO transacciones
+            (cliente_id, modulo, fecha_operacion, referencia, moneda, importe,
+             num_operacion, periodo, banco, fecha, mes, descripcion, tipo, detalle,
+             op, tipo_doc, ruc, cliente_proveedor, num_documento, saldo,
+             doc_cont, comprobante, archivo_origen, importacion_id)
+            VALUES (?,'erp',?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        """
+        all_params = [
+            (_cid,
+             tx.get("fecha_operacion"), tx.get("referencia"), tx.get("moneda"),
+             tx.get("importe"), tx.get("num_operacion"), label,
+             tx.get("banco"), tx.get("fecha"), tx.get("mes"), tx.get("descripcion"),
+             tx.get("tipo"), tx.get("detalle"), tx.get("op"), tx.get("tipo_doc"),
+             tx.get("ruc"), tx.get("cliente_proveedor"), tx.get("num_documento"),
+             tx.get("saldo"), tx.get("doc_cont"), tx.get("comprobante"),
+             nombre_archivo, importacion_id)
+            for tx in transactions
+        ]
 
-        c.execute("UPDATE importaciones SET registros_importados=? WHERE id=?",
-                  (inserted, importacion_id))
+        import database as _db
+        if _db._USE_TURSO and _db._turso_ok:
+            # Batch all inserts in ONE HTTP request → avoids Turso rate-limit failures
+            stmts = [{"sql": _SQL_TX, "args": _db._to_args(list(p))} for p in all_params]
+            try:
+                results = _db._turso_post(stmts)
+                inserted = sum(1 for r in results[:-1] if r.get("type") == "ok")
+            except Exception:
+                inserted = 0
+        else:
+            for p in all_params:
+                try:
+                    conn.execute(_SQL_TX, p)
+                    inserted += 1
+                except Exception:
+                    continue
+            conn.commit()
+
+        conn.execute("UPDATE importaciones SET registros_importados=? WHERE id=?",
+                     (inserted, importacion_id))
         conn.commit()
     finally:
         conn.close()

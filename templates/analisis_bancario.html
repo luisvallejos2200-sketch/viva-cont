@@ -620,7 +620,7 @@ function hideLoading() {
 }
 
 /* ══ MOUNT DASHBOARD ══════════════════════════════════════ */
-function mountDashboard(txs, analysis, filename) {
+function mountDashboard(txs, analysis, filename, hideSave) {
   currentTxs      = txs;
   currentAnalysis = analysis;
   currentFilename = filename || '';
@@ -628,6 +628,12 @@ function mountDashboard(txs, analysis, filename) {
   // Switch screens
   document.getElementById('uploadScreen').style.display    = 'none';
   document.getElementById('dashboardScreen').style.display = 'block';
+
+  // Guardar button: show for fresh uploads, hide when viewing a saved period
+  const btn = document.getElementById('btnGuardar');
+  btn.style.display = hideSave ? 'none' : '';
+  btn.disabled = false;
+  btn.innerHTML = '<i class="fa-solid fa-database"></i> Guardar en el sistema';
 
   // Header info
   const ext = filename.toLowerCase().endsWith('.pdf') ? 'fa-file-pdf' : 'fa-file-excel';
@@ -951,8 +957,7 @@ async function selectPeriodo(id) {
     currentTxs      = res.transactions;
     currentAnalysis = res.analysis;
     currentFilename = 'Consolidado';
-    mountDashboard(res.transactions, res.analysis, 'Consolidado');
-    document.getElementById('btnGuardar').style.display = 'none';
+    mountDashboard(res.transactions, res.analysis, 'Consolidado', true);
   } else {
     showLoading('Cargando período...', '');
     const res = await apiGet(`/api/periodos/${id}/analysis`);
@@ -961,9 +966,7 @@ async function selectPeriodo(id) {
     currentTxs      = res.transactions;
     currentAnalysis = res.analysis;
     currentFilename = res.periodo.archivo;
-    mountDashboard(res.transactions, res.analysis, res.periodo.archivo);
-    const btn = document.getElementById('btnGuardar');
-    btn.style.display = 'none';
+    mountDashboard(res.transactions, res.analysis, res.periodo.archivo, true);
   }
 }
 

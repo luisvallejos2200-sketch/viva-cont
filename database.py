@@ -1,8 +1,11 @@
 import sqlite3
 import os
 
-_base = "/tmp" if (os.environ.get("VERCEL") or os.environ.get("RENDER")) else os.path.dirname(__file__)
-DB_PATH = os.path.join(_base, "viva_cont.db")
+# Always store the DB next to this file (not /tmp).
+# On Render, this is /opt/render/project/src/viva_cont.db — persists between
+# restarts within the same deploy. For true cross-deploy persistence set
+# TURSO_DATABASE_URL + TURSO_AUTH_TOKEN env vars (libsql cloud).
+DB_PATH = os.path.join(os.path.dirname(__file__), "viva_cont.db")
 
 
 def get_connection():

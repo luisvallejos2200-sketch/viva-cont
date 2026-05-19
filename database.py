@@ -1,48 +1,162 @@
 import sqlite3
 import os
+import json
+import urllib.request
 
-# Local replica path — used both for pure SQLite and as the embedded-replica
-# file when Turso env vars are present.
 DB_PATH = os.path.join(os.path.dirname(__file__), "viva_cont.db")
 
 _TURSO_URL   = os.environ.get("TURSO_DATABASE_URL", "")
 _TURSO_TOKEN = os.environ.get("TURSO_AUTH_TOKEN", "")
 _USE_TURSO   = bool(_TURSO_URL and _TURSO_TOKEN)
 
+# HTTP endpoint: libsql://host  →  https://host/v2/pipeline
+_TURSO_HTTP  = (_TURSO_URL.replace("libsql://", "https://") + "/v2/pipeline") if _TURSO_URL else ""
 
-# ── Row factory that works with both sqlite3 AND libsql ──────────────────────
+
+# ── Shared row class ─────────────────────────────────────────────────────────
 class _Row:
-    """Mapping-like row: supports dict(row), row['col'], row[0], row.keys()."""
+    """dict-like row: dict(row), row['col'], row[0], row.keys() all work."""
     __slots__ = ("_d", "_keys")
-
-    def __init__(self, cursor, row):
-        self._keys = [d[0] for d in cursor.description]
-        self._d    = dict(zip(self._keys, row))
-
+    def __init__(self, keys, vals):
+        self._keys = list(keys)
+        self._d    = dict(zip(self._keys, vals))
     def __getitem__(self, k):
         return self._d[k] if isinstance(k, str) else list(self._d.values())[k]
+    def __iter__(self):        return iter(self._d.values())
+    def keys(self):            return self._keys
+    def items(self):           return self._d.items()
+    def values(self):          return list(self._d.values())
+    def get(self, k, d=None):  return self._d.get(k, d)
+    def __contains__(self, k): return k in self._d
 
-    def __iter__(self):         return iter(self._d.values())
-    def keys(self):             return self._keys
-    def items(self):            return self._d.items()
-    def values(self):           return list(self._d.values())
-    def get(self, k, d=None):   return self._d.get(k, d)
-    def __contains__(self, k):  return k in self._d
+
+# ── Turso HTTP client (no extra packages — pure urllib) ──────────────────────
+def _turso_post(stmts: list) -> list:
+    """Send a list of {sql, args} to Turso and return results list."""
+    body = json.dumps({"requests": [
+        {"type": "execute", "stmt": s} for s in stmts
+    ] + [{"type": "close"}]}).encode()
+    req = urllib.request.Request(
+        _TURSO_HTTP, data=body,
+        headers={"Authorization": f"Bearer {_TURSO_TOKEN}",
+                 "Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=15) as r:
+        return json.loads(r.read())["results"]
+
+
+def _to_args(params):
+    out = []
+    for p in (params or []):
+        if p is None:
+            out.append({"type": "null"})
+        elif isinstance(p, int):
+            out.append({"type": "integer", "value": str(p)})
+        elif isinstance(p, float):
+            out.append({"type": "float", "value": str(p)})
+        else:
+            out.append({"type": "text", "value": str(p)})
+    return out
+
+
+class _TursoCursor:
+    def __init__(self):
+        self.description = None
+        self.lastrowid   = None
+        self.rowcount    = 0
+        self._rows       = []
+        self._pos        = 0
+
+    def _load(self, result):
+        if result.get("type") != "ok":
+            raise Exception(result.get("error", {}).get("message", "Turso error"))
+        rs = result.get("response", {}).get("result", {})
+        cols = [c["name"] for c in rs.get("cols", [])]
+        if cols:
+            self.description = [(c, None, None, None, None, None, None) for c in cols]
+            self._rows = [
+                _Row(cols, [
+                    (None if v.get("type") == "null" else
+                     int(v["value"]) if v.get("type") == "integer" else
+                     float(v["value"]) if v.get("type") == "float" else
+                     v.get("value"))
+                    for v in row
+                ])
+                for row in rs.get("rows", [])
+            ]
+        self.lastrowid = rs.get("last_insert_rowid")
+        self.rowcount  = rs.get("affected_row_count", 0)
+
+    def fetchone(self):
+        if self._pos >= len(self._rows): return None
+        r = self._rows[self._pos]; self._pos += 1; return r
+
+    def fetchall(self):
+        r = self._rows[self._pos:]; self._pos = len(self._rows); return r
+
+    def __iter__(self):
+        return iter(self._rows[self._pos:])
+
+
+class _TursoConn:
+    def __init__(self):
+        self._pending = []   # buffered writes (inside a transaction)
+        self._in_tx   = False
+        self.lastrowid = None
+
+    def execute(self, sql, params=()):
+        cur = _TursoCursor()
+        sql_up = sql.strip().upper()
+        if sql_up.startswith("PRAGMA"):
+            return cur                   # Turso ignores PRAGMAs
+        stmt = {"sql": sql, "args": _to_args(params)}
+        results = _turso_post([stmt])
+        cur._load(results[0])
+        self.lastrowid = cur.lastrowid
+        return cur
+
+    def cursor(self):
+        return _TursoCursorProxy(self)
+
+    def commit(self):
+        pass   # each execute auto-commits in Turso HTTP
+
+    def close(self):
+        pass
+
+    def __getattr__(self, name):
+        raise AttributeError(name)
+
+
+class _TursoCursorProxy:
+    """Proxy so app.py patterns like c=conn.cursor(); c.execute(); c.lastrowid work."""
+    def __init__(self, conn):
+        self._conn  = conn
+        self._cur   = _TursoCursor()
+        self.description = None
+        self.lastrowid   = None
+        self.rowcount    = 0
+
+    def execute(self, sql, params=()):
+        self._cur = self._conn.execute(sql, params)
+        self.description = self._cur.description
+        self.lastrowid   = self._cur.lastrowid
+        self.rowcount    = self._cur.rowcount
+        return self
+
+    def fetchone(self):  return self._cur.fetchone()
+    def fetchall(self):  return self._cur.fetchall()
+    def __iter__(self):  return iter(self._cur)
 
 
 def get_connection():
     if _USE_TURSO:
-        try:
-            import libsql_experimental as libsql          # type: ignore
-            # Pure remote connection — no local file, fully persistent
-            raw = libsql.connect(database=_TURSO_URL, auth_token=_TURSO_TOKEN)
-            raw.row_factory = _Row
-            return raw
-        except Exception:
-            pass                      # fall through to local SQLite on error
-
+        return _TursoConn()
+    def _sqlite_row(cursor, row):
+        return _Row([d[0] for d in cursor.description], row)
     conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = _Row
+    conn.row_factory = _sqlite_row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")
     return conn

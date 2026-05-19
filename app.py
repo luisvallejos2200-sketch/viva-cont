@@ -771,18 +771,27 @@ def api_confirmar_excel():
         ]
 
         import database as _db
+        _SQL_CLEAN = " ".join(_SQL_TX.split())
+        _batch_errors = []
         if _db._USE_TURSO and _db._turso_ok:
-            # Batch all inserts in ONE HTTP request → avoids Turso rate-limit failures
-            stmts = [{"sql": _SQL_TX, "args": _db._to_args(list(p))} for p in all_params]
-            try:
-                results = _db._turso_post(stmts)
-                inserted = sum(1 for r in results[:-1] if r.get("type") == "ok")
-            except Exception:
-                inserted = 0
+            # Batch in chunks of 20 to avoid request-size limits
+            _batch_errors = []
+            for chunk_start in range(0, len(all_params), 20):
+                chunk = all_params[chunk_start:chunk_start + 20]
+                stmts = [{"sql": _SQL_CLEAN, "args": _db._to_args(list(p))} for p in chunk]
+                try:
+                    results = _db._turso_post(stmts)
+                    ok = sum(1 for r in results[:-1] if r.get("type") == "ok")
+                    inserted += ok
+                    errs = [r for r in results[:-1] if r.get("type") != "ok"]
+                    if errs:
+                        _batch_errors.append(str(errs[0]))
+                except Exception as e:
+                    _batch_errors.append(str(e))
         else:
             for p in all_params:
                 try:
-                    conn.execute(_SQL_TX, p)
+                    conn.execute(_SQL_CLEAN, p)
                     inserted += 1
                 except Exception:
                     continue
@@ -794,7 +803,8 @@ def api_confirmar_excel():
     finally:
         conn.close()
 
-    return jsonify({"success": True, "saved": inserted, "label": label})
+    return jsonify({"success": True, "saved": inserted, "label": label,
+                    "errors": _batch_errors[:3]})
 
 
 @app.route("/api/importaciones", methods=["GET"])

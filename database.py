@@ -150,16 +150,33 @@ class _TursoCursorProxy:
     def __iter__(self):  return iter(self._cur)
 
 
-def get_connection():
-    if _USE_TURSO:
-        return _TursoConn()
-    def _sqlite_row(cursor, row):
+_turso_ok  = None   # None=untested  True=working  False=failed
+_turso_err = ""
+
+
+def _local_conn():
+    def _row_fac(cursor, row):
         return _Row([d[0] for d in cursor.description], row)
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = _sqlite_row
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA foreign_keys=ON")
-    return conn
+    c = sqlite3.connect(DB_PATH)
+    c.row_factory = _row_fac
+    c.execute("PRAGMA journal_mode=WAL")
+    c.execute("PRAGMA foreign_keys=ON")
+    return c
+
+
+def get_connection():
+    global _turso_ok, _turso_err
+    if _USE_TURSO:
+        if _turso_ok is None:           # first call: probe the connection
+            try:
+                _TursoConn().execute("SELECT 1").fetchone()
+                _turso_ok = True
+            except Exception as e:
+                _turso_ok = False
+                _turso_err = str(e)
+        if _turso_ok:
+            return _TursoConn()
+    return _local_conn()
 
 
 def _migrate(conn, sql, *alt_sqls):

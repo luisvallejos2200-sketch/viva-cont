@@ -207,7 +207,19 @@ def debug_db():
 
 @app.route("/health")
 def health():
-    return jsonify({"status": "ok"}), 200
+    import subprocess, database as _db
+    try:
+        sha = subprocess.check_output(["git","rev-parse","--short","HEAD"],
+                                      stderr=subprocess.DEVNULL).decode().strip()
+    except Exception:
+        sha = "unknown"
+    return jsonify({
+        "status": "ok",
+        "commit": sha,
+        "turso_ok": _db._turso_ok,
+        "turso_err": _db._turso_err,
+        "use_turso": _db._USE_TURSO,
+    }), 200
 
 
 # ─────────────────────────────────────────────────────────

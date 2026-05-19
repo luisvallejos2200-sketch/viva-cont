@@ -333,7 +333,23 @@ Ejemplo:
 </div>
 {% endblock %}
 
-{% block head %}{% endblock %}
+{% block head %}
+<style>
+.period-tab-del {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 16px; height: 16px; border-radius: 50%;
+  font-size: 13px; font-weight: 700; line-height: 1;
+  margin-left: 4px; color: currentColor; opacity: 0.5;
+  transition: opacity .15s, background .15s;
+}
+.period-tab-del:hover {
+  opacity: 1; background: rgba(255,255,255,.25);
+}
+.period-tab.active .period-tab-del:hover {
+  background: rgba(255,255,255,.3);
+}
+</style>
+{% endblock %}
 
 {% block scripts %}
 <script>
@@ -676,7 +692,10 @@ async function exportarExcel() {
 /* ══ TABS DE PERÍODOS ═══════════════════════════════════════ */
 async function loadPeriodTabsEC() {
   const periodos = await apiGet('/api/periodos');
-  if (!periodos || !periodos.length) return;
+  if (!periodos || !periodos.length) {
+    document.getElementById('periodTabsEC').style.display = 'none';
+    return;
+  }
 
   document.getElementById('periodTabsEC').style.display = 'block';
   const list = document.getElementById('periodTabsListEC');
@@ -690,9 +709,21 @@ async function loadPeriodTabsEC() {
         <i class="fa-solid fa-calendar-days"></i>
         ${p.label}
         <span style="font-size:10px;opacity:.7;">${p.total_transacciones} txs</span>
+        <span class="period-tab-del" onclick="event.stopPropagation();eliminarPeriodoEC(${p.id},'${p.label.replace(/'/g,"\\'")}')">×</span>
       </button>
     `).join('')}
   `;
+}
+
+async function eliminarPeriodoEC(pid, label) {
+  if (!confirm(`¿Eliminar el período "${label}" y todas sus transacciones?\nEsta acción no se puede deshacer.`)) return;
+  const res = await apiDelete(`/api/periodos/${pid}`);
+  if (!res) return;
+  if (res.error) { showToast('error', 'Error', res.error); return; }
+  showToast('success', 'Período eliminado', label);
+  activePeriodoEC = 'all';
+  loadPeriodTabsEC();
+  loadTransacciones(1);
 }
 
 function selectPeriodoEC(id, btn) {

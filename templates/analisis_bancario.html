@@ -28,6 +28,14 @@
   background:var(--primary); border-color:var(--primary);
   color:#fff; box-shadow:0 3px 10px rgba(26,60,110,.3);
 }
+.period-tab-del {
+  display:inline-flex; align-items:center; justify-content:center;
+  width:16px; height:16px; border-radius:50%;
+  font-size:13px; font-weight:700; line-height:1;
+  margin-left:4px; color:currentColor; opacity:0.5;
+  transition:opacity .15s, background .15s;
+}
+.period-tab-del:hover { opacity:1; background:rgba(255,255,255,.25); }
 
 .upload-hero {
   max-width:680px; margin:60px auto 0;
@@ -916,32 +924,50 @@ let activePeriodoId = null;
 
 async function loadPeriodTabs() {
   const periodos = await apiGet('/api/periodos');
-  if (!periodos || !periodos.length) return;
-
-  const bar = document.getElementById('periodTabsBar');
+  const bar  = document.getElementById('periodTabsBar');
   const list = document.getElementById('periodTabsList');
-  bar.style.display = 'flex';
 
+  if (!periodos || !periodos.length) {
+    bar.style.display = 'none';
+    return;
+  }
+
+  bar.style.display = 'flex';
   list.innerHTML = `
     <button class="period-tab ${activePeriodoId === 'all' ? 'active' : ''}"
-      onclick="selectPeriodo('all')">
+      onclick="selectPeriodo('all', event)">
       <i class="fa-solid fa-layer-group"></i> Consolidado
     </button>
     ${periodos.map(p => `
       <button class="period-tab ${activePeriodoId == p.id ? 'active' : ''}"
-        onclick="selectPeriodo(${p.id})">
+        onclick="selectPeriodo(${p.id}, event)">
         <i class="fa-solid fa-calendar-days"></i>
         ${p.label}
         <span style="font-size:10px;opacity:.7;margin-left:4px;">${p.total_transacciones} txs</span>
+        <span class="period-tab-del" onclick="event.stopPropagation();eliminarPeriodoAB(${p.id},'${p.label.replace(/'/g,"\\'")}')">×</span>
       </button>
     `).join('')}
   `;
 }
 
-async function selectPeriodo(id) {
+async function eliminarPeriodoAB(pid, label) {
+  if (!confirm(`¿Eliminar el período "${label}" y todas sus transacciones?\nEsta acción no se puede deshacer.`)) return;
+  const res = await apiDelete(`/api/periodos/${pid}`);
+  if (!res) return;
+  if (res.error) { showToast('error', 'Error', res.error); return; }
+  showToast('success', 'Período eliminado', label);
+  if (activePeriodoId == pid) {
+    activePeriodoId = null;
+    document.getElementById('dashboardScreen').style.display = 'none';
+    document.getElementById('uploadScreen').style.display    = 'block';
+  }
+  loadPeriodTabs();
+}
+
+async function selectPeriodo(id, ev) {
   activePeriodoId = id;
   document.querySelectorAll('.period-tab').forEach(b => b.classList.remove('active'));
-  event.currentTarget.classList.add('active');
+  if (ev && ev.currentTarget) ev.currentTarget.classList.add('active');
 
   document.getElementById('uploadScreen').style.display    = 'none';
   document.getElementById('dashboardScreen').style.display = 'block';

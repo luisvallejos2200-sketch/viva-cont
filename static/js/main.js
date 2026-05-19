@@ -138,6 +138,16 @@ async function apiPut(url, data) {
   }
 }
 
+async function apiDelete(url) {
+  try {
+    const res = await fetch(url, { method: 'DELETE' });
+    return await res.json();
+  } catch (e) {
+    showToast('error', 'Error de red', e.message);
+    return null;
+  }
+}
+
 // ── FORMATTERS ────────────────────────────────────────────────
 function fmtMoney(val, currency = 'PEN') {
   const n = parseFloat(val) || 0;

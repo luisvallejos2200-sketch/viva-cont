@@ -1008,30 +1008,45 @@ def api_confirmar_transacciones():
           round(total_ing, 2), round(total_egr, 2)))
     periodo_id = c.lastrowid
 
-    for tx in transactions:
-        try:
-            c.execute("""
-                INSERT INTO transacciones
-                (cliente_id, modulo, periodo_id, fecha_operacion, referencia, moneda, importe,
-                 num_operacion, periodo, banco, fecha, mes, descripcion, tipo, detalle, op,
-                 tipo_doc, ruc, cliente_proveedor, num_documento, saldo,
-                 doc_cont, comprobante, archivo_origen)
-                VALUES (?, 'banco',?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-            """, (
-                cid(), periodo_id,
-                tx.get("fecha_operacion"), tx.get("referencia"), tx.get("moneda"),
-                tx.get("importe"), tx.get("num_operacion"), tx.get("periodo"),
-                tx.get("banco"), tx.get("fecha"), tx.get("mes"), tx.get("descripcion"),
-                tx.get("tipo"), tx.get("detalle"), tx.get("op"), tx.get("tipo_doc"),
-                tx.get("ruc"), tx.get("cliente_proveedor"), tx.get("num_documento"),
-                tx.get("saldo"), tx.get("doc_cont"), tx.get("comprobante"),
-                tx.get("archivo_origen"),
-            ))
-            inserted += 1
-        except Exception:
-            continue
+    _SQL_TX_EC = (
+        "INSERT INTO transacciones "
+        "(cliente_id, modulo, periodo_id, fecha_operacion, referencia, moneda, importe, "
+        "num_operacion, periodo, banco, fecha, mes, descripcion, tipo, detalle, op, "
+        "tipo_doc, ruc, cliente_proveedor, num_documento, saldo, "
+        "doc_cont, comprobante, archivo_origen) "
+        "VALUES (?, 'banco',?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+    )
 
-    conn.commit()
+    def _tx_params_ec(tx):
+        return [
+            cid(), periodo_id,
+            tx.get("fecha_operacion"), tx.get("referencia"), tx.get("moneda"),
+            float(tx.get("importe") or 0), tx.get("num_operacion"), tx.get("periodo"),
+            tx.get("banco"), tx.get("fecha"), tx.get("mes"), tx.get("descripcion"),
+            tx.get("tipo"), tx.get("detalle"), tx.get("op"), tx.get("tipo_doc"),
+            tx.get("ruc"), tx.get("cliente_proveedor"), tx.get("num_documento"),
+            float(tx.get("saldo") or 0), tx.get("doc_cont"), tx.get("comprobante"),
+            tx.get("archivo_origen"),
+        ]
+
+    if _db._USE_TURSO and _db._turso_ok:
+        for i in range(0, len(transactions), 20):
+            chunk = transactions[i:i + 20]
+            stmts = [{"sql": _SQL_TX_EC, "args": _db._to_args(_tx_params_ec(tx))} for tx in chunk]
+            try:
+                results = _db._turso_post(stmts)
+                inserted += sum(1 for r in results[:-1] if r.get("type") == "ok")
+            except Exception:
+                pass
+    else:
+        for tx in transactions:
+            try:
+                conn.execute(_SQL_TX_EC, _tx_params_ec(tx))
+                inserted += 1
+            except Exception:
+                continue
+        conn.commit()
+
     conn.close()
     return jsonify({"success": True, "saved": inserted, "periodo_id": periodo_id, "label": label})
 
@@ -1562,6 +1577,29 @@ def api_periodo_consolidado():
     return jsonify({"transactions": txs, "analysis": analysis, "periodos": periodos})
 
 
+@app.route("/api/periodos/<int:pid>", methods=["DELETE"])
+@login_required
+def api_delete_periodo(pid):
+    """Elimina un período y todas sus transacciones bancarias."""
+    _SQL_DEL_TX  = "DELETE FROM transacciones WHERE periodo_id=? AND cliente_id=? AND modulo='banco'"
+    _SQL_DEL_PER = "DELETE FROM periodos_cargados WHERE id=? AND cliente_id=?"
+    if _db._USE_TURSO and _db._turso_ok:
+        try:
+            _db._turso_post([
+                {"sql": _SQL_DEL_TX,  "args": _db._to_args([pid, cid()])},
+                {"sql": _SQL_DEL_PER, "args": _db._to_args([pid, cid()])},
+            ])
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+    else:
+        conn = get_connection()
+        conn.execute(_SQL_DEL_TX,  (pid, cid()))
+        conn.execute(_SQL_DEL_PER, (pid, cid()))
+        conn.commit()
+        conn.close()
+    return jsonify({"success": True})
+
+
 @app.route("/api/analisis-bancario/guardar", methods=["POST"])
 @login_required
 def api_analisis_guardar():
@@ -1603,37 +1641,53 @@ def api_analisis_guardar():
 
     inserted = 0
     skipped  = 0
-    for tx in txs:
-        try:
-            c.execute("""
-                SELECT COUNT(*) FROM transacciones
-                WHERE cliente_id=? AND fecha_operacion=? AND importe=? AND saldo=? AND banco=?
-            """, (cid(), tx.get("fecha_operacion"), tx.get("importe"), tx.get("saldo"), tx.get("banco")))
-            if c.fetchone()[0] > 0:
-                skipped += 1
+
+    _SQL_TX_AB = (
+        "INSERT INTO transacciones "
+        "(cliente_id, modulo, periodo_id, fecha_operacion, referencia, moneda, importe, "
+        "num_operacion, periodo, banco, fecha, mes, descripcion, tipo, detalle, "
+        "op, tipo_doc, ruc, cliente_proveedor, num_documento, saldo, "
+        "doc_cont, comprobante, archivo_origen) "
+        "VALUES (?,'banco',?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+    )
+
+    def _tx_params_ab(tx):
+        return [
+            cid(), periodo_id,
+            tx.get("fecha_operacion"), tx.get("referencia"), tx.get("moneda"),
+            float(tx.get("importe") or 0), tx.get("num_operacion"), tx.get("periodo"),
+            tx.get("banco"), tx.get("fecha"), tx.get("mes"), tx.get("descripcion"),
+            tx.get("tipo"), tx.get("detalle"), tx.get("op"), tx.get("tipo_doc"),
+            tx.get("ruc"), tx.get("cliente_proveedor"), tx.get("num_documento"),
+            float(tx.get("saldo") or 0), tx.get("doc_cont"), tx.get("comprobante"),
+            tx.get("archivo_origen"),
+        ]
+
+    if _db._USE_TURSO and _db._turso_ok:
+        for i in range(0, len(txs), 20):
+            chunk = txs[i:i + 20]
+            stmts = [{"sql": _SQL_TX_AB, "args": _db._to_args(_tx_params_ab(tx))} for tx in chunk]
+            try:
+                results = _db._turso_post(stmts)
+                inserted += sum(1 for r in results[:-1] if r.get("type") == "ok")
+            except Exception:
+                pass
+    else:
+        for tx in txs:
+            try:
+                c.execute("""
+                    SELECT COUNT(*) FROM transacciones
+                    WHERE cliente_id=? AND fecha_operacion=? AND importe=? AND saldo=? AND banco=?
+                """, (cid(), tx.get("fecha_operacion"), tx.get("importe"), tx.get("saldo"), tx.get("banco")))
+                if c.fetchone()[0] > 0:
+                    skipped += 1
+                    continue
+                conn.execute(_SQL_TX_AB, _tx_params_ab(tx))
+                inserted += 1
+            except Exception:
                 continue
-            c.execute("""
-                INSERT INTO transacciones
-                (cliente_id, modulo, periodo_id, fecha_operacion, referencia, moneda, importe,
-                 num_operacion, periodo, banco, fecha, mes, descripcion, tipo, detalle,
-                 op, tipo_doc, ruc, cliente_proveedor, num_documento, saldo,
-                 doc_cont, comprobante, archivo_origen)
-                VALUES (?,'banco',?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-            """, (
-                cid(),
-                periodo_id,
-                tx.get("fecha_operacion"), tx.get("referencia"), tx.get("moneda"),
-                tx.get("importe"), tx.get("num_operacion"), tx.get("periodo"),
-                tx.get("banco"), tx.get("fecha"), tx.get("mes"), tx.get("descripcion"),
-                tx.get("tipo"), tx.get("detalle"), tx.get("op"), tx.get("tipo_doc"),
-                tx.get("ruc"), tx.get("cliente_proveedor"), tx.get("num_documento"),
-                tx.get("saldo"), tx.get("doc_cont"), tx.get("comprobante"),
-                tx.get("archivo_origen"),
-            ))
-            inserted += 1
-        except Exception:
-            continue
-    conn.commit()
+        conn.commit()
+
     conn.close()
     return jsonify({"success": True, "saved": inserted, "skipped": skipped,
                     "periodo_id": periodo_id, "label": label})

@@ -1,16 +1,79 @@
 import sqlite3
 import os
 
-# Always store the DB next to this file (not /tmp).
-# On Render, this is /opt/render/project/src/viva_cont.db — persists between
-# restarts within the same deploy. For true cross-deploy persistence set
-# TURSO_DATABASE_URL + TURSO_AUTH_TOKEN env vars (libsql cloud).
+# Local replica path — used both for pure SQLite and as the embedded-replica
+# file when Turso env vars are present.
 DB_PATH = os.path.join(os.path.dirname(__file__), "viva_cont.db")
+
+_TURSO_URL   = os.environ.get("TURSO_DATABASE_URL", "")
+_TURSO_TOKEN = os.environ.get("TURSO_AUTH_TOKEN", "")
+_USE_TURSO   = bool(_TURSO_URL and _TURSO_TOKEN)
+
+
+# ── Row factory that works with both sqlite3 AND libsql ──────────────────────
+class _Row:
+    """Mapping-like row: supports dict(row), row['col'], row[0], row.keys()."""
+    __slots__ = ("_d", "_keys")
+
+    def __init__(self, cursor, row):
+        self._keys = [d[0] for d in cursor.description]
+        self._d    = dict(zip(self._keys, row))
+
+    def __getitem__(self, k):
+        return self._d[k] if isinstance(k, str) else list(self._d.values())[k]
+
+    def __iter__(self):         return iter(self._d.values())
+    def keys(self):             return self._keys
+    def items(self):            return self._d.items()
+    def values(self):           return list(self._d.values())
+    def get(self, k, d=None):   return self._d.get(k, d)
+    def __contains__(self, k):  return k in self._d
+
+
+# ── Turso wrapper: auto-sync after every commit ──────────────────────────────
+class _TursoConn:
+    """Thin wrapper around a libsql embedded-replica connection."""
+
+    def __init__(self, raw):
+        self._raw = raw
+
+    def execute(self, sql, params=()):
+        return self._raw.execute(sql, params)
+
+    def cursor(self):
+        return self._raw.cursor()
+
+    def commit(self):
+        self._raw.commit()
+        try:
+            self._raw.sync()          # push writes to Turso cloud
+        except Exception:
+            pass
+
+    def close(self):
+        self._raw.close()
+
+    def __getattr__(self, name):
+        return getattr(self._raw, name)
 
 
 def get_connection():
+    if _USE_TURSO:
+        try:
+            import libsql_experimental as libsql          # type: ignore
+            raw = libsql.connect(DB_PATH, sync_url=_TURSO_URL, auth_token=_TURSO_TOKEN)
+            raw.row_factory = _Row
+            try:
+                raw.sync()            # pull latest from Turso on open
+            except Exception:
+                pass
+            raw.execute("PRAGMA foreign_keys=ON")
+            return _TursoConn(raw)
+        except Exception:
+            pass                      # fall through to local SQLite on error
+
     conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
+    conn.row_factory = _Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")
     return conn

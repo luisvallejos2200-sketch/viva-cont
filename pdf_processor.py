@@ -624,6 +624,31 @@ _BCP_DDMM_LINE_RE = re.compile(
 )
 
 
+def _fix_bcp_date_anomalies(txs: list) -> list:
+    """
+    Corrige transacciones donde FECHA_PROC ≠ FECHA_VALOR en estados BCP.
+    El PDF muestra fecha_proc, pero la continuidad del saldo indica fecha_valor.
+    Regla: si txs[i].fecha > txs[i-1].fecha Y txs[i+1].fecha <= txs[i-1].fecha
+           → reclasificar txs[i] a la fecha de txs[i-1].
+    Ejemplo: 26-04 (164.00-) → 27-04 (175.00-) → 26-04 (2,510.00-)
+             El 175.00- es valor 26-04 aunque proceso 27-04.
+    """
+    if len(txs) < 3:
+        return txs
+    for i in range(1, len(txs) - 1):
+        prev_f = txs[i - 1]["fecha_operacion"]
+        curr_f = txs[i]["fecha_operacion"]
+        next_f = txs[i + 1]["fecha_operacion"]
+        if curr_f > prev_f and next_f <= prev_f:
+            # Reclasificar: usar fecha del bloque anterior
+            prev_tx = txs[i - 1]
+            txs[i]["fecha_operacion"] = prev_f
+            txs[i]["fecha"]           = prev_f
+            txs[i]["periodo"]         = prev_f[:7]
+            txs[i]["mes"]             = prev_tx["mes"]
+    return txs
+
+
 def _strategy_bcp_ddmm(full_text: str, banco: str, archivo: str) -> list:
     """
     Parser BCP Perú: estado de cuenta con fechas DD-MM (sin año).
@@ -632,6 +657,7 @@ def _strategy_bcp_ddmm(full_text: str, banco: str, archivo: str) -> list:
     - Abono (crédito): monto sin guión       → 7,290.00
     - Montos pequeños de tipo .10- (ITF) también soportados
     - Última columna de cada línea es el saldo corriente
+    - Aplica corrección de fecha PROC→VALOR por continuidad de saldo
     """
     ym = _BCP_DDMM_YEAR_RE.search(full_text)
     year = int(ym.group(3)) if ym else datetime.now().year
@@ -667,6 +693,8 @@ def _strategy_bcp_ddmm(full_text: str, banco: str, archivo: str) -> list:
             seen.add(key)
             txs.append(_make_tx(fecha_dt, fecha_iso, desc, importe, saldo, banco, archivo))
 
+    # Corregir anomalías de fecha PROC vs VALOR
+    txs = _fix_bcp_date_anomalies(txs)
     return txs
 
 

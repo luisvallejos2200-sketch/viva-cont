@@ -157,6 +157,10 @@ function fmtMoney(val, currency = 'PEN') {
 
 function fmtDate(str) {
   if (!str) return '—';
+  // Parse ISO date (YYYY-MM-DD) manually to avoid UTC→local timezone shift.
+  // new Date('2025-04-30') = UTC midnight → shows Apr 29 in Peru (UTC-5).
+  const iso = /^(\d{4})-(\d{2})-(\d{2})/.exec(str);
+  if (iso) return `${iso[3]}/${iso[2]}/${iso[1]}`;
   try {
     const d = new Date(str);
     if (isNaN(d)) return str;

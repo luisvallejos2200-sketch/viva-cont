@@ -619,14 +619,22 @@ def api_kpis():
     c.execute("SELECT COALESCE(SUM(total),0) FROM facturas WHERE estado='EMITIDA' AND cliente_id=?", (_cid,))
     total_facturado = c.fetchone()[0]
 
+    _MES_IDX = {"Enero":1,"Febrero":2,"Marzo":3,"Abril":4,"Mayo":5,"Junio":6,
+                "Julio":7,"Agosto":8,"Septiembre":9,"Octubre":10,"Noviembre":11,"Diciembre":12}
     c.execute(f"""
-        SELECT mes, SUM(CASE WHEN importe>0 THEN importe ELSE 0 END) as ingresos,
+        SELECT mes,
+               SUBSTR(MIN(fecha_operacion), 7, 4) as anio,
+               SUM(CASE WHEN importe>0 THEN importe ELSE 0 END) as ingresos,
                SUM(CASE WHEN importe<0 THEN ABS(importe) ELSE 0 END) as egresos
         FROM transacciones
         WHERE {base} AND mes!='' AND mes IS NOT NULL
-        GROUP BY mes ORDER BY MIN(fecha_operacion) LIMIT 12
+        GROUP BY mes, SUBSTR(fecha_operacion, 7, 4)
+        LIMIT 24
     """, p)
-    flujo_mensual = rows_to_list(c.fetchall())
+    _fm_raw = rows_to_list(c.fetchall())
+    _fm_raw.sort(key=lambda r: (r.get("anio",""), _MES_IDX.get(r.get("mes",""), 99)))
+    flujo_mensual = [{"mes": r["mes"], "ingresos": round(r["ingresos"],2),
+                      "egresos": round(r["egresos"],2)} for r in _fm_raw[:12]]
 
     c.execute(f"""
         SELECT tipo, COUNT(*) as cantidad, SUM(ABS(importe)) as monto

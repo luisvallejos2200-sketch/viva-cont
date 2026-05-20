@@ -1213,6 +1213,13 @@ def api_crear_factura():
     conn = get_connection()
     c = conn.cursor()
 
+    # Auto-populate emisor from empresa config
+    c.execute("SELECT ruc, razon_social, direccion FROM empresa WHERE cliente_id=?", (cid(),))
+    emp = c.fetchone()
+    ruc_emisor  = data.get("ruc_emisor")  or (emp["ruc"]           if emp else None)
+    rs_emisor   = data.get("razon_social_emisor") or (emp["razon_social"] if emp else None)
+    dir_emisor  = data.get("direccion_emisor") or (emp["direccion"]   if emp else None)
+
     subtotal = sum(float(i.get("valor_venta", 0)) for i in items)
     igv = round(subtotal * 0.18, 2)
     total = round(subtotal + igv, 2)
@@ -1231,7 +1238,7 @@ def api_crear_factura():
         data.get("tipo_comprobante", "FACTURA"),
         data.get("fecha_emision", datetime.now().strftime("%Y-%m-%d")),
         data.get("fecha_vencimiento"),
-        data.get("ruc_emisor"), data.get("razon_social_emisor"), data.get("direccion_emisor"),
+        ruc_emisor, rs_emisor, dir_emisor,
         data.get("ruc_cliente"), data.get("razon_social_cliente"), data.get("direccion_cliente"),
         data.get("moneda", "PEN"),
         subtotal, igv, total,
@@ -1613,8 +1620,10 @@ def api_update_empresa():
     data = request.get_json() or {}
     fields = ["ruc", "razon_social", "nombre_comercial", "direccion", "telefono", "email",
               "regimen", "nubefact_token", "nubefact_modo"]
-    sets = ", ".join(f"{f} = ?" for f in fields if f in data)
-    vals = [data[f] for f in fields if f in data]
+    # Skip empty-string updates for critical fields to avoid overwriting with blank
+    protected = {"ruc", "razon_social"}
+    sets = ", ".join(f"{f} = ?" for f in fields if f in data and not (f in protected and not data[f]))
+    vals = [data[f] for f in fields if f in data and not (f in protected and not data[f])]
     conn = get_connection()
     # Upsert: si no existe empresa para este cliente, la crea
     existing = conn.execute("SELECT id FROM empresa WHERE cliente_id=?", (cid(),)).fetchone()

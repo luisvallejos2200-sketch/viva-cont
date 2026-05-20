@@ -467,6 +467,16 @@ def _do_init(conn):
     _migrate(conn, "ALTER TABLE usuarios ADD COLUMN privilegios TEXT DEFAULT '[]'")
     _migrate(conn, "ALTER TABLE empresa ADD COLUMN cliente_id INTEGER UNIQUE")
 
+    # ── NUBEFACT / SUNAT columns ──────────────────────────
+    _migrate(conn, "ALTER TABLE facturas ADD COLUMN sunat_estado TEXT")
+    _migrate(conn, "ALTER TABLE facturas ADD COLUMN sunat_descripcion TEXT")
+    _migrate(conn, "ALTER TABLE facturas ADD COLUMN enlace_pdf TEXT")
+    _migrate(conn, "ALTER TABLE facturas ADD COLUMN enlace_xml TEXT")
+    _migrate(conn, "ALTER TABLE facturas ADD COLUMN codigo_qr TEXT")
+    _migrate(conn, "ALTER TABLE facturas ADD COLUMN nubefact_id TEXT")
+    _migrate(conn, "ALTER TABLE empresa ADD COLUMN nubefact_token TEXT")
+    _migrate(conn, "ALTER TABLE empresa ADD COLUMN nubefact_modo TEXT DEFAULT 'demo'")
+
     # ── CLIENTE RAÍZ: Viva Consulting (id=1) ──────────────
     c.execute("SELECT COUNT(*) FROM clientes WHERE id=1")
     if c.fetchone()[0] == 0:

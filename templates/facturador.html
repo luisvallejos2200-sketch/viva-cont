@@ -69,11 +69,12 @@
           <th class="text-right">IGV</th>
           <th class="text-right">Total</th>
           <th>Estado</th>
+          <th>SUNAT</th>
           <th>Acciones</th>
         </tr>
       </thead>
       <tbody id="bodyFacturas">
-        <tr class="loading-row"><td colspan="11"><span class="spinner"></span> Cargando...</td></tr>
+        <tr class="loading-row"><td colspan="12"><span class="spinner"></span> Cargando...</td></tr>
       </tbody>
     </table>
   </div>
@@ -207,8 +208,8 @@
       <button class="btn btn-outline btn-sm" onclick="guardarFactura('BORRADOR')">
         <i class="fa-solid fa-floppy-disk"></i> Guardar Borrador
       </button>
-      <button class="btn btn-success" onclick="guardarFactura('EMITIDA')">
-        <i class="fa-solid fa-paper-plane"></i> Emitir Factura
+      <button class="btn btn-success" onclick="guardarYEnviarSunat()">
+        <i class="fa-solid fa-satellite-dish"></i> Emitir + Enviar SUNAT
       </button>
     </div>
   </div>
@@ -255,7 +256,7 @@ async function loadFacturas(page = 1) {
 
   const tbody = document.getElementById('bodyFacturas');
   if (!facturas.length) {
-    tbody.innerHTML = `<tr><td colspan="11" class="text-center" style="padding:40px;color:var(--text-muted);">
+    tbody.innerHTML = `<tr><td colspan="12" class="text-center" style="padding:40px;color:var(--text-muted);">
       <i class="fa-solid fa-file-invoice" style="font-size:32px;opacity:.3;display:block;margin-bottom:8px;"></i>
       No hay comprobantes. ¡Crea tu primera factura!</td></tr>`;
     return;
@@ -263,6 +264,25 @@ async function loadFacturas(page = 1) {
 
   tbody.innerHTML = facturas.map(f => {
     const monSym = f.moneda === 'USD' ? '$' : 'S/';
+    const badgeSunat = !f.sunat_estado
+      ? '<span class="badge badge-default" style="font-size:10px;">Sin enviar</span>'
+      : f.sunat_estado === 'ACEPTADA'
+        ? '<span class="badge badge-success" style="font-size:10px;"><i class="fa-solid fa-circle-check"></i> Aceptada</span>'
+        : '<span class="badge badge-danger" style="font-size:10px;"><i class="fa-solid fa-circle-xmark"></i> Rechazada</span>';
+
+    const btnSunat = (f.estado === 'EMITIDA' && (!f.sunat_estado || f.sunat_estado === 'RECHAZADA'))
+      ? `<button class="btn btn-ghost btn-sm btn-icon" style="color:#1a7fd8" onclick="enviarSunat(${f.id})" title="Enviar a SUNAT">
+           <i class="fa-solid fa-satellite-dish"></i></button>`
+      : '';
+    const btnPdf = f.enlace_pdf
+      ? `<a href="${f.enlace_pdf}" target="_blank" class="btn btn-ghost btn-sm btn-icon text-danger" title="Descargar PDF SUNAT">
+           <i class="fa-solid fa-file-pdf"></i></a>`
+      : '';
+    const btnXml = f.enlace_xml
+      ? `<a href="${f.enlace_xml}" target="_blank" class="btn btn-ghost btn-sm btn-icon" style="color:#e8a020" title="Descargar XML SUNAT">
+           <i class="fa-solid fa-code"></i></a>`
+      : '';
+
     return `<tr>
       <td class="mono font-bold">${f.serie}-${String(f.correlativo).padStart(6,'0')}</td>
       <td><span class="badge badge-primary">${f.tipo_comprobante}</span></td>
@@ -274,6 +294,7 @@ async function loadFacturas(page = 1) {
       <td class="text-right mono">${monSym} ${parseFloat(f.igv||0).toFixed(2)}</td>
       <td class="text-right mono font-bold">${monSym} ${parseFloat(f.total||0).toFixed(2)}</td>
       <td>${badgeEstado(f.estado)}</td>
+      <td>${badgeSunat}</td>
       <td style="white-space:nowrap;">
         <button class="btn btn-ghost btn-sm btn-icon" onclick="verFactura(${f.id})" title="Ver">
           <i class="fa-solid fa-eye"></i></button>
@@ -284,6 +305,7 @@ async function loadFacturas(page = 1) {
             <i class="fa-solid fa-paper-plane"></i></button>
         ` : ''}
         ${f.estado==='EMITIDA' ? `
+          ${btnSunat}${btnPdf}${btnXml}
           <button class="btn btn-ghost btn-sm btn-icon text-danger" onclick="anularFactura(${f.id})" title="Anular">
             <i class="fa-solid fa-ban"></i></button>
         ` : ''}
@@ -528,6 +550,71 @@ async function anularFactura(id) {
   if (!res) return;
   showToast('warning','Factura anulada','El comprobante ha sido anulado');
   loadFacturas(1);
+}
+
+// ── NUBEFACT / SUNAT ──────────────────────────────────────────
+async function enviarSunat(id) {
+  showToast('info', 'Enviando a SUNAT', 'Conectando con Nubefact OSE...');
+  const res = await apiPost(`/api/facturas/${id}/enviar-sunat`, {});
+  if (!res) return;
+  if (res.success) {
+    showToast('success', '✓ SUNAT Aceptada', res.sunat_descripcion || 'Comprobante aceptado por SUNAT', 6000);
+  } else {
+    showToast('error', '✗ SUNAT Rechazó', res.error || res.sunat_descripcion || 'Comprobante rechazado', 8000);
+  }
+  loadFacturas(1);
+}
+
+async function guardarYEnviarSunat() {
+  const items = [];
+  let ok = true;
+  document.querySelectorAll('#itemsBody tr').forEach(tr => {
+    const id = tr.id.replace('item-row-', '');
+    const desc = document.getElementById(`iDesc${id}`)?.value?.trim();
+    if (!desc) { ok = false; return; }
+    items.push({
+      descripcion:     desc,
+      unidad:          document.getElementById(`iUnidad${id}`)?.value || 'UND',
+      cantidad:        parseFloat(document.getElementById(`iCant${id}`)?.value) || 1,
+      precio_unitario: parseFloat(document.getElementById(`iPU${id}`)?.value) || 0,
+      descuento:       parseFloat(document.getElementById(`iDesc${id}n`)?.value) || 0,
+      valor_venta:     parseFloat(document.getElementById(`iVV${id}`)?.textContent) || 0,
+    });
+  });
+  if (!ok || !items.length) {
+    showToast('warning','Campos incompletos','Completa al menos un ítem con descripción');
+    return;
+  }
+
+  const payload = {
+    serie:                document.getElementById('fSerie').value,
+    correlativo:          document.getElementById('fCorrelativo').value,
+    tipo_comprobante:     document.getElementById('fTipo').value,
+    fecha_emision:        document.getElementById('fFechaEmision').value,
+    fecha_vencimiento:    document.getElementById('fFechaVenc').value,
+    ruc_cliente:          document.getElementById('fRucCliente').value,
+    razon_social_cliente: document.getElementById('fRsCliente').value,
+    direccion_cliente:    document.getElementById('fDirCliente').value,
+    moneda:               document.getElementById('fMoneda').value,
+    observaciones:        document.getElementById('fObservaciones').value,
+    estado: 'EMITIDA',
+    items,
+  };
+
+  let fid;
+  if (editingFacturaId) {
+    const res = await apiPut(`/api/facturas/${editingFacturaId}`, payload);
+    if (!res || res.error) { showToast('error','Error al guardar', res?.error || ''); return; }
+    fid = editingFacturaId;
+  } else {
+    const res = await apiPost('/api/facturas', payload);
+    if (!res || res.error) { showToast('error','Error al guardar', res?.error || ''); return; }
+    fid = res.id;
+  }
+
+  closeFacturaModal();
+  loadFacturas(1);
+  await enviarSunat(fid);
 }
 
 loadFacturas(1);

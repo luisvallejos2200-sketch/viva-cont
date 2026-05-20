@@ -12,6 +12,7 @@
 
 <div class="grid-2">
   <!-- Datos de la empresa -->
+  <div style="display:flex;flex-direction:column;gap:18px;">
   <div class="card">
     <div class="card-header">
       <h3 class="card-title"><i class="fa-solid fa-building"></i> Datos de la Empresa</h3>
@@ -59,6 +60,51 @@
       </button>
     </div>
   </div>
+
+  <!-- Nubefact / SUNAT -->
+  <div class="card">
+    <div class="card-header">
+      <h3 class="card-title"><i class="fa-solid fa-satellite-dish" style="color:#1a7fd8"></i> Integración SUNAT — Nubefact OSE</h3>
+    </div>
+    <div class="card-body">
+      <div class="stat-mini" style="margin-bottom:14px;padding:10px 14px;background:rgba(26,127,216,.08);border-radius:8px;border-left:3px solid #1a7fd8;">
+        <span class="stat-mini-label" style="font-size:11px;line-height:1.4;">
+          Conecta tu facturador con SUNAT a través de <strong>Nubefact OSE</strong>.
+          Obtén tu token en <a href="https://nubefact.com" target="_blank" style="color:#1a7fd8">nubefact.com</a> →
+          Mi cuenta → Token de acceso.
+        </span>
+      </div>
+      <div class="form-row form-row-2">
+        <div class="form-group">
+          <label class="form-label">Modo de operación</label>
+          <select class="form-control" id="cfgNubefactModo">
+            <option value="demo">Demo (pruebas)</option>
+            <option value="produccion">Producción (SUNAT real)</option>
+          </select>
+        </div>
+        <div class="form-group" style="position:relative;">
+          <label class="form-label">Token Nubefact</label>
+          <input type="password" class="form-control" id="cfgNubefactToken"
+            placeholder="Pega aquí tu token de Nubefact"
+            style="padding-right:40px;" />
+          <button type="button" onclick="toggleTokenVisibility()" title="Mostrar/Ocultar"
+            style="position:absolute;right:10px;top:34px;background:none;border:none;cursor:pointer;color:var(--text-muted);">
+            <i class="fa-solid fa-eye" id="tokenEyeIcon"></i>
+          </button>
+        </div>
+      </div>
+      <div id="nubefactStatus" style="margin-bottom:12px;display:none;"></div>
+      <div style="display:flex;gap:10px;">
+        <button class="btn btn-outline btn-sm" onclick="probarNubefact()" style="flex:1">
+          <i class="fa-solid fa-plug"></i> Probar Conexión
+        </button>
+        <button class="btn btn-primary btn-sm" onclick="guardarEmpresa()" style="flex:2">
+          <i class="fa-solid fa-floppy-disk"></i> Guardar
+        </button>
+      </div>
+    </div>
+  </div>
+  </div><!-- end left column -->
 
   <!-- Info del sistema -->
   <div style="display:flex;flex-direction:column;gap:18px;">
@@ -125,10 +171,10 @@
         </div>
         <div class="stat-mini">
           <span class="stat-mini-label">
-            <span class="dot" style="background:var(--warning)"></span>
-            Integración SUNAT (próximamente)
+            <span class="dot" style="background:var(--success)"></span>
+            Integración SUNAT — Nubefact OSE
           </span>
-          <span class="badge badge-warning">En desarrollo</span>
+          <span class="badge badge-success">Activo</span>
         </div>
       </div>
     </div>
@@ -141,13 +187,15 @@
 async function loadEmpresa() {
   const data = await apiGet('/api/empresa');
   if (!data) return;
-  document.getElementById('cfgRuc').value            = data.ruc || '';
-  document.getElementById('cfgRazonSocial').value    = data.razon_social || '';
-  document.getElementById('cfgNombreComercial').value= data.nombre_comercial || '';
-  document.getElementById('cfgDireccion').value      = data.direccion || '';
-  document.getElementById('cfgTelefono').value       = data.telefono || '';
-  document.getElementById('cfgEmail').value          = data.email || '';
-  document.getElementById('cfgRegimen').value        = data.regimen || 'GENERAL';
+  document.getElementById('cfgRuc').value             = data.ruc || '';
+  document.getElementById('cfgRazonSocial').value     = data.razon_social || '';
+  document.getElementById('cfgNombreComercial').value = data.nombre_comercial || '';
+  document.getElementById('cfgDireccion').value       = data.direccion || '';
+  document.getElementById('cfgTelefono').value        = data.telefono || '';
+  document.getElementById('cfgEmail').value           = data.email || '';
+  document.getElementById('cfgRegimen').value         = data.regimen || 'GENERAL';
+  document.getElementById('cfgNubefactToken').value   = data.nubefact_token || '';
+  document.getElementById('cfgNubefactModo').value    = data.nubefact_modo || 'demo';
 }
 
 async function guardarEmpresa() {
@@ -159,10 +207,59 @@ async function guardarEmpresa() {
     telefono:        document.getElementById('cfgTelefono').value,
     email:           document.getElementById('cfgEmail').value,
     regimen:         document.getElementById('cfgRegimen').value,
+    nubefact_token:  document.getElementById('cfgNubefactToken').value.trim(),
+    nubefact_modo:   document.getElementById('cfgNubefactModo').value,
   };
   const res = await apiPut('/api/empresa', payload);
   if (!res) return;
-  showToast('success', 'Guardado', 'Configuración de empresa actualizada');
+  showToast('success', 'Guardado', 'Configuración actualizada correctamente');
+}
+
+function toggleTokenVisibility() {
+  const inp  = document.getElementById('cfgNubefactToken');
+  const icon = document.getElementById('tokenEyeIcon');
+  if (inp.type === 'password') {
+    inp.type = 'text';
+    icon.className = 'fa-solid fa-eye-slash';
+  } else {
+    inp.type = 'password';
+    icon.className = 'fa-solid fa-eye';
+  }
+}
+
+async function probarNubefact() {
+  const token = document.getElementById('cfgNubefactToken').value.trim();
+  const ruc   = document.getElementById('cfgRuc').value.trim();
+  const modo  = document.getElementById('cfgNubefactModo').value;
+  const statusEl = document.getElementById('nubefactStatus');
+  statusEl.style.display = 'block';
+  statusEl.innerHTML = '<span class="spinner"></span> Probando conexión con Nubefact...';
+
+  if (!token) {
+    statusEl.innerHTML = '<span style="color:var(--danger)"><i class="fa-solid fa-circle-xmark"></i> Ingresa un token primero.</span>';
+    return;
+  }
+  if (!ruc || ruc.length !== 11) {
+    statusEl.innerHTML = '<span style="color:var(--danger)"><i class="fa-solid fa-circle-xmark"></i> Ingresa el RUC del emisor (11 dígitos) en Datos de la Empresa.</span>';
+    return;
+  }
+
+  // Send a dry-run invoice with minimal data to check auth
+  const res = await fetch(`/api/nubefact/probar`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token, ruc, modo }),
+  }).then(r => r.json()).catch(() => null);
+
+  if (!res) {
+    statusEl.innerHTML = '<span style="color:var(--danger)"><i class="fa-solid fa-circle-xmark"></i> Error de red.</span>';
+    return;
+  }
+  if (res.ok) {
+    statusEl.innerHTML = '<span style="color:var(--success)"><i class="fa-solid fa-circle-check"></i> Conexión exitosa con Nubefact. Token válido.</span>';
+  } else {
+    statusEl.innerHTML = `<span style="color:var(--danger)"><i class="fa-solid fa-circle-xmark"></i> ${res.error || 'Token inválido o sin permisos.'}</span>`;
+  }
 }
 
 loadEmpresa();

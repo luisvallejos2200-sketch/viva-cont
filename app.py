@@ -1343,6 +1343,242 @@ def api_anular_factura(fid):
 
 
 # ─────────────────────────────────────────────────────────
+# NUBEFACT / SUNAT — helpers
+# ─────────────────────────────────────────────────────────
+
+def _nubefact_post(token: str, ruc: str, payload: dict) -> dict:
+    """POST to Nubefact OSE API. Returns parsed JSON (even on 4xx errors)."""
+    import urllib.error
+    url  = f"https://api.nubefact.com/api/v1/{ruc}/invoices"
+    body = json.dumps(payload).encode("utf-8")
+    req  = urllib.request.Request(
+        url, data=body,
+        headers={"Authorization": f"Token {token}", "Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=30) as r:
+            return json.loads(r.read())
+    except urllib.error.HTTPError as e:
+        try:
+            return json.loads(e.read())   # Nubefact puts error details in the body
+        except Exception:
+            raise
+
+
+def _build_nubefact_payload(factura: dict, empresa: dict, items: list) -> dict:
+    """Build the Nubefact UBL 2.1 payload from a factura record."""
+    tipo_map   = {"FACTURA": 1, "BOLETA": 3, "NOTA_CREDITO": 7, "NOTA_DEBITO": 8}
+    moneda_map = {"PEN": 1, "USD": 2}
+
+    ruc_cliente = str(factura.get("ruc_cliente") or "")
+    if len(ruc_cliente) == 11:
+        tipo_doc = 6   # RUC
+    elif len(ruc_cliente) == 8:
+        tipo_doc = 1   # DNI
+    else:
+        tipo_doc = 0
+
+    # Convert YYYY-MM-DD → DD-MM-YYYY for Nubefact
+    fecha_raw = factura.get("fecha_emision") or ""
+    if len(fecha_raw) == 10 and fecha_raw[4] == "-":
+        yr, mo, dy = fecha_raw.split("-")
+        fecha = f"{dy}-{mo}-{yr}"
+    else:
+        fecha = datetime.now().strftime("%d-%m-%Y")
+
+    subtotal = float(factura.get("subtotal") or 0)
+    igv      = float(factura.get("igv")      or 0)
+    total    = float(factura.get("total")    or 0)
+
+    nf_items = []
+    for item in items:
+        pu  = float(item.get("precio_unitario") or 0)
+        vv  = float(item.get("valor_venta")     or 0)
+        igv_i = float(item.get("igv_item")      or 0)
+        nf_items.append({
+            "unidad_de_medida": item.get("unidad", "NIU"),
+            "codigo":           "",
+            "descripcion":      item.get("descripcion", ""),
+            "cantidad":         float(item.get("cantidad") or 1),
+            "valor_unitario":   round(pu, 4),
+            "precio_unitario":  round(pu * 1.18, 4),
+            "descuento":        float(item.get("descuento") or 0),
+            "subtotal":         round(vv, 2),
+            "tipo_de_igv":      1,        # gravado - operación onerosa
+            "igv":              round(igv_i, 2),
+            "total":            round(float(item.get("precio_total") or 0), 2),
+            "anticipo_regularizacion": False,
+            "anticipo_documento_serie":   "",
+            "anticipo_documento_numero":  "",
+        })
+
+    return {
+        "operacion":                       "generar_comprobante",
+        "tipo_de_comprobante":             tipo_map.get(factura.get("tipo_comprobante", "FACTURA"), 1),
+        "serie":                           factura.get("serie", "F001"),
+        "numero":                          int(factura.get("correlativo") or 1),
+        "sunat_transaction":               1,
+        "cliente_tipo_de_documento":       tipo_doc,
+        "cliente_numero_de_documento":     ruc_cliente,
+        "cliente_denominacion":            factura.get("razon_social_cliente", ""),
+        "cliente_direccion":               factura.get("direccion_cliente", ""),
+        "cliente_email":                   "",
+        "cliente_email_1":                 "",
+        "cliente_email_2":                 "",
+        "fecha_de_emision":                fecha,
+        "fecha_de_vencimiento":            "",
+        "moneda":                          moneda_map.get(factura.get("moneda", "PEN"), 1),
+        "porcentaje_de_igv":               18.0,
+        "descuento_global":                0,
+        "total_descuento":                 0,
+        "total_anticipo":                  0,
+        "total_gravada":                   round(subtotal, 2),
+        "total_inafecta":                  0,
+        "total_exonerada":                 0,
+        "total_igv":                       round(igv, 2),
+        "total_gratuita":                  0,
+        "total_otros_cargos":              0,
+        "total":                           round(total, 2),
+        "percepcion_tipo":                 "",
+        "percepcion_base_imponible":       0,
+        "total_percepcion":                0,
+        "total_incluido_percepcion":       0,
+        "detraccion":                      False,
+        "observaciones":                   factura.get("observaciones", "") or "",
+        "documento_que_se_modifica_tipo":   "",
+        "documento_que_se_modifica_serie":  "",
+        "documento_que_se_modifica_numero": "",
+        "tipo_de_nota_de_credito":         "",
+        "tipo_de_nota_de_debito":          "",
+        "enviar_automaticamente_a_la_sunat":   True,
+        "enviar_automaticamente_al_cliente":   False,
+        "codigo_unico":                    "",
+        "condiciones_de_pago":             "",
+        "medio_de_pago":                   "",
+        "placa_vehiculo":                  "",
+        "orden_compra_servicio":           "",
+        "table_detailed_daily":            False,
+        "formato_de_pdf":                  "",
+        "generado_por_contingencia":       False,
+        "items":                           nf_items,
+    }
+
+
+@app.route("/api/facturas/<int:fid>/enviar-sunat", methods=["POST"])
+@login_required
+def api_enviar_sunat(fid):
+    conn = get_connection()
+    c    = conn.cursor()
+
+    c.execute("SELECT * FROM facturas WHERE id=? AND cliente_id=?", (fid, cid()))
+    factura = row_to_dict(c.fetchone())
+    if not factura:
+        conn.close()
+        return jsonify({"error": "Factura no encontrada"}), 404
+
+    c.execute("SELECT * FROM empresa WHERE cliente_id=?", (cid(),))
+    empresa = row_to_dict(c.fetchone()) or {}
+
+    token      = (empresa.get("nubefact_token") or "").strip()
+    ruc_emisor = (empresa.get("ruc") or "").strip()
+
+    if not token:
+        conn.close()
+        return jsonify({"error": "No hay token Nubefact configurado. Ve a Configuración → Nubefact."}), 400
+    if not ruc_emisor:
+        conn.close()
+        return jsonify({"error": "No hay RUC del emisor configurado en la empresa."}), 400
+
+    c.execute("SELECT * FROM factura_items WHERE factura_id=?", (fid,))
+    items = rows_to_list(c.fetchall())
+
+    try:
+        payload = _build_nubefact_payload(factura, empresa, items)
+        result  = _nubefact_post(token, ruc_emisor, payload)
+    except Exception as e:
+        conn.close()
+        return jsonify({"error": f"Error conectando con Nubefact: {str(e)}"}), 502
+
+    aceptada     = bool(result.get("aceptada_por_sunat"))
+    sunat_estado = "ACEPTADA" if aceptada else "RECHAZADA"
+    sunat_desc   = result.get("sunat_description") or result.get("errors") or str(result)
+    enlace_pdf   = result.get("enlace_del_pdf", "")
+    enlace_xml   = result.get("enlace_del_xml", "")
+    codigo_qr    = result.get("codigo_qr", "")
+    nubefact_id  = str(result.get("numero_de_comprobante", ""))
+
+    conn.execute("""
+        UPDATE facturas
+        SET estado='EMITIDA', sunat_estado=?, sunat_descripcion=?,
+            enlace_pdf=?, enlace_xml=?, codigo_qr=?, nubefact_id=?,
+            ruc_emisor=?, razon_social_emisor=?, direccion_emisor=?
+        WHERE id=? AND cliente_id=?
+    """, (
+        sunat_estado, sunat_desc,
+        enlace_pdf, enlace_xml, codigo_qr, nubefact_id,
+        ruc_emisor,
+        empresa.get("razon_social", ""),
+        empresa.get("direccion", ""),
+        fid, cid(),
+    ))
+    conn.commit()
+    conn.close()
+
+    if aceptada:
+        return jsonify({
+            "success":          True,
+            "sunat_estado":     sunat_estado,
+            "sunat_descripcion": sunat_desc,
+            "enlace_pdf":       enlace_pdf,
+            "enlace_xml":       enlace_xml,
+        })
+    return jsonify({
+        "success":     False,
+        "sunat_estado": sunat_estado,
+        "error":       sunat_desc,
+    }), 422
+
+
+@app.route("/api/nubefact/probar", methods=["POST"])
+@login_required
+def api_nubefact_probar():
+    """Validate Nubefact token by fetching account info (lightweight check)."""
+    import urllib.error
+    data  = request.get_json() or {}
+    token = (data.get("token") or "").strip()
+    ruc   = (data.get("ruc") or "").strip()
+    if not token or not ruc:
+        return jsonify({"ok": False, "error": "Token y RUC requeridos"}), 400
+
+    # Hit the invoices endpoint with an intentionally malformed payload —
+    # a valid token returns a 422 with error details (not a 401).
+    url  = f"https://api.nubefact.com/api/v1/{ruc}/invoices"
+    body = json.dumps({"operacion": "ping"}).encode()
+    req  = urllib.request.Request(
+        url, data=body,
+        headers={"Authorization": f"Token {token}", "Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=15) as r:
+            r.read()
+        return jsonify({"ok": True})
+    except urllib.error.HTTPError as e:
+        if e.code in (400, 422):      # Auth OK, payload rejected — that's fine
+            return jsonify({"ok": True})
+        if e.code == 401:
+            return jsonify({"ok": False, "error": "Token inválido o sin permisos (401 Unauthorized)"})
+        try:
+            body_err = json.loads(e.read())
+            return jsonify({"ok": False, "error": str(body_err)})
+        except Exception:
+            return jsonify({"ok": False, "error": f"HTTP {e.code}"})
+    except Exception as exc:
+        return jsonify({"ok": False, "error": str(exc)})
+
+
+# ─────────────────────────────────────────────────────────
 # API: CONFIGURACIÓN EMPRESA
 # ─────────────────────────────────────────────────────────
 
@@ -1361,7 +1597,8 @@ def api_get_empresa():
 @login_required
 def api_update_empresa():
     data = request.get_json() or {}
-    fields = ["ruc", "razon_social", "nombre_comercial", "direccion", "telefono", "email", "regimen"]
+    fields = ["ruc", "razon_social", "nombre_comercial", "direccion", "telefono", "email",
+              "regimen", "nubefact_token", "nubefact_modo"]
     sets = ", ".join(f"{f} = ?" for f in fields if f in data)
     vals = [data[f] for f in fields if f in data]
     conn = get_connection()

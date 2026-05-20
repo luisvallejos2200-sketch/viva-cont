@@ -496,8 +496,25 @@ async function verFactura(id) {
       <td class="text-right font-bold">${sym} ${parseFloat(i.precio_total).toFixed(2)}</td>
     </tr>`).join('');
 
+  const sunatBanner = f.sunat_estado
+    ? f.sunat_estado === 'ACEPTADA'
+      ? `<div style="background:#e8f7ee;border:1px solid #1aaa6b;border-radius:8px;padding:10px 14px;margin-bottom:12px;display:flex;align-items:center;gap:10px;">
+           <i class="fa-solid fa-circle-check" style="color:#1aaa6b;font-size:18px;"></i>
+           <div><strong style="color:#1aaa6b;">Aceptada por SUNAT</strong><br/>
+           <span style="font-size:11px;color:#555;">${f.sunat_descripcion || ''}</span></div>
+           ${f.enlace_pdf ? `<a href="${f.enlace_pdf}" target="_blank" class="btn btn-sm" style="margin-left:auto;background:#e03c3c;color:#fff;border:none;padding:4px 10px;border-radius:6px;font-size:11px;"><i class="fa-solid fa-file-pdf"></i> PDF</a>` : ''}
+           ${f.enlace_xml ? `<a href="${f.enlace_xml}" target="_blank" class="btn btn-sm" style="margin-left:${f.enlace_pdf?'4px':'auto'};background:#e8a020;color:#fff;border:none;padding:4px 10px;border-radius:6px;font-size:11px;"><i class="fa-solid fa-code"></i> XML</a>` : ''}
+         </div>`
+      : `<div style="background:#fdecea;border:1px solid #e03c3c;border-radius:8px;padding:10px 14px;margin-bottom:12px;">
+           <strong style="color:#e03c3c;"><i class="fa-solid fa-circle-xmark"></i> Rechazada por SUNAT/Nubefact</strong><br/>
+           <span style="font-size:11px;color:#555;word-break:break-word;">${f.sunat_descripcion || 'Sin detalle'}</span>
+           <br/><button class="btn btn-sm" style="margin-top:8px;background:#1a7fd8;color:#fff;border:none;padding:4px 10px;border-radius:6px;font-size:11px;" onclick="document.getElementById('viewFacturaModal').style.display='none';enviarSunat(${f.id})"><i class="fa-solid fa-rotate-right"></i> Reintentar envío</button>
+         </div>`
+    : '';
+
   document.getElementById('facturaPreviewContent').innerHTML = `
     <div class="factura-preview">
+      ${sunatBanner}
       <div class="f-header">
         <div class="f-company">
           <strong>${f.razon_social_emisor || 'VIVA CONSULTING EMPRESAS S.A.C.'}</strong>

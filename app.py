@@ -1502,11 +1502,15 @@ def api_enviar_sunat(fid):
 
     aceptada     = bool(result.get("aceptada_por_sunat"))
     sunat_estado = "ACEPTADA" if aceptada else "RECHAZADA"
-    sunat_desc   = result.get("sunat_description") or result.get("errors") or str(result)
-    enlace_pdf   = result.get("enlace_del_pdf", "")
-    enlace_xml   = result.get("enlace_del_xml", "")
-    codigo_qr    = result.get("codigo_qr", "")
-    nubefact_id  = str(result.get("numero_de_comprobante", ""))
+    _raw_desc    = result.get("sunat_description") or result.get("errors") or result
+    sunat_desc   = _raw_desc if isinstance(_raw_desc, str) else json.dumps(_raw_desc, ensure_ascii=False)
+    enlace_pdf   = result.get("enlace_del_pdf", "") or ""
+    enlace_xml   = result.get("enlace_del_xml", "") or ""
+    codigo_qr    = result.get("codigo_qr", "") or ""
+    nubefact_id  = str(result.get("numero_de_comprobante", "") or "")
+    # Log full Nubefact response for debugging
+    import sys
+    print(f"[NUBEFACT] RUC={ruc_emisor} aceptada={aceptada} resp={json.dumps(result, ensure_ascii=False)[:500]}", file=sys.stderr)
 
     conn.execute("""
         UPDATE facturas

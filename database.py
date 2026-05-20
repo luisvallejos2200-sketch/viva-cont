@@ -492,8 +492,14 @@ def _do_init(conn):
     if c.fetchone()[0] == 0:
         c.execute("""
             INSERT INTO empresa (cliente_id, ruc, razon_social, nombre_comercial, direccion, telefono, email)
-            VALUES (1, '20600000000', 'VIVA CONSULTING EMPRESAS S.A.C.', 'VIVA CONSULTING',
+            VALUES (1, '20607308056', 'VIVA CONSULTING EMPRESAS S.A.C.', 'VIVA CONSULTING',
                     'Lima, Perú', '+51 999 999 999', 'contacto@vivaconsulting.pe')
+        """)
+    else:
+        # Fix RUC if it was placeholder or blank
+        c.execute("""
+            UPDATE empresa SET ruc='20607308056', razon_social='VIVA CONSULTING EMPRESAS S.A.C.'
+            WHERE cliente_id=1 AND (ruc IS NULL OR ruc='' OR ruc='20600000000')
         """)
         conn.commit()
 

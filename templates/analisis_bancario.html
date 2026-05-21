@@ -519,58 +519,75 @@ setupDrop('pdfDropZone',  'pdfFileInput',  '.pdf');
 setupDrop('xlsxDropZone', 'xlsxFileInput', '.xlsx,.xls,.csv');
 
 /* ══ UPLOAD HANDLERS ══════════════════════════════════════ */
+
+// Fetch con timeout específico para uploads de PDF (proceso pesado)
+function _uploadFetch(url, options, timeoutMs = 25000) {
+  const ctrl  = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  return fetch(url, { ...options, signal: ctrl.signal })
+    .finally(() => clearTimeout(timer));
+}
+
 async function handleFile(file) {
   showLoading(`Procesando "${file.name}"…`, 'Extrayendo transacciones del archivo…');
   const formData = new FormData();
   formData.append('file', file);
   formData.append('banco', selectedBanco);
 
+  let data;
   try {
-    const res  = await fetch('/api/analisis-bancario/upload', { method:'POST', body:formData });
-    const data = await res.json();
-    hideLoading();
-
-    const rawText = (data.raw_text || '').trim();
-
-    // Mostrar siempre el visor diagnóstico si hay texto extraído
-    if (rawText) {
-      document.getElementById('rawTextViewer').textContent = rawText;
-      document.getElementById('rawTextSection').style.display = 'block';
-      document.getElementById('pasteTextAB').value = rawText;
-    }
-
-    if (data.no_data) {
-      document.getElementById('pasteSection').style.display = 'block';
-      if (rawText) {
-        showToast('info', 'Texto extraído del PDF',
-          'Haz clic en "Analizar texto del estado de cuenta" para procesar.');
-      } else {
-        showToast('warning', 'PDF sin texto extraíble',
-          'Abre el PDF, selecciona todo (Ctrl+A), cópialo y pégalo en el área de texto.');
-      }
-      return;
-    }
-
-    if (!data.success || data.error) {
-      showToast('error', 'Error al procesar', data.error || data.message || 'Error desconocido');
-      return;
-    }
-
-    // Verificar si las transacciones parecen reales (al menos 3 y montos > 10)
-    const totalMonto = (data.transactions || []).reduce((s, t) => s + Math.abs(t.importe || 0), 0);
-    if (data.transactions.length < 3 || totalMonto < 10) {
-      // Probablemente capturó falsos positivos del encabezado
-      document.getElementById('pasteSection').style.display = 'block';
-      showToast('warning', `Solo ${data.transactions.length} transacciones detectadas`,
-        'El formato del PDF no fue reconocido completamente. Usa el área de texto para procesar.');
-      return;
-    }
-
-    mountDashboard(data.transactions, data.analysis, data.filename);
+    const res = await _uploadFetch('/api/analisis-bancario/upload',
+      { method:'POST', body:formData }, 25000);
+    data = await res.json();
   } catch(e) {
     hideLoading();
-    showToast('error','Error de red', e.message);
+    if (e.name === 'AbortError') {
+      document.getElementById('pasteSection').style.display = 'block';
+      showToast('warning', 'El PDF tardó demasiado',
+        'Tiempo de procesamiento agotado. Abre el PDF, copia todo el texto (Ctrl+A → Ctrl+C) y pégalo en el área de texto.');
+    } else {
+      showToast('error', 'Error de red', e.message);
+    }
+    return;
   }
+  hideLoading();
+
+  const rawText = (data.raw_text || '').trim();
+
+  // Mostrar siempre el visor diagnóstico si hay texto extraído
+  if (rawText) {
+    document.getElementById('rawTextViewer').textContent = rawText;
+    document.getElementById('rawTextSection').style.display = 'block';
+    document.getElementById('pasteTextAB').value = rawText;
+  }
+
+  if (data.no_data) {
+    document.getElementById('pasteSection').style.display = 'block';
+    if (rawText) {
+      showToast('info', 'Texto extraído del PDF',
+        'Haz clic en "Analizar texto del estado de cuenta" para procesar.');
+    } else {
+      showToast('warning', 'PDF sin texto extraíble',
+        'Abre el PDF, selecciona todo (Ctrl+A), cópialo y pégalo en el área de texto.');
+    }
+    return;
+  }
+
+  if (!data.success || data.error) {
+    showToast('error', 'Error al procesar', data.error || data.message || 'Error desconocido');
+    return;
+  }
+
+  // Verificar si las transacciones parecen reales (al menos 3 y montos > 10)
+  const totalMonto = (data.transactions || []).reduce((s, t) => s + Math.abs(t.importe || 0), 0);
+  if (data.transactions.length < 3 || totalMonto < 10) {
+    document.getElementById('pasteSection').style.display = 'block';
+    showToast('warning', `Solo ${data.transactions.length} transacciones detectadas`,
+      'El formato del PDF no fue reconocido completamente. Usa el área de texto para procesar.');
+    return;
+  }
+
+  mountDashboard(data.transactions, data.analysis, data.filename);
 }
 
 function usarTextoDiag() {
@@ -585,37 +602,44 @@ async function procesarTextoAB() {
   const texto = document.getElementById('pasteTextAB').value.trim();
   if (!texto) { showToast('warning','Texto vacío','Pega el contenido del PDF primero'); return; }
   showLoading('Analizando texto…', 'Reconociendo transacciones del texto pegado');
+  let data;
   try {
-    const res  = await fetch('/api/analisis-bancario/upload-texto', {
+    const res = await _uploadFetch('/api/analisis-bancario/upload-texto', {
       method:'POST',
       headers:{ 'Content-Type':'application/json' },
       body: JSON.stringify({ texto, banco: selectedBanco }),
-    });
-    const data = await res.json();
-    hideLoading();
-    if (!data.success) {
-      showToast('warning','Sin resultados', data.message || 'No se detectaron transacciones en el texto.');
-      return;
-    }
-    mountDashboard(data.transactions, data.analysis, data.filename);
+    }, 20000);
+    data = await res.json();
   } catch(e) {
     hideLoading();
-    showToast('error','Error', e.message);
+    const msg = e.name === 'AbortError' ? 'Tiempo de análisis agotado. Intenta con menos texto.' : e.message;
+    showToast('error', 'Error', msg);
+    return;
   }
+  hideLoading();
+  if (!data.success) {
+    showToast('warning','Sin resultados', data.message || 'No se detectaron transacciones en el texto.');
+    return;
+  }
+  mountDashboard(data.transactions, data.analysis, data.filename);
 }
 
 async function analizarTemplate() {
   showLoading('Analizando Template VIVA CONT…', 'Cargando y procesando el archivo Excel principal');
+  let data;
   try {
-    const res  = await fetch('/api/analisis-bancario/from-excel', { method:'POST' });
-    const data = await res.json();
-    hideLoading();
-    if (data.error) { showToast('error','Error', data.error); return; }
-    mountDashboard(data.transactions, data.analysis, data.filename);
+    const res = await _uploadFetch('/api/analisis-bancario/from-excel',
+      { method:'POST' }, 20000);
+    data = await res.json();
   } catch(e) {
     hideLoading();
-    showToast('error','Error', e.message);
+    const msg = e.name === 'AbortError' ? 'Tiempo de análisis agotado.' : e.message;
+    showToast('error', 'Error', msg);
+    return;
   }
+  hideLoading();
+  if (data.error) { showToast('error','Error', data.error); return; }
+  mountDashboard(data.transactions, data.analysis, data.filename);
 }
 
 function showLoading(title, msg) {

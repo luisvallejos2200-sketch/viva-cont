@@ -4,8 +4,14 @@ Estrategias múltiples para extraer transacciones de PDFs de BCP, BBVA, Interban
 """
 import re
 import io
+import signal
+import threading
 from datetime import datetime
 from collections import defaultdict
+
+# ── Límites de seguridad ──────────────────────────────────────
+_PDF_MAX_PAGES    = 15    # máximo de páginas a procesar con pdfplumber
+_PDF_TIMEOUT_SEC  = 18   # segundos antes de abortar el procesamiento
 
 # ── Constantes ────────────────────────────────────────────────
 MESES_ES = {
@@ -912,11 +918,47 @@ def _strategy_any_line(pdf, banco, archivo):
 # FUNCIÓN PRINCIPAL
 # ══════════════════════════════════════════════════════════════
 
+def _run_in_thread(fn, *args, timeout=_PDF_TIMEOUT_SEC):
+    """Ejecuta fn(*args) en un thread con timeout. Retorna (result, error)."""
+    result, err = [None], [None]
+    def _run():
+        try:
+            result[0] = fn(*args)
+        except Exception as e:
+            err[0] = e
+    t = threading.Thread(target=_run, daemon=True)
+    t.start()
+    t.join(timeout)
+    if t.is_alive():
+        return None, TimeoutError(f"PDF processing timeout ({timeout}s)")
+    return result[0], err[0]
+
+
 def extract_bcp_soles(pdf_path: str, banco: str = "BCP SOLES") -> dict:
     """
-    Extrae transacciones de un PDF bancario usando 4 estrategias en cascada.
-    Devuelve {'transactions': [...], 'total': N, 'strategy': 'nombre'} o
-             {'error': '...', 'transactions': [], 'debug': '...'}
+    Extrae transacciones de un PDF bancario usando estrategias en cascada.
+    Timeout de 18s — si el PDF es muy grande/complejo retorna error graceful.
+    """
+    result, err = _run_in_thread(_extract_bcp_soles_inner, pdf_path, banco)
+    if err is not None:
+        if isinstance(err, TimeoutError):
+            return {
+                "transactions": [], "total": 0, "strategy": "timeout",
+                "error": "El PDF tardó demasiado en procesarse. Usa la opción 'Pegar texto' para procesar manualmente.",
+                "raw_text": "",
+            }
+        return {
+            "transactions": [], "total": 0, "strategy": "error",
+            "error": f"Error al procesar el PDF: {err}",
+            "raw_text": "",
+        }
+    return result or {"transactions": [], "total": 0, "strategy": "none",
+                      "error": "No se pudieron extraer transacciones.", "raw_text": ""}
+
+
+def _extract_bcp_soles_inner(pdf_path: str, banco: str = "BCP SOLES") -> dict:
+    """
+    Lógica interna de extracción — se ejecuta en thread con timeout.
     """
     archivo = pdf_path
 
@@ -969,11 +1011,14 @@ def extract_bcp_soles(pdf_path: str, banco: str = "BCP SOLES") -> dict:
             num_pages = len(pdf.pages)
             debug_info.append(f"PDF: {num_pages} págs")
 
+            # Limitar páginas para evitar timeouts en PDFs muy largos
+            pages_to_use = pdf.pages[:_PDF_MAX_PAGES]
+
             # Extraer texto completo UNA VEZ para reutilizar en estrategias de texto
             try:
                 full_txt = "\n".join(
                     page.extract_text(x_tolerance=2, y_tolerance=2) or ""
-                    for page in pdf.pages
+                    for page in pages_to_use
                 )
             except Exception:
                 full_txt = ""
@@ -998,9 +1043,21 @@ def extract_bcp_soles(pdf_path: str, banco: str = "BCP SOLES") -> dict:
             except Exception as e:
                 debug_info.append(f"BCP_DDMM falló: {e}")
 
+            # Crear objeto pdf limitado con pages_to_use para las estrategias
+            # que reciben el objeto pdf completo
+            class _LimitedPdf:
+                """Wrapper que limita las páginas del PDF objeto."""
+                def __init__(self, orig, pages):
+                    self.pages = pages
+                    # Copia attrs necesarios por las estrategias
+                    for attr in ('metadata', 'bbox'):
+                        try: setattr(self, attr, getattr(orig, attr))
+                        except: pass
+            _lpdf = _LimitedPdf(pdf, pages_to_use)
+
             # ── Estrategia 1: Regex sobre texto (rápida) ─────
             try:
-                txs = _strategy_text_regex(pdf, banco, archivo)
+                txs = _strategy_text_regex(_lpdf, banco, archivo)
                 debug_info.append(f"Regex: {len(txs)}")
                 if len(txs) >= 2:
                     return {"transactions": txs, "total": len(txs),
@@ -1010,7 +1067,7 @@ def extract_bcp_soles(pdf_path: str, banco: str = "BCP SOLES") -> dict:
 
             # ── Estrategia 2: Ventana deslizante (rápida) ────
             try:
-                txs = _strategy_sliding_window(pdf, banco, archivo)
+                txs = _strategy_sliding_window(_lpdf, banco, archivo)
                 debug_info.append(f"Sliding: {len(txs)}")
                 if len(txs) >= 2:
                     return {"transactions": txs, "total": len(txs),
@@ -1020,7 +1077,7 @@ def extract_bcp_soles(pdf_path: str, banco: str = "BCP SOLES") -> dict:
 
             # ── Estrategia 3: Coordenadas X/Y ────────────────
             try:
-                txs = _strategy_coords(pdf, banco, archivo)
+                txs = _strategy_coords(_lpdf, banco, archivo)
                 debug_info.append(f"Coords: {len(txs)}")
                 if len(txs) >= 2:
                     txs = _infer_signs(txs)
@@ -1031,7 +1088,7 @@ def extract_bcp_soles(pdf_path: str, banco: str = "BCP SOLES") -> dict:
 
             # ── Estrategia 4: Cualquier línea fecha+número ───
             try:
-                txs = _strategy_any_line(pdf, banco, archivo)
+                txs = _strategy_any_line(_lpdf, banco, archivo)
                 debug_info.append(f"Any_line: {len(txs)}")
                 if len(txs) >= 2:
                     txs = _infer_signs(txs)
@@ -1040,15 +1097,18 @@ def extract_bcp_soles(pdf_path: str, banco: str = "BCP SOLES") -> dict:
             except Exception as e:
                 debug_info.append(f"Any_line falló: {e}")
 
-            # ── Estrategia 5: Tablas (lenta — último recurso) ─
-            try:
-                txs = _strategy_tables(pdf, banco, archivo)
-                debug_info.append(f"Tables: {len(txs)}")
-                if len(txs) >= 2:
-                    return {"transactions": txs, "total": len(txs),
-                            "strategy": "tables", "raw_text": full_txt}
-            except Exception as e:
-                debug_info.append(f"Tables falló: {e}")
+            # ── Estrategia 5: Tablas — solo si PDF tiene pocas páginas ─
+            if num_pages <= 5:
+                try:
+                    txs = _strategy_tables(_lpdf, banco, archivo)
+                    debug_info.append(f"Tables: {len(txs)}")
+                    if len(txs) >= 2:
+                        return {"transactions": txs, "total": len(txs),
+                                "strategy": "tables", "raw_text": full_txt}
+                except Exception as e:
+                    debug_info.append(f"Tables falló: {e}")
+            else:
+                debug_info.append(f"Tables: omitido ({num_pages} págs > 5)")
 
     except Exception as e:
         debug_info.append(f"No se pudo abrir el PDF: {e}")

@@ -223,6 +223,72 @@
         <div class="dash-kpi-sub">sin enviar a SUNAT</div>
       </div>
     </div>
+    <!-- 7. Monto Total Histórico -->
+    <div class="dash-kpi-card">
+      <div class="dash-kpi-icon" style="background:linear-gradient(135deg,#2d2d2d,#555)">
+        <i class="fa-solid fa-database"></i>
+      </div>
+      <div class="dash-kpi-body">
+        <div class="dash-kpi-label">Monto Total Histórico</div>
+        <div class="dash-kpi-value" id="dash-monto-hist">—</div>
+        <div class="dash-kpi-sub">suma total emitida</div>
+      </div>
+    </div>
+    <!-- 8. IGV Estimado YTD -->
+    <div class="dash-kpi-card">
+      <div class="dash-kpi-icon" style="background:linear-gradient(135deg,#0d5fa0,#1a3c6e)">
+        <i class="fa-solid fa-percent"></i>
+      </div>
+      <div class="dash-kpi-body">
+        <div class="dash-kpi-label">IGV Estimado YTD</div>
+        <div class="dash-kpi-value" id="dash-igv-ytd">—</div>
+        <div class="dash-kpi-sub">18% sobre base imponible</div>
+      </div>
+    </div>
+    <!-- 9. Total Comprobantes -->
+    <div class="dash-kpi-card">
+      <div class="dash-kpi-icon" style="background:linear-gradient(135deg,#4fa8d8,#1a7fd8)">
+        <i class="fa-solid fa-file-invoice"></i>
+      </div>
+      <div class="dash-kpi-body">
+        <div class="dash-kpi-label">Total Comprobantes</div>
+        <div class="dash-kpi-value" id="dash-total-docs">—</div>
+        <div class="dash-kpi-sub">todos los estados</div>
+      </div>
+    </div>
+    <!-- 10. Borradores Pendientes -->
+    <div class="dash-kpi-card">
+      <div class="dash-kpi-icon" style="background:linear-gradient(135deg,#c47b00,#e8a020)">
+        <i class="fa-solid fa-pencil"></i>
+      </div>
+      <div class="dash-kpi-body">
+        <div class="dash-kpi-label">Borradores Pendientes</div>
+        <div class="dash-kpi-value" id="dash-borradores">—</div>
+        <div class="dash-kpi-sub">sin emitir</div>
+      </div>
+    </div>
+    <!-- 11. Mejor Mes 12m -->
+    <div class="dash-kpi-card">
+      <div class="dash-kpi-icon" style="background:linear-gradient(135deg,#1aaa6b,#0d7c4f)">
+        <i class="fa-solid fa-star"></i>
+      </div>
+      <div class="dash-kpi-body">
+        <div class="dash-kpi-label">Mejor Mes (12m)</div>
+        <div class="dash-kpi-value" id="dash-mejor-mes-monto">—</div>
+        <div class="dash-kpi-sub" id="dash-mejor-mes-label">—</div>
+      </div>
+    </div>
+    <!-- 12. Tasa de Anulación -->
+    <div class="dash-kpi-card">
+      <div class="dash-kpi-icon" style="background:linear-gradient(135deg,#6a4fcf,#4a2fa8)">
+        <i class="fa-solid fa-ban"></i>
+      </div>
+      <div class="dash-kpi-body">
+        <div class="dash-kpi-label">Tasa de Anulación</div>
+        <div class="dash-kpi-value" id="dash-tasa-anulacion">—</div>
+        <div class="dash-kpi-sub" id="dash-anuladas-count">— anuladas</div>
+      </div>
+    </div>
   </div>
 
   <!-- ── ROW 2: Tendencia 12m + Mix comprobantes ── -->
@@ -313,7 +379,26 @@
     </div>
   </div>
 
-  <!-- ── ROW 4: Últimas aceptadas SUNAT ── -->
+  <!-- ── ROW 4: Estado comprobantes + Rendimiento ── -->
+  <div class="dash-2col-eq">
+    <div class="card">
+      <div class="card-header">
+        <h3 class="card-title"><i class="fa-solid fa-chart-pie" style="color:#1aaa6b"></i> Estado de Comprobantes</h3>
+      </div>
+      <div class="card-body" style="padding:16px;display:flex;align-items:center;justify-content:center;gap:24px;flex-wrap:wrap;">
+        <canvas id="chartEstados" style="max-width:180px;max-height:180px;"></canvas>
+        <div id="dashEstadosLegend" style="display:flex;flex-direction:column;gap:10px;min-width:140px;"></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header">
+        <h3 class="card-title"><i class="fa-solid fa-gauge-high" style="color:#1a7fd8"></i> Indicadores de Rendimiento</h3>
+      </div>
+      <div class="card-body" id="dashGauges" style="display:flex;flex-direction:column;gap:14px;"></div>
+    </div>
+  </div>
+
+  <!-- ── ROW 5: Últimas aceptadas SUNAT ── -->
   <div class="card" style="margin-bottom:4px;">
     <div class="card-header">
       <h3 class="card-title">
@@ -631,6 +716,7 @@ let empresaData      = {};   // cached for invoice preview & personalization
 let _chartMensual     = null;
 let _chartTipos       = null;
 let _chartTopClientes = null;
+let _chartEstados     = null;
 
 // ── EMPRESA DATA (load once) ─────────────────────────────────
 async function loadEmpresaData() {
@@ -1029,6 +1115,55 @@ async function guardarYEnviarSunat() {
   await enviarSunat(fid);
 }
 
+// ── COUNT-UP ANIMATION ────────────────────────────────────────
+function countUp(elId, endVal, { decimals=2, prefix='S/ ', suffix='', duration=1400 } = {}) {
+  const el = typeof elId === 'string' ? document.getElementById(elId) : elId;
+  if (!el || isNaN(endVal)) return;
+  const startTime = performance.now();
+  function step(now) {
+    const t = Math.min((now - startTime) / duration, 1);
+    const eased = 1 - Math.pow(1 - t, 3); // ease-out cubic
+    const val = endVal * eased;
+    el.textContent = prefix + val.toLocaleString('es-PE', {
+      minimumFractionDigits: decimals, maximumFractionDigits: decimals
+    }) + suffix;
+    if (t < 1) requestAnimationFrame(step);
+  }
+  requestAnimationFrame(step);
+}
+function countUpInt(elId, endVal, { prefix='', suffix='', duration=1200 } = {}) {
+  const el = typeof elId === 'string' ? document.getElementById(elId) : elId;
+  if (!el) return;
+  const startTime = performance.now();
+  function step(now) {
+    const t = Math.min((now - startTime) / duration, 1);
+    const eased = 1 - Math.pow(1 - t, 3);
+    el.textContent = prefix + Math.round(endVal * eased).toLocaleString('es-PE') + suffix;
+    if (t < 1) requestAnimationFrame(step);
+  }
+  requestAnimationFrame(step);
+}
+
+// ── GAUGE BAR ─────────────────────────────────────────────────
+function gaugeBar(label, value, max, colorFrom, colorTo, suffix='%') {
+  const pct = max > 0 ? Math.min((value / max) * 100, 100) : 0;
+  const display = suffix === '%'
+    ? value.toFixed(1) + '%'
+    : 'S/ ' + (value||0).toLocaleString('es-PE', {minimumFractionDigits:2, maximumFractionDigits:2});
+  return `
+    <div>
+      <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:4px;">
+        <span style="color:var(--text);font-weight:600;">${label}</span>
+        <span style="color:var(--primary);font-weight:700;">${display}</span>
+      </div>
+      <div style="height:8px;background:var(--surface2);border-radius:20px;overflow:hidden;">
+        <div style="height:100%;width:0%;background:linear-gradient(90deg,${colorFrom},${colorTo});border-radius:20px;
+                    transition:width 1.4s cubic-bezier(.22,1,.36,1);"
+             data-w="${pct.toFixed(1)}"></div>
+      </div>
+    </div>`;
+}
+
 // ── DASHBOARD ────────────────────────────────────────────────
 async function loadDashboard() {
   const d = await apiGet('/api/facturas/stats');
@@ -1038,14 +1173,11 @@ async function loadDashboard() {
     mes_actual, mes_anterior, ytd, crecimiento_mensual, por_tipo
   } = d;
 
-  const fmtS = (n, sym='S/') =>
-    sym + ' ' + (parseFloat(n)||0).toLocaleString('es-PE',{minimumFractionDigits:2,maximumFractionDigits:2});
-  const fmtN = n =>
-    (parseFloat(n)||0).toLocaleString('es-PE',{minimumFractionDigits:2,maximumFractionDigits:2});
   const MESES = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+  const fmtS  = (n, sym='S/ ') => sym + (parseFloat(n)||0).toLocaleString('es-PE',{minimumFractionDigits:2,maximumFractionDigits:2});
 
-  // ── KPI 1: Este mes + crecimiento ──────────────────────────
-  document.getElementById('dash-mes-monto').textContent = fmtS(mes_actual.monto);
+  // ── KPI 1: Este mes + crecimiento (ANIMADO) ────────────────
+  countUp('dash-mes-monto', parseFloat(mes_actual.monto)||0);
   const crecEl = document.getElementById('dash-crec-badge');
   if (crecimiento_mensual !== null && crecimiento_mensual !== undefined) {
     const pos   = crecimiento_mensual >= 0;
@@ -1057,30 +1189,61 @@ async function loadDashboard() {
     crecEl.innerHTML = '<span style="color:var(--text-muted);">Sin período anterior</span>';
   }
 
-  // ── KPI 2: YTD ─────────────────────────────────────────────
-  document.getElementById('dash-ytd-monto').textContent = fmtS(ytd.monto);
-  document.getElementById('dash-ytd-cant').textContent  = (ytd.cantidad||0) + ' facturas en el año';
+  // ── KPI 2: YTD (ANIMADO) ──────────────────────────────────
+  countUp('dash-ytd-monto', parseFloat(ytd.monto)||0);
+  document.getElementById('dash-ytd-cant').textContent = (ytd.cantidad||0) + ' facturas en el año';
 
-  // ── KPI 3: Clientes únicos ─────────────────────────────────
-  document.getElementById('dash-clientes').textContent = totales.clientes_unicos || 0;
+  // ── KPI 3: Clientes únicos (ANIMADO) ──────────────────────
+  countUpInt('dash-clientes', parseInt(totales.clientes_unicos)||0);
 
-  // ── KPI 4: Ticket promedio + máximo ────────────────────────
-  document.getElementById('dash-promedio').textContent  = fmtS(totales.promedio);
-  document.getElementById('dash-max-fact').textContent  = 'Máx: ' + fmtS(totales.max_factura);
+  // ── KPI 4: Ticket promedio + máximo (ANIMADO) ──────────────
+  countUp('dash-promedio', parseFloat(totales.promedio)||0);
+  document.getElementById('dash-max-fact').textContent = 'Máx: ' + fmtS(totales.max_factura);
 
   // ── KPI 5: Tasa SUNAT ──────────────────────────────────────
   const ac   = parseInt(totales.sunat_aceptadas)  || 0;
   const re   = parseInt(totales.sunat_rechazadas) || 0;
-  const tasa = (ac + re) > 0 ? ((ac / (ac + re)) * 100).toFixed(1) + '%' : '100%';
-  document.getElementById('dash-tasa-sunat').textContent  = tasa;
+  const tasaVal = (ac + re) > 0 ? (ac / (ac + re)) * 100 : 100;
+  document.getElementById('dash-tasa-sunat').textContent  = tasaVal.toFixed(1) + '%';
   document.getElementById('dash-sunat-detail').textContent = `${ac} aceptadas · ${re} rechazadas`;
 
-  // ── KPI 6: Pendientes SUNAT ────────────────────────────────
+  // ── KPI 6: Pendientes SUNAT (ANIMADO) ─────────────────────
   const pend = parseInt(totales.pendientes_sunat) || 0;
-  document.getElementById('dash-pendientes').textContent = pend;
+  countUpInt('dash-pendientes', pend, { duration: 900 });
   if (pend > 0) {
     document.getElementById('dash-pendientes-card').style.outline = '2px solid rgba(224,60,60,.35)';
   }
+
+  // ── KPI 7: Monto Total Histórico (ANIMADO) ─────────────────
+  countUp('dash-monto-hist', parseFloat(totales.monto_total)||0);
+
+  // ── KPI 8: IGV Estimado YTD (ANIMADO) ─────────────────────
+  const igvYtd = (parseFloat(ytd.monto)||0) * 18 / 118;
+  countUp('dash-igv-ytd', igvYtd);
+
+  // ── KPI 9: Total Comprobantes (ANIMADO) ────────────────────
+  countUpInt('dash-total-docs', parseInt(totales.total)||0);
+
+  // ── KPI 10: Borradores (ANIMADO) ──────────────────────────
+  countUpInt('dash-borradores', parseInt(totales.borradores)||0, { duration:800 });
+
+  // ── KPI 11: Mejor Mes 12m ──────────────────────────────────
+  if (mensual.length) {
+    const best = mensual.reduce((a,b) => b.monto > a.monto ? b : a, mensual[0]);
+    countUp('dash-mejor-mes-monto', best.monto);
+    const [by, bm] = best.mes.split('-');
+    document.getElementById('dash-mejor-mes-label').textContent = MESES[parseInt(bm)-1] + " '" + by.slice(2);
+  } else {
+    document.getElementById('dash-mejor-mes-monto').textContent = 'S/ 0.00';
+    document.getElementById('dash-mejor-mes-label').textContent = 'Sin datos';
+  }
+
+  // ── KPI 12: Tasa Anulación ─────────────────────────────────
+  const anuladas  = parseInt(totales.anuladas) || 0;
+  const totalDocs = parseInt(totales.total)    || 1;
+  const tasaAn    = (anuladas / totalDocs) * 100;
+  document.getElementById('dash-tasa-anulacion').textContent = tasaAn.toFixed(1) + '%';
+  document.getElementById('dash-anuladas-count').textContent = anuladas + ' anuladas';
 
   // ── CHART 1: Línea tendencia 12 meses ──────────────────────
   const labels   = mensual.map(m => {
@@ -1267,6 +1430,65 @@ async function loadDashboard() {
       }
     });
   }
+
+  // ── CHART 4: Donut Estado de Comprobantes ─────────────────
+  if (_chartEstados) _chartEstados.destroy();
+  const emitidas2  = parseInt(totales.emitidas)  || 0;
+  const borradores2= parseInt(totales.borradores)|| 0;
+  const anuladas2  = parseInt(totales.anuladas)  || 0;
+  _chartEstados = new Chart(document.getElementById('chartEstados'), {
+    type: 'doughnut',
+    data: {
+      labels: ['Emitidas', 'Borradores', 'Anuladas'],
+      datasets: [{
+        data: [emitidas2, borradores2, anuladas2],
+        backgroundColor: ['#1aaa6b', '#e8a020', '#e03c3c'],
+        borderWidth: 2,
+        borderColor: 'transparent',
+        hoverBorderWidth: 3,
+      }]
+    },
+    options: {
+      responsive: true, cutout: '60%',
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: ctx => ` ${ctx.label}: ${ctx.parsed}` } }
+      },
+      animation: { animateRotate: true, duration: 1200 }
+    }
+  });
+  const totalEst = emitidas2 + borradores2 + anuladas2 || 1;
+  document.getElementById('dashEstadosLegend').innerHTML = [
+    ['Emitidas',   emitidas2,   '#1aaa6b'],
+    ['Borradores', borradores2, '#e8a020'],
+    ['Anuladas',   anuladas2,   '#e03c3c'],
+  ].map(([lbl, val, col]) => `
+    <div style="display:flex;align-items:center;gap:10px;">
+      <span style="width:12px;height:12px;border-radius:50%;background:${col};flex-shrink:0;"></span>
+      <div style="flex:1;">
+        <div style="font-size:11px;font-weight:600;color:var(--text);">${lbl}</div>
+        <div style="font-size:10px;color:var(--text-muted);">
+          ${val} docs · ${((val/totalEst)*100).toFixed(1)}%
+        </div>
+      </div>
+    </div>`).join('');
+
+  // ── Gauge bars de rendimiento ──────────────────────────────
+  const maxMes = Math.max(...mensual.map(m=>m.monto), 1);
+  document.getElementById('dashGauges').innerHTML =
+    gaugeBar('Tasa SUNAT aceptadas',    tasaVal, 100, '#1aaa6b', '#0d7c4f', '%') +
+    gaugeBar('Este mes vs mejor mes 12m', maxMes > 0 ? ((parseFloat(mes_actual.monto)||0)/maxMes*100) : 0, 100, '#1a7fd8', '#1a3c6e', '%') +
+    gaugeBar('Docs emitidos vs total',  (emitidas2/totalEst)*100, 100, '#6a4fcf', '#9b72f5', '%') +
+    gaugeBar('Tasa anulación inversa',  100 - tasaAn, 100, '#e8a020', '#c47b00', '%');
+
+  // Animación de las barras gauge (trigger width transition)
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      document.querySelectorAll('#dashGauges [data-w]').forEach(bar => {
+        bar.style.width = bar.getAttribute('data-w') + '%';
+      });
+    });
+  });
 
   // ── Comparativo mensual ────────────────────────────────────
   document.getElementById('comp-mes-act-monto').textContent = fmtS(mes_actual.monto);

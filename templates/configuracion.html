@@ -254,10 +254,15 @@ async function probarNubefact() {
   }
 
   // Send a dry-run invoice with minimal data to check auth
+  const ruta = document.getElementById('cfgNubefactRuta').value.trim();
+  if (!ruta) {
+    statusEl.innerHTML = '<span style="color:var(--danger)"><i class="fa-solid fa-circle-xmark"></i> Ingresa la RUTA (URL con UUID) de Nubefact primero.</span>';
+    return;
+  }
   const res = await fetch(`/api/nubefact/probar`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ token, ruc, modo }),
+    body: JSON.stringify({ token, ruc, modo, ruta }),
   }).then(r => r.json()).catch(() => null);
 
   if (!res) {

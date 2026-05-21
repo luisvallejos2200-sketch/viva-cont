@@ -1641,20 +1641,23 @@ def api_nubefact_diagnostico():
 @app.route("/api/nubefact/probar", methods=["POST"])
 @login_required
 def api_nubefact_probar():
-    """Validate Nubefact token with a minimal probe request."""
+    """Validate Nubefact token using the saved RUTA (UUID URL)."""
     import urllib.error
     data  = request.get_json() or {}
     token = (data.get("token") or "").strip()
+    ruta  = (data.get("ruta") or "").strip().rstrip("/")
     ruc   = (data.get("ruc") or "").strip()
+
     if not token:
         return jsonify({"ok": False, "error": "Ingresa el token primero"}), 400
+    if not ruta:
+        return jsonify({"ok": False, "error": "Ingresa la RUTA (URL con UUID de Nubefact) primero"}), 400
 
-    # Strategy: POST a minimal payload — Nubefact returns:
-    #   401 → token inválido
-    #   400/404/422 → token OK pero datos incorrectos (eso es lo que queremos)
-    #   200/201 → token OK (raro con payload mínimo pero posible)
-    probe_ruc = ruc if (ruc and len(ruc) == 11) else "20000000001"
-    url  = f"https://api.nubefact.com/api/v1/{probe_ruc}"
+    # POST minimal payload to the RUTA — Nubefact response:
+    #   200/201        → token válido, comprobante procesado
+    #   codigo 11      → token inválido
+    #   otros errores  → token válido, payload rechazado (eso está bien)
+    url  = ruta
     body = json.dumps({"operacion": "generar_comprobante"}).encode()
     req  = urllib.request.Request(
         url, data=body,
@@ -1664,23 +1667,18 @@ def api_nubefact_probar():
     try:
         with urllib.request.urlopen(req, timeout=15) as r:
             r.read()
-        # 200 means token valid
         return jsonify({"ok": True})
     except urllib.error.HTTPError as e:
-        if e.code == 401:
-            return jsonify({"ok": False, "error": "Token inválido — verifica que lo copiaste completo (401 Unauthorized)"})
-        # 400, 404, 422, 500 from Nubefact all mean the token passed auth
-        # (Nubefact rejects the payload, not the credentials)
         try:
-            resp_body = e.read()
-            resp_json = json.loads(resp_body)
-            # If response contains 'errors' about the document (not auth), token is valid
-            errors = resp_json.get("errors", "")
-            if "token" in str(errors).lower() or "autoriza" in str(errors).lower():
-                return jsonify({"ok": False, "error": f"Token rechazado: {errors}"})
+            resp_json = json.loads(e.read() or b"")
         except Exception:
-            pass
-        # Any non-401 means credentials were accepted
+            resp_json = {}
+        errors = str(resp_json.get("errors", ""))
+        codigo = resp_json.get("codigo")
+        # codigo 11 = token inválido en Nubefact
+        if codigo == 11 or "token" in errors.lower():
+            return jsonify({"ok": False, "error": f"Token inválido: {errors or 'verifica en Nubefact → Api-Integración'}"})
+        # Cualquier otro error (400/422/etc.) significa que el token SÍ autenticó
         return jsonify({"ok": True})
     except Exception as exc:
         return jsonify({"ok": False, "error": f"Error de conexión: {str(exc)}"})

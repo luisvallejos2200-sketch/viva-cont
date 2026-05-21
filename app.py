@@ -1353,10 +1353,14 @@ def api_anular_factura(fid):
 # NUBEFACT / SUNAT — helpers
 # ─────────────────────────────────────────────────────────
 
-def _nubefact_post(token: str, ruc: str, payload: dict) -> dict:
+def _nubefact_post(token: str, ruc: str, payload: dict, ruta: str = "") -> dict:
     """POST to Nubefact OSE API. Always returns a dict or raises a descriptive Exception."""
     import urllib.error
-    url  = f"https://api.nubefact.com/api/v1/{ruc}/invoices"
+    # Use the exact RUTA from Nubefact API Integration page (contains UUID, not RUC)
+    base = (ruta or "").strip().rstrip("/")
+    if not base:
+        base = f"https://api.nubefact.com/api/v1/{ruc}"
+    url = base + "/invoices"
     body = json.dumps(payload).encode("utf-8")
     req  = urllib.request.Request(
         url, data=body,
@@ -1516,9 +1520,10 @@ def api_enviar_sunat(fid):
         items = rows_to_list(c.fetchall())
 
         # ── Llamada a Nubefact ─────────────────────────────
+        nubefact_ruta = (empresa.get("nubefact_ruta") or "").strip()
         try:
             payload = _build_nubefact_payload(factura, empresa, items)
-            result  = _nubefact_post(token, ruc_emisor, payload)
+            result  = _nubefact_post(token, ruc_emisor, payload, ruta=nubefact_ruta)
         except Exception as nf_err:
             err_msg = f"Error conectando con Nubefact: {str(nf_err)}"
             print(f"[NUBEFACT-ERR] {err_msg}", file=sys.stderr)
@@ -1611,7 +1616,10 @@ def api_nubefact_diagnostico():
     if not token or not ruc:
         return jsonify({"info": info, "error": "Token o RUC vacíos"})
     # Ping mínimo
-    url  = f"https://api.nubefact.com/api/v1/{ruc}/invoices"
+    ruta = (emp.get("nubefact_ruta") or "").strip().rstrip("/")
+    if not ruta:
+        ruta = f"https://api.nubefact.com/api/v1/{ruc}"
+    url  = ruta + "/invoices"
     body = json.dumps({"operacion": "generar_comprobante"}).encode()
     req  = urllib.request.Request(url, data=body,
         headers={"Authorization": f"Token {token}", "Content-Type": "application/json"},
@@ -1695,7 +1703,7 @@ def api_get_empresa():
 def api_update_empresa():
     data = request.get_json() or {}
     fields = ["ruc", "razon_social", "nombre_comercial", "direccion", "telefono", "email",
-              "regimen", "nubefact_token", "nubefact_modo"]
+              "regimen", "nubefact_token", "nubefact_modo", "nubefact_ruta"]
     # Skip empty-string updates for critical fields to avoid overwriting with blank
     protected = {"ruc", "razon_social"}
     sets = ", ".join(f"{f} = ?" for f in fields if f in data and not (f in protected and not data[f]))

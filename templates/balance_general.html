@@ -31,76 +31,109 @@
 
   <!-- Grupo 1: Estructura del Balance -->
   <div style="margin-bottom:20px;">
-    <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-muted);margin-bottom:12px;letter-spacing:.5px;">ESTRUCTURA DEL BALANCE</div>
-    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;">
-      <div class="card" style="padding:20px;">
-        <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Activo Total</div>
-        <div id="kpiActivoTotal" style="font-size:22px;font-weight:800;color:var(--primary);">S/ 0</div>
-        <div id="kpiActivoDetalle" style="font-size:11px;color:var(--text-muted);margin-top:4px;">Corriente + No Corriente</div>
+    <div class="section-group-label"><i class="fa-solid fa-scale-balanced"></i> Estructura del Balance</div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;">
+      <div class="kpi-stat">
+        <div class="kpi-stat-icon" style="background:linear-gradient(135deg,#1a3c6e,#1a7fd8)"><i class="fa-solid fa-building-columns"></i></div>
+        <div class="kpi-stat-body">
+          <div class="kpi-stat-label">Activo Total</div>
+          <div class="kpi-stat-value" id="kpiActivoTotal">S/ 0</div>
+          <div class="kpi-stat-sub" id="kpiActivoDetalle">Corriente + No Corriente</div>
+        </div>
       </div>
-      <div class="card" style="padding:20px;">
-        <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Pasivo Total</div>
-        <div id="kpiPasivoTotal" style="font-size:22px;font-weight:800;color:var(--danger);">S/ 0</div>
-        <div id="kpiPasivoDetalle" style="font-size:11px;color:var(--text-muted);margin-top:4px;">CP + LP</div>
+      <div class="kpi-stat">
+        <div class="kpi-stat-icon" style="background:linear-gradient(135deg,#e03c3c,#a01818)"><i class="fa-solid fa-file-contract"></i></div>
+        <div class="kpi-stat-body">
+          <div class="kpi-stat-label">Pasivo Total</div>
+          <div class="kpi-stat-value" style="color:var(--danger)" id="kpiPasivoTotal">S/ 0</div>
+          <div class="kpi-stat-sub" id="kpiPasivoDetalle">CP + LP</div>
+        </div>
       </div>
-      <div class="card" style="padding:20px;">
-        <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Patrimonio Neto</div>
-        <div id="kpiPatrimonio" style="font-size:22px;font-weight:800;color:var(--success);">S/ 0</div>
-        <div id="kpiPatrimonioDetalle" style="font-size:11px;color:var(--text-muted);margin-top:4px;">Capital + Utilidades</div>
+      <div class="kpi-stat">
+        <div class="kpi-stat-icon" style="background:linear-gradient(135deg,#1aaa6b,#0d7c4f)"><i class="fa-solid fa-sack-dollar"></i></div>
+        <div class="kpi-stat-body">
+          <div class="kpi-stat-label">Patrimonio Neto</div>
+          <div class="kpi-stat-value" style="color:var(--success)" id="kpiPatrimonio">S/ 0</div>
+          <div class="kpi-stat-sub" id="kpiPatrimonioDetalle">Capital + Utilidades</div>
+        </div>
       </div>
     </div>
   </div>
 
   <!-- Grupo 2: Ratios de Liquidez -->
-  <div style="background:#EFF6FF;border-radius:10px;padding:18px 20px;margin-bottom:20px;">
-    <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-muted);margin-bottom:12px;letter-spacing:.5px;">LIQUIDEZ</div>
-    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;">
-      <div class="card" style="padding:20px;">
-        <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Razón Corriente</div>
-        <div id="kpiRazonCorriente" style="font-size:22px;font-weight:800;color:var(--accent);">0.00x</div>
-        <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">AC / PC · ≥1.5 saludable</div>
+  <div style="background:var(--surface2);border-radius:10px;padding:18px 20px;margin-bottom:20px;">
+    <div class="section-group-label"><i class="fa-solid fa-droplet"></i> Liquidez</div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;">
+      <div class="kpi-stat" style="background:var(--surface);">
+        <div class="kpi-stat-icon" style="background:linear-gradient(135deg,#e8a020,#c47b00)"><i class="fa-solid fa-chart-pie"></i></div>
+        <div class="kpi-stat-body">
+          <div class="kpi-stat-label">Razón Corriente</div>
+          <div class="kpi-stat-value" style="color:var(--accent)" id="kpiRazonCorriente">0.00x</div>
+          <div class="kpi-stat-sub">AC / PC · ≥1.5 saludable</div>
+        </div>
       </div>
-      <div class="card" style="padding:20px;">
-        <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Liquidez Ácida</div>
-        <div id="kpiLiquidez" style="font-size:22px;font-weight:800;color:#0891b2;">0.00x</div>
-        <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">(AC-Inv) / PC · ≥1.0 óptimo</div>
+      <div class="kpi-stat" style="background:var(--surface);">
+        <div class="kpi-stat-icon" style="background:linear-gradient(135deg,#0891b2,#06607a)"><i class="fa-solid fa-vial"></i></div>
+        <div class="kpi-stat-body">
+          <div class="kpi-stat-label">Liquidez Ácida</div>
+          <div class="kpi-stat-value" style="color:#0891b2" id="kpiLiquidez">0.00x</div>
+          <div class="kpi-stat-sub">(AC−Inv) / PC · ≥1.0 óptimo</div>
+        </div>
       </div>
-      <div class="card" style="padding:20px;">
-        <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Liquidez Absoluta</div>
-        <div id="kpiLiquidezAbs" style="font-size:22px;font-weight:800;color:#7c3aed;">0.00x</div>
-        <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">Caja / PC · ≥0.20 aceptable</div>
+      <div class="kpi-stat" style="background:var(--surface);">
+        <div class="kpi-stat-icon" style="background:linear-gradient(135deg,#7c3aed,#5b21b6)"><i class="fa-solid fa-money-bill-wave"></i></div>
+        <div class="kpi-stat-body">
+          <div class="kpi-stat-label">Liquidez Absoluta</div>
+          <div class="kpi-stat-value" style="color:#7c3aed" id="kpiLiquidezAbs">0.00x</div>
+          <div class="kpi-stat-sub">Caja / PC · ≥0.20 aceptable</div>
+        </div>
       </div>
-      <div class="card" style="padding:20px;">
-        <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Capital de Trabajo</div>
-        <div id="kpiCapitalTrabajo" style="font-size:22px;font-weight:800;color:var(--success);">S/ 0</div>
-        <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">AC - PC</div>
+      <div class="kpi-stat" style="background:var(--surface);">
+        <div class="kpi-stat-icon" style="background:linear-gradient(135deg,#1aaa6b,#0d7c4f)"><i class="fa-solid fa-briefcase"></i></div>
+        <div class="kpi-stat-body">
+          <div class="kpi-stat-label">Capital de Trabajo</div>
+          <div class="kpi-stat-value" style="color:var(--success)" id="kpiCapitalTrabajo">S/ 0</div>
+          <div class="kpi-stat-sub">AC − PC</div>
+        </div>
       </div>
     </div>
   </div>
 
   <!-- Grupo 3: Ratios de Solvencia -->
-  <div style="background:#FFF7ED;border-radius:10px;padding:18px 20px;margin-bottom:24px;">
-    <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-muted);margin-bottom:12px;letter-spacing:.5px;">SOLVENCIA Y APALANCAMIENTO</div>
-    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;">
-      <div class="card" style="padding:20px;">
-        <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Endeudamiento</div>
-        <div id="kpiEndeudamiento" style="font-size:22px;font-weight:800;color:var(--danger);">0.0%</div>
-        <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">Pasivo/Activo · &lt;60% saludable</div>
+  <div style="background:var(--surface2);border-radius:10px;padding:18px 20px;margin-bottom:24px;">
+    <div class="section-group-label"><i class="fa-solid fa-shield-halved"></i> Solvencia y Apalancamiento</div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;">
+      <div class="kpi-stat" style="background:var(--surface);">
+        <div class="kpi-stat-icon" style="background:linear-gradient(135deg,#e03c3c,#a01818)"><i class="fa-solid fa-link"></i></div>
+        <div class="kpi-stat-body">
+          <div class="kpi-stat-label">Endeudamiento</div>
+          <div class="kpi-stat-value" style="color:var(--danger)" id="kpiEndeudamiento">0.0%</div>
+          <div class="kpi-stat-sub">Pasivo/Activo · &lt;60% saludable</div>
+        </div>
       </div>
-      <div class="card" style="padding:20px;">
-        <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Deuda/Patrimonio</div>
-        <div id="kpiDeudaPatrimonio" style="font-size:22px;font-weight:800;color:#7c3aed;">0.00x</div>
-        <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">Apalancamiento · ≤1.0x conserv.</div>
+      <div class="kpi-stat" style="background:var(--surface);">
+        <div class="kpi-stat-icon" style="background:linear-gradient(135deg,#7c3aed,#5b21b6)"><i class="fa-solid fa-arrows-left-right"></i></div>
+        <div class="kpi-stat-body">
+          <div class="kpi-stat-label">Deuda/Patrimonio</div>
+          <div class="kpi-stat-value" style="color:#7c3aed" id="kpiDeudaPatrimonio">0.00x</div>
+          <div class="kpi-stat-sub">Apalancamiento · ≤1.0x conserv.</div>
+        </div>
       </div>
-      <div class="card" style="padding:20px;">
-        <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Solvencia</div>
-        <div id="kpiSolvencia" style="font-size:22px;font-weight:800;color:var(--success);">0.0%</div>
-        <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">Patrimonio/Activo · &gt;40% fuerte</div>
+      <div class="kpi-stat" style="background:var(--surface);">
+        <div class="kpi-stat-icon" style="background:linear-gradient(135deg,#1aaa6b,#0d7c4f)"><i class="fa-solid fa-tower-broadcast"></i></div>
+        <div class="kpi-stat-body">
+          <div class="kpi-stat-label">Solvencia</div>
+          <div class="kpi-stat-value" style="color:var(--success)" id="kpiSolvencia">0.0%</div>
+          <div class="kpi-stat-sub">Patrimonio/Activo · &gt;40% fuerte</div>
+        </div>
       </div>
-      <div class="card" style="padding:20px;">
-        <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Mult. Patrimonio</div>
-        <div id="kpiMultPatrimonio" style="font-size:22px;font-weight:800;color:#f59e0b;">0.00x</div>
-        <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">Activo/Patrimonio</div>
+      <div class="kpi-stat" style="background:var(--surface);">
+        <div class="kpi-stat-icon" style="background:linear-gradient(135deg,#e8a020,#c47b00)"><i class="fa-solid fa-layer-group"></i></div>
+        <div class="kpi-stat-body">
+          <div class="kpi-stat-label">Mult. Patrimonio</div>
+          <div class="kpi-stat-value" style="color:#f59e0b" id="kpiMultPatrimonio">0.00x</div>
+          <div class="kpi-stat-sub">Activo/Patrimonio</div>
+        </div>
       </div>
     </div>
   </div>

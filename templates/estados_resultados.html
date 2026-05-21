@@ -31,74 +31,110 @@
 
   <!-- Grupo 1: Resultados Absolutos -->
   <div style="margin-bottom:20px;">
-    <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-muted);margin-bottom:12px;letter-spacing:.5px;">RESULTADOS ABSOLUTOS</div>
-    <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:16px;">
-      <div class="card" style="padding:20px;">
-        <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Ingresos Totales</div>
-        <div id="kpiIngresos" style="font-size:22px;font-weight:800;color:var(--primary);">S/ 0</div>
-        <div id="kpiIngresosLabel" style="font-size:11px;color:var(--text-muted);margin-top:4px;">Ventas + Otros</div>
+    <div class="section-group-label"><i class="fa-solid fa-chart-simple"></i> Resultados Absolutos</div>
+    <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:14px;">
+      <div class="kpi-stat">
+        <div class="kpi-stat-icon" style="background:linear-gradient(135deg,#1a3c6e,#1a7fd8)"><i class="fa-solid fa-arrow-trend-up"></i></div>
+        <div class="kpi-stat-body">
+          <div class="kpi-stat-label">Ingresos Totales</div>
+          <div class="kpi-stat-value" id="kpiIngresos">S/ 0</div>
+          <div class="kpi-stat-sub" id="kpiIngresosLabel">Ventas + Otros</div>
+        </div>
       </div>
-      <div class="card" style="padding:20px;">
-        <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Utilidad Bruta</div>
-        <div id="kpiUtilidadBruta" style="font-size:22px;font-weight:800;color:var(--success);">S/ 0</div>
-        <div id="kpiMargenBruto" style="font-size:11px;color:var(--text-muted);margin-top:4px;">Margen Bruto: 0%</div>
+      <div class="kpi-stat">
+        <div class="kpi-stat-icon" style="background:linear-gradient(135deg,#1aaa6b,#0d7c4f)"><i class="fa-solid fa-scale-balanced"></i></div>
+        <div class="kpi-stat-body">
+          <div class="kpi-stat-label">Utilidad Bruta</div>
+          <div class="kpi-stat-value" style="color:var(--success)" id="kpiUtilidadBruta">S/ 0</div>
+          <div class="kpi-stat-sub" id="kpiMargenBruto">Margen Bruto: 0%</div>
+        </div>
       </div>
-      <div class="card" style="padding:20px;">
-        <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">EBITDA</div>
-        <div id="kpiEbitda" style="font-size:22px;font-weight:800;color:#f59e0b;">S/ 0</div>
-        <div id="kpiMargenEbitda" style="font-size:11px;color:var(--text-muted);margin-top:4px;">Margen EBITDA: 0%</div>
+      <div class="kpi-stat">
+        <div class="kpi-stat-icon" style="background:linear-gradient(135deg,#e8a020,#c47b00)"><i class="fa-solid fa-gauge-high"></i></div>
+        <div class="kpi-stat-body">
+          <div class="kpi-stat-label">EBITDA</div>
+          <div class="kpi-stat-value" style="color:#f59e0b" id="kpiEbitda">S/ 0</div>
+          <div class="kpi-stat-sub" id="kpiMargenEbitda">Margen EBITDA: 0%</div>
+        </div>
       </div>
-      <div class="card" style="padding:20px;">
-        <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">EBIT</div>
-        <div id="kpiEbit" style="font-size:22px;font-weight:800;color:#7c3aed;">S/ 0</div>
-        <div id="kpiMargenEbit" style="font-size:11px;color:var(--text-muted);margin-top:4px;">Margen Operativo: 0%</div>
+      <div class="kpi-stat">
+        <div class="kpi-stat-icon" style="background:linear-gradient(135deg,#7c3aed,#5b21b6)"><i class="fa-solid fa-chart-line"></i></div>
+        <div class="kpi-stat-body">
+          <div class="kpi-stat-label">EBIT</div>
+          <div class="kpi-stat-value" style="color:#7c3aed" id="kpiEbit">S/ 0</div>
+          <div class="kpi-stat-sub" id="kpiMargenEbit">Margen Operativo: 0%</div>
+        </div>
       </div>
-      <div class="card" style="padding:20px;">
-        <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Utilidad Neta</div>
-        <div id="kpiUtilidadNeta" style="font-size:22px;font-weight:800;color:var(--success);">S/ 0</div>
-        <div id="kpiMargenNeto" style="font-size:11px;color:var(--text-muted);margin-top:4px;">Margen Neto: 0%</div>
+      <div class="kpi-stat">
+        <div class="kpi-stat-icon" style="background:linear-gradient(135deg,#0d7c4f,#1aaa6b)"><i class="fa-solid fa-sack-dollar"></i></div>
+        <div class="kpi-stat-body">
+          <div class="kpi-stat-label">Utilidad Neta</div>
+          <div class="kpi-stat-value" style="color:var(--success)" id="kpiUtilidadNeta">S/ 0</div>
+          <div class="kpi-stat-sub" id="kpiMargenNeto">Margen Neto: 0%</div>
+        </div>
       </div>
-      <div class="card" style="padding:20px;">
-        <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Costo de Ventas</div>
-        <div id="kpiCostoVentas" style="font-size:22px;font-weight:800;color:var(--danger);">S/ 0</div>
-        <div id="kpiCostoVentasPct" style="font-size:11px;color:var(--text-muted);margin-top:4px;">% Ingresos: 0%</div>
+      <div class="kpi-stat">
+        <div class="kpi-stat-icon" style="background:linear-gradient(135deg,#e03c3c,#a01818)"><i class="fa-solid fa-cart-shopping"></i></div>
+        <div class="kpi-stat-body">
+          <div class="kpi-stat-label">Costo de Ventas</div>
+          <div class="kpi-stat-value" style="color:var(--danger)" id="kpiCostoVentas">S/ 0</div>
+          <div class="kpi-stat-sub" id="kpiCostoVentasPct">% Ingresos: 0%</div>
+        </div>
       </div>
     </div>
   </div>
 
   <!-- Grupo 2: Ratios de Eficiencia -->
   <div style="background:var(--surface2);border-radius:10px;padding:18px 20px;margin-bottom:24px;">
-    <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-muted);margin-bottom:12px;letter-spacing:.5px;">RATIOS DE EFICIENCIA FINANCIERA</div>
-    <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:16px;">
-      <div class="card" style="padding:20px;">
-        <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">G. Administrativos</div>
-        <div id="kpiGastosAdmin" style="font-size:22px;font-weight:800;color:var(--primary);">S/ 0</div>
-        <div id="kpiGastosAdminPct" style="font-size:11px;color:var(--text-muted);margin-top:4px;">% Ingresos: 0%</div>
+    <div class="section-group-label"><i class="fa-solid fa-sliders"></i> Ratios de Eficiencia Financiera</div>
+    <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:14px;">
+      <div class="kpi-stat" style="background:var(--surface);">
+        <div class="kpi-stat-icon" style="background:linear-gradient(135deg,#1a3c6e,#1a7fd8)"><i class="fa-solid fa-building"></i></div>
+        <div class="kpi-stat-body">
+          <div class="kpi-stat-label">G. Administrativos</div>
+          <div class="kpi-stat-value" id="kpiGastosAdmin">S/ 0</div>
+          <div class="kpi-stat-sub" id="kpiGastosAdminPct">% Ingresos: 0%</div>
+        </div>
       </div>
-      <div class="card" style="padding:20px;">
-        <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">G. de Ventas</div>
-        <div id="kpiGastosVentas" style="font-size:22px;font-weight:800;color:#f59e0b;">S/ 0</div>
-        <div id="kpiGastosVentasPct" style="font-size:11px;color:var(--text-muted);margin-top:4px;">% Ingresos: 0%</div>
+      <div class="kpi-stat" style="background:var(--surface);">
+        <div class="kpi-stat-icon" style="background:linear-gradient(135deg,#e8a020,#c47b00)"><i class="fa-solid fa-bullhorn"></i></div>
+        <div class="kpi-stat-body">
+          <div class="kpi-stat-label">G. de Ventas</div>
+          <div class="kpi-stat-value" style="color:#f59e0b" id="kpiGastosVentas">S/ 0</div>
+          <div class="kpi-stat-sub" id="kpiGastosVentasPct">% Ingresos: 0%</div>
+        </div>
       </div>
-      <div class="card" style="padding:20px;">
-        <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">G. Financieros</div>
-        <div id="kpiGastosFinancieros" style="font-size:22px;font-weight:800;color:var(--danger);">S/ 0</div>
-        <div id="kpiGastosFinancierosPct" style="font-size:11px;color:var(--text-muted);margin-top:4px;">% Ingresos: 0%</div>
+      <div class="kpi-stat" style="background:var(--surface);">
+        <div class="kpi-stat-icon" style="background:linear-gradient(135deg,#e03c3c,#a01818)"><i class="fa-solid fa-percent"></i></div>
+        <div class="kpi-stat-body">
+          <div class="kpi-stat-label">G. Financieros</div>
+          <div class="kpi-stat-value" style="color:var(--danger)" id="kpiGastosFinancieros">S/ 0</div>
+          <div class="kpi-stat-sub" id="kpiGastosFinancierosPct">% Ingresos: 0%</div>
+        </div>
       </div>
-      <div class="card" style="padding:20px;">
-        <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Depreciación</div>
-        <div id="kpiDepreciacion" style="font-size:22px;font-weight:800;color:#64748b;">S/ 0</div>
-        <div id="kpiDepreciacionPct" style="font-size:11px;color:var(--text-muted);margin-top:4px;">% Ingresos: 0%</div>
+      <div class="kpi-stat" style="background:var(--surface);">
+        <div class="kpi-stat-icon" style="background:linear-gradient(135deg,#64748b,#475569)"><i class="fa-solid fa-arrow-trend-down"></i></div>
+        <div class="kpi-stat-body">
+          <div class="kpi-stat-label">Depreciación</div>
+          <div class="kpi-stat-value" style="color:#64748b" id="kpiDepreciacion">S/ 0</div>
+          <div class="kpi-stat-sub" id="kpiDepreciacionPct">% Ingresos: 0%</div>
+        </div>
       </div>
-      <div class="card" style="padding:20px;">
-        <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Tasa Impuesto</div>
-        <div id="kpiTasaImpuesto" style="font-size:22px;font-weight:800;color:#7c3aed;">0%</div>
-        <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">% sobre UAI</div>
+      <div class="kpi-stat" style="background:var(--surface);">
+        <div class="kpi-stat-icon" style="background:linear-gradient(135deg,#7c3aed,#5b21b6)"><i class="fa-solid fa-landmark"></i></div>
+        <div class="kpi-stat-body">
+          <div class="kpi-stat-label">Tasa Impuesto</div>
+          <div class="kpi-stat-value" style="color:#7c3aed" id="kpiTasaImpuesto">0%</div>
+          <div class="kpi-stat-sub">% sobre UAI</div>
+        </div>
       </div>
-      <div class="card" style="padding:20px;">
-        <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Punto Equilibrio</div>
-        <div id="kpiPuntoEq" style="font-size:22px;font-weight:800;color:#0891b2;">—</div>
-        <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">Ingresos mínimos (est.)</div>
+      <div class="kpi-stat" style="background:var(--surface);">
+        <div class="kpi-stat-icon" style="background:linear-gradient(135deg,#0891b2,#06607a)"><i class="fa-solid fa-crosshairs"></i></div>
+        <div class="kpi-stat-body">
+          <div class="kpi-stat-label">Punto Equilibrio</div>
+          <div class="kpi-stat-value" style="color:#0891b2" id="kpiPuntoEq">—</div>
+          <div class="kpi-stat-sub">Ingresos mínimos (est.)</div>
+        </div>
       </div>
     </div>
   </div>

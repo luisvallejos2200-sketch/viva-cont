@@ -14,22 +14,42 @@
 </div>
 
 <!-- KPIs rápidos -->
-<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:22px;" id="usuariosKpis">
-  <div class="card" style="padding:16px 18px;">
-    <div style="font-size:11px;color:var(--text-muted);font-weight:700;text-transform:uppercase;letter-spacing:.5px;">Total usuarios</div>
-    <div style="font-size:28px;font-weight:800;color:var(--primary);" id="kpiTotal">—</div>
+<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:22px;">
+  <div class="kpi-stat">
+    <div class="kpi-stat-icon" style="background:linear-gradient(135deg,#1a3c6e,#1a7fd8)">
+      <i class="fa-solid fa-users"></i>
+    </div>
+    <div class="kpi-stat-body">
+      <div class="kpi-stat-label">Total Usuarios</div>
+      <div class="kpi-stat-value" id="kpiTotal">—</div>
+    </div>
   </div>
-  <div class="card" style="padding:16px 18px;">
-    <div style="font-size:11px;color:var(--text-muted);font-weight:700;text-transform:uppercase;letter-spacing:.5px;">Activos</div>
-    <div style="font-size:28px;font-weight:800;color:var(--success);" id="kpiActivos">—</div>
+  <div class="kpi-stat">
+    <div class="kpi-stat-icon" style="background:linear-gradient(135deg,#1aaa6b,#0d7c4f)">
+      <i class="fa-solid fa-circle-check"></i>
+    </div>
+    <div class="kpi-stat-body">
+      <div class="kpi-stat-label">Activos</div>
+      <div class="kpi-stat-value" style="color:var(--success);" id="kpiActivos">—</div>
+    </div>
   </div>
-  <div class="card" style="padding:16px 18px;">
-    <div style="font-size:11px;color:var(--text-muted);font-weight:700;text-transform:uppercase;letter-spacing:.5px;">Administradores</div>
-    <div style="font-size:28px;font-weight:800;color:var(--accent);" id="kpiAdmins">—</div>
+  <div class="kpi-stat">
+    <div class="kpi-stat-icon" style="background:linear-gradient(135deg,#e8a020,#c47b00)">
+      <i class="fa-solid fa-user-shield"></i>
+    </div>
+    <div class="kpi-stat-body">
+      <div class="kpi-stat-label">Administradores</div>
+      <div class="kpi-stat-value" style="color:var(--accent);" id="kpiAdmins">—</div>
+    </div>
   </div>
-  <div class="card" style="padding:16px 18px;">
-    <div style="font-size:11px;color:var(--text-muted);font-weight:700;text-transform:uppercase;letter-spacing:.5px;">Último acceso</div>
-    <div style="font-size:13px;font-weight:700;color:var(--primary);margin-top:6px;" id="kpiUltimo">—</div>
+  <div class="kpi-stat">
+    <div class="kpi-stat-icon" style="background:linear-gradient(135deg,#6a4fcf,#9b72f5)">
+      <i class="fa-solid fa-clock-rotate-left"></i>
+    </div>
+    <div class="kpi-stat-body">
+      <div class="kpi-stat-label">Último Acceso</div>
+      <div class="kpi-stat-value" style="font-size:13px;" id="kpiUltimo">—</div>
+    </div>
   </div>
 </div>
 

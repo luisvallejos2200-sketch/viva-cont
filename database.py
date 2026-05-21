@@ -3,7 +3,7 @@ import os
 import json
 import urllib.request
 
-DB_PATH = os.path.join(os.path.dirname(__file__), "viva_cont.db")
+DB_PATH = os.environ.get("VIVA_DB_PATH") or os.path.join(os.path.dirname(__file__), "viva_cont.db")
 
 _TURSO_URL   = os.environ.get("TURSO_DATABASE_URL", "")
 _TURSO_TOKEN = os.environ.get("TURSO_AUTH_TOKEN", "")

@@ -3763,14 +3763,28 @@ def api_2fa_desactivar():
     audit("2FA_DESACTIVADO", "seguridad")
     return jsonify({"ok": True})
 
+_2FA_MAX_ATTEMPTS = 5   # intentos permitidos antes de bloquear
+
 @app.route("/api/2fa/validar-login", methods=["POST"])
-@limiter.limit("10 per minute")
+@limiter.limit("20 per minute")
 def api_2fa_validar_login():
     """Validar TOTP durante el flujo de login (cuando session tiene pending_2fa_uid)."""
     import pyotp
     uid = session.get("pending_2fa_uid")
     if not uid:
         return jsonify({"ok": False, "error": "Sesión no válida"}), 400
+
+    # ── Bloqueo por intentos fallidos ────────────────────────────────────────
+    intentos = session.get("2fa_attempts", 0)
+    if intentos >= _2FA_MAX_ATTEMPTS:
+        session.clear()
+        audit("LOGIN_2FA_BLOQUEADO", "seguridad",
+              f"Bloqueado tras {_2FA_MAX_ATTEMPTS} intentos fallidos")
+        return jsonify({
+            "ok": False,
+            "error": f"Demasiados intentos fallidos. Vuelve a iniciar sesión.",
+            "bloqueado": True
+        }), 429
 
     data   = request.get_json() or {}
     codigo = str(data.get("codigo", "")).replace(" ", "")
@@ -3783,17 +3797,30 @@ def api_2fa_validar_login():
 
     secret = row.get("totp_secret", "")
     if not secret or not pyotp.TOTP(secret).verify(codigo, valid_window=1):
-        return jsonify({"ok": False, "error": "Código 2FA incorrecto"}), 400
+        session["2fa_attempts"] = intentos + 1
+        restantes = _2FA_MAX_ATTEMPTS - session["2fa_attempts"]
+        audit("LOGIN_2FA_FALLO", "seguridad",
+              f"Código incorrecto — intento {session['2fa_attempts']}/{_2FA_MAX_ATTEMPTS}")
+        if restantes <= 0:
+            session.clear()
+            return jsonify({
+                "ok": False,
+                "error": "Demasiados intentos fallidos. Vuelve a iniciar sesión.",
+                "bloqueado": True
+            }), 429
+        msg = f"Código incorrecto. Te quedan {restantes} intento{'s' if restantes != 1 else ''}."
+        return jsonify({"ok": False, "error": msg}), 400
 
-    # Completar login
+    # ── Completar login ───────────────────────────────────────────────────────
     session.pop("pending_2fa_uid", None)
-    session["user_id"]     = row["id"]
-    session["user_name"]   = row["nombre"]
-    session["user_rol"]    = row["rol"]
-    session["user_email"]  = row["email"]
-    session["username"]    = row["username"]
-    session["cliente_id"]  = row["cliente_id"]
-    session["privilegios"] = row["privilegios"] or "[]"
+    session.pop("2fa_attempts", None)
+    session["user_id"]       = row["id"]
+    session["user_name"]     = row["nombre"]
+    session["user_rol"]      = row["rol"]
+    session["user_email"]    = row["email"]
+    session["username"]      = row["username"]
+    session["cliente_id"]    = row["cliente_id"]
+    session["privilegios"]   = row["privilegios"] or "[]"
     session["totp_verified"] = True
     audit("LOGIN_2FA_OK", "auth", "Login con 2FA exitoso")
     return jsonify({"ok": True, "redirect": "/"})

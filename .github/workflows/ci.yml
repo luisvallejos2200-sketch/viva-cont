@@ -1,0 +1,71 @@
+name: CI — VIVA CONT
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ══════════════════════════════════════════════════════
+  # JOB 1: Tests automatizados con pytest
+  # ══════════════════════════════════════════════════════
+  test:
+    name: pytest suite
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt pytest pytest-flask
+
+      - name: Run tests
+        env:
+          TURSO_DATABASE_URL: ""
+          TURSO_AUTH_TOKEN:   ""
+          SECRET_KEY:         "ci-test-secret-key-viva-cont"
+        run: pytest tests/ -v --tb=short
+
+  # ══════════════════════════════════════════════════════
+  # JOB 2: Deploy a Render (solo en push a main, tras pasar tests)
+  # ══════════════════════════════════════════════════════
+  deploy:
+    name: Deploy → Render
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+      - name: Trigger Render deploy
+        run: |
+          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
+            "https://api.render.com/deploy/srv-d856ttjtqb8s73fpg3lg?key=${{ secrets.RENDER_DEPLOY_KEY }}")
+          HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+          BODY=$(echo "$RESPONSE" | head -n-1)
+          echo "Deploy response: $BODY"
+          echo "HTTP status: $HTTP_CODE"
+          if [ "$HTTP_CODE" != "200" ] && [ "$HTTP_CODE" != "201" ]; then
+            echo "Deploy hook failed with status $HTTP_CODE"
+            exit 1
+          fi
+
+      - name: Wait and verify production
+        run: |
+          echo "Esperando 90s para que Render complete el deploy..."
+          sleep 90
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 \
+            https://vivacont.vivaempresasglobal.com/health)
+          echo "Health check HTTP: $STATUS"
+          if [ "$STATUS" != "200" ]; then
+            echo "⚠️  Health check devolvió $STATUS — revisar logs en Render"
+            exit 1
+          fi
+          echo "✅ Producción operativa — VIVA CONT desplegado correctamente"

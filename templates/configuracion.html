@@ -328,7 +328,7 @@ async function probarNubefact() {
   const modo  = document.getElementById('cfgNubefactModo').value;
   const statusEl = document.getElementById('nubefactStatus');
   statusEl.style.display = 'block';
-  statusEl.innerHTML = '<span class="spinner"></span> Probando conexión con Nubefact...';
+  statusEl.innerHTML = '<span class="spinner"></span> Probando conexión con Nubefact…';
 
   if (!token) {
     statusEl.innerHTML = '<span style="color:var(--danger)"><i class="fa-solid fa-circle-xmark"></i> Ingresa un token primero.</span>';

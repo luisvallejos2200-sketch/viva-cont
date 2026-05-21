@@ -433,7 +433,8 @@ body {
 
 /* ══ TABLE ═════════════════════════════════════════════════ */
 .table-wrap { overflow-x:auto; }
-.data-table {
+/* .table es alias de .data-table — usado en módulos de gestión */
+.table, .data-table {
   width:100%; border-collapse:collapse;
   font-size:12.5px;
 }

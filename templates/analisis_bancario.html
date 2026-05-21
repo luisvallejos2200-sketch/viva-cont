@@ -284,7 +284,7 @@ Ejemplo:
       <div style="display:flex;align-items:center;justify-content:center;gap:14px;padding:20px;background:var(--surface2);border-radius:var(--radius);border:1.5px solid var(--border);">
         <span class="spinner" style="width:24px;height:24px;border-width:3px;"></span>
         <div>
-          <div style="font-size:14px;font-weight:700;color:var(--text);" id="loadingTitle">Procesando archivo...</div>
+          <div style="font-size:14px;font-weight:700;color:var(--text);" id="loadingTitle">Procesando archivo…</div>
           <div style="font-size:12px;color:var(--text-muted);" id="loadingMsg">Extrayendo y analizando transacciones</div>
         </div>
       </div>
@@ -520,7 +520,7 @@ setupDrop('xlsxDropZone', 'xlsxFileInput', '.xlsx,.xls,.csv');
 
 /* ══ UPLOAD HANDLERS ══════════════════════════════════════ */
 async function handleFile(file) {
-  showLoading(`Procesando "${file.name}"...`, 'Extrayendo transacciones del archivo...');
+  showLoading(`Procesando "${file.name}"…`, 'Extrayendo transacciones del archivo…');
   const formData = new FormData();
   formData.append('file', file);
   formData.append('banco', selectedBanco);
@@ -584,7 +584,7 @@ function usarTextoDiag() {
 async function procesarTextoAB() {
   const texto = document.getElementById('pasteTextAB').value.trim();
   if (!texto) { showToast('warning','Texto vacío','Pega el contenido del PDF primero'); return; }
-  showLoading('Analizando texto...', 'Reconociendo transacciones del texto pegado');
+  showLoading('Analizando texto…', 'Reconociendo transacciones del texto pegado');
   try {
     const res  = await fetch('/api/analisis-bancario/upload-texto', {
       method:'POST',
@@ -605,7 +605,7 @@ async function procesarTextoAB() {
 }
 
 async function analizarTemplate() {
-  showLoading('Analizando Template VIVA CONT...', 'Cargando y procesando el archivo Excel principal');
+  showLoading('Analizando Template VIVA CONT…', 'Cargando y procesando el archivo Excel principal');
   try {
     const res  = await fetch('/api/analisis-bancario/from-excel', { method:'POST' });
     const data = await res.json();
@@ -903,7 +903,7 @@ function filterTxTable() {
 /* ══ GUARDAR ══════════════════════════════════════════════ */
 async function guardarAlSistema() {
   if (!currentTxs.length) return;
-  setLoading('btnGuardar', true, 'Guardando...');
+  setLoading('btnGuardar', true, 'Guardando…');
   const res = await apiPost('/api/analisis-bancario/guardar', {
     transactions: currentTxs,
     analysis: currentAnalysis,
@@ -973,7 +973,7 @@ async function selectPeriodo(id, ev) {
   document.getElementById('dashboardScreen').style.display = 'block';
 
   if (id === 'all') {
-    showLoading('Cargando consolidado...', 'Combinando todos los períodos');
+    showLoading('Cargando consolidado…', 'Combinando todos los períodos');
     const res = await apiGet('/api/periodos/consolidado');
     hideLoading();
     if (!res || !res.transactions.length) {
@@ -985,7 +985,7 @@ async function selectPeriodo(id, ev) {
     currentFilename = 'Consolidado';
     mountDashboard(res.transactions, res.analysis, 'Consolidado', true);
   } else {
-    showLoading('Cargando período...', '');
+    showLoading('Cargando período…', '');
     const res = await apiGet(`/api/periodos/${id}/analysis`);
     hideLoading();
     if (!res) return;

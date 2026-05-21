@@ -407,7 +407,7 @@ async function importarExcel() {
   const fd = new FormData();
   fd.append('file', file);
   if (periodo) fd.append('periodo', periodo);
-  showToast('Procesando...', 'info');
+  showToast('Procesando…', 'info');
   try {
     const r = await fetch('/api/balance-general/importar', {method:'POST', body:fd});
     const d = await r.json();

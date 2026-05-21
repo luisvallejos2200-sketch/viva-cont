@@ -115,8 +115,8 @@
       margin-top: 8px;
       display: flex; align-items: center; justify-content: center; gap: 8px;
     }
-    .btn-login:hover { filter: brightness(1.08); transform: translateY(-1px); box-shadow: 0 6px 20px rgba(0,48,155,.4); }
-    .btn-login:active { transform: translateY(0); }
+    .btn-login:hover { filter: brightness(1.08); box-shadow: 0 6px 20px rgba(0,48,155,.4); }
+    .btn-login:active { filter: brightness(.96); }
     .btn-login svg { width: 16px; height: 16px; fill: currentColor; }
 
     .error-alert {
@@ -239,7 +239,7 @@
     /* Spinner al hacer submit — se activa DESPUÉS de que el form ya inició el envío */
     document.querySelector('form').addEventListener('submit', function() {
       var btn = document.getElementById('btnLogin');
-      btn.innerHTML = '<svg viewBox="0 0 24 24" style="width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;animation:spin .7s linear infinite"><circle cx="12" cy="12" r="10" stroke-opacity=".25"/><path d="M12 2a10 10 0 0 1 10 10"/></svg> Ingresando...';
+      btn.innerHTML = '<svg viewBox="0 0 24 24" style="width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;animation:spin .7s linear infinite"><circle cx="12" cy="12" r="10" stroke-opacity=".25"/><path d="M12 2a10 10 0 0 1 10 10"/></svg> Ingresando…';
       btn.style.opacity = '0.75';
       btn.style.pointerEvents = 'none';
     });

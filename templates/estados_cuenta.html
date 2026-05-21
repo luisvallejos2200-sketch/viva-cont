@@ -93,7 +93,7 @@
         </tr>
       </thead>
       <tbody id="bodyEC">
-        <tr class="loading-row"><td colspan="18"><span class="spinner"></span> Cargando transacciones...</td></tr>
+        <tr class="loading-row"><td colspan="18"><span class="spinner"></span> Cargando transacciones…</td></tr>
       </tbody>
     </table>
   </div>
@@ -200,7 +200,7 @@ Ejemplo:
         <div style="padding:12px 14px;background:var(--surface2);border-radius:var(--radius-xs);">
           <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
             <span class="spinner"></span>
-            <span id="pdfProgressMsg" style="font-size:12.5px;color:var(--text-muted);flex:1">Preparando...</span>
+            <span id="pdfProgressMsg" style="font-size:12.5px;color:var(--text-muted);flex:1">Preparando…</span>
             <span id="pdfProgressPct" style="font-size:11px;font-weight:700;color:var(--primary)"></span>
           </div>
           <div style="height:4px;background:var(--border);border-radius:4px;overflow:hidden;">
@@ -469,7 +469,7 @@ function _xhrUpload(url, formData, onProgress) {
   });
 }
 
-const _processMsgs = ['Leyendo estructura...','Extrayendo texto...','Analizando transacciones...','Detectando fechas y montos...','Casi listo...'];
+const _processMsgs = ['Leyendo estructura…','Extrayendo texto…','Analizando transacciones…','Detectando fechas y montos…','Casi listo…'];
 let _processTicker = null;
 function _startProcessTicker(msgEl, barEl, pctEl) {
   let i = 0, w = 70;
@@ -588,7 +588,7 @@ async function procesarTexto() {
   if (!texto) { showToast('warning','Texto vacío','Pega el contenido del PDF primero'); return; }
 
   document.getElementById('pdfProgress').style.display  = 'block';
-  document.getElementById('pdfProgressMsg').textContent = 'Analizando texto...';
+  document.getElementById('pdfProgressMsg').textContent = 'Analizando texto…';
 
   const res  = await apiPost('/api/estados-cuenta/upload-texto', { texto, banco });
   document.getElementById('pdfProgress').style.display = 'none';
@@ -632,7 +632,7 @@ function closePreviewModal() {
 
 async function confirmarTransacciones() {
   if (!pendingTxs.length) return;
-  setLoading('btnConfirmar', true, 'Guardando...');
+  setLoading('btnConfirmar', true, 'Guardando…');
   const periodoLabel = (document.getElementById('periodoLabel')?.value || '').trim();
   const res = await apiPost('/api/estados-cuenta/confirmar', {
     transactions: pendingTxs,

@@ -374,7 +374,7 @@ async function importarExcel() {
   fd.append('file', file);
   if (periodo) fd.append('periodo', periodo);
 
-  showToast('Procesando archivo...', 'info');
+  showToast('Procesando archivo…', 'info');
   try {
     const r = await fetch('/api/estados-resultados/importar', {method:'POST', body:fd});
     const d = await r.json();

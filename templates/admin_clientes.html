@@ -28,7 +28,7 @@
         </tr>
       </thead>
       <tbody id="tbodyClientes">
-        <tr><td colspan="7" style="text-align:center;padding:32px;color:#888">Cargando...</td></tr>
+        <tr><td colspan="7" style="text-align:center;padding:32px;color:#888">Cargando…</td></tr>
       </tbody>
     </table>
   </div>
@@ -246,7 +246,7 @@ async function guardarCliente(e, id) {
 
 /* ─── VER USUARIOS DEL CLIENTE ─── */
 async function verUsuariosCliente(cid, nombre) {
-  openModal(`Usuarios — ${nombre}`, '<div style="text-align:center;padding:24px;color:#888">Cargando...</div>');
+  openModal(`Usuarios — ${nombre}`, '<div style="text-align:center;padding:24px;color:#888">Cargando…</div>');
 
   const res = await fetch(`/api/admin/clientes/${cid}/usuarios`);
   const usuarios = await res.json();

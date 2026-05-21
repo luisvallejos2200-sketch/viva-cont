@@ -479,6 +479,41 @@ def _do_init(conn):
         )
     """)
 
+    # ── AUDIT LOG ─────────────────────────────────────────────
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS audit_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            cliente_id INTEGER,
+            usuario_id INTEGER,
+            username TEXT,
+            accion TEXT NOT NULL,
+            modulo TEXT,
+            detalle TEXT,
+            ip TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    # ── ALERTAS ───────────────────────────────────────────────
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS alertas (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            cliente_id INTEGER,
+            tipo TEXT NOT NULL,
+            titulo TEXT NOT NULL,
+            mensaje TEXT,
+            nivel TEXT DEFAULT 'info',
+            leida INTEGER DEFAULT 0,
+            url TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    # ── USUARIOS ROLES ────────────────────────────────────────
+    _migrate(conn, "ALTER TABLE usuarios ADD COLUMN rol TEXT DEFAULT 'usuario'")
+    _migrate(conn, "ALTER TABLE usuarios ADD COLUMN activo INTEGER DEFAULT 1")
+    _migrate(conn, "ALTER TABLE usuarios ADD COLUMN ultimo_acceso TIMESTAMP")
+
     # ── ÍNDICES DE RENDIMIENTO ────────────────────────────
     for idx_sql in [
         "CREATE INDEX IF NOT EXISTS idx_transacciones_cliente ON transacciones(cliente_id)",
@@ -492,6 +527,9 @@ def _do_init(conn):
         "CREATE INDEX IF NOT EXISTS idx_transacciones_importacion ON transacciones(importacion_id)",
         "CREATE INDEX IF NOT EXISTS idx_usuarios_cliente      ON usuarios(cliente_id)",
         "CREATE INDEX IF NOT EXISTS idx_usuarios_username     ON usuarios(username)",
+        "CREATE INDEX IF NOT EXISTS idx_audit_log_cliente     ON audit_log(cliente_id)",
+        "CREATE INDEX IF NOT EXISTS idx_audit_log_created     ON audit_log(created_at)",
+        "CREATE INDEX IF NOT EXISTS idx_alertas_cliente       ON alertas(cliente_id, leida)",
     ]:
         try:
             conn.execute(idx_sql)

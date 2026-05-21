@@ -117,6 +117,10 @@
     {% endif %}
 
     {% if rol in ('super_admin','admin') %}
+    <a href="/usuarios" class="nav-item {% if request.path == '/usuarios' %}active{% endif %}">
+      <span class="nav-icon"><i class="fa-solid fa-users"></i></span>
+      <span class="nav-label">Usuarios</span>
+    </a>
     <a href="/configuracion" class="nav-item {% if request.path == '/configuracion' %}active{% endif %}">
       <span class="nav-icon"><i class="fa-solid fa-gear"></i></span>
       <span class="nav-label">Configuración</span>
@@ -165,9 +169,37 @@
         <i class="fa-regular fa-calendar"></i>
         <span id="currentDate"></span>
       </div>
-      <button class="topbar-btn" title="Notificaciones">
-        <i class="fa-regular fa-bell"></i>
-      </button>
+      <!-- Campana de alertas -->
+      <div style="position:relative;">
+        <button class="topbar-btn" id="btnAlertas" title="Alertas" onclick="toggleAlertas()">
+          <i class="fa-regular fa-bell"></i>
+          <span id="alertaBadge" style="display:none;position:absolute;top:4px;right:4px;
+            background:#e03c3c;color:#fff;font-size:9px;font-weight:800;border-radius:50%;
+            width:16px;height:16px;display:none;align-items:center;justify-content:center;
+            line-height:1;"></span>
+        </button>
+        <!-- Dropdown alertas -->
+        <div id="alertasDropdown" style="display:none;position:absolute;right:0;top:44px;
+          width:340px;background:var(--card);border:1px solid var(--border);border-radius:12px;
+          box-shadow:0 8px 32px rgba(0,0,0,.15);z-index:9999;overflow:hidden;">
+          <div style="padding:12px 16px;border-bottom:1px solid var(--border);display:flex;
+                      align-items:center;justify-content:space-between;">
+            <span style="font-weight:700;font-size:13px;">Alertas</span>
+            <button onclick="leerTodasAlertas()" style="background:none;border:none;cursor:pointer;
+              font-size:11px;color:var(--text-muted);">Marcar todas como leídas</button>
+          </div>
+          <div id="alertasLista" style="max-height:320px;overflow-y:auto;">
+            <div style="padding:24px;text-align:center;color:var(--text-muted);font-size:13px;">
+              <span class="spinner"></span> Cargando…
+            </div>
+          </div>
+          <div style="padding:10px 16px;border-top:1px solid var(--border);text-align:center;">
+            <a href="/usuarios" style="font-size:12px;color:var(--accent);text-decoration:none;font-weight:600;">
+              Ver audit log completo →
+            </a>
+          </div>
+        </div>
+      </div>
       <button class="topbar-btn topbar-help" title="Ayuda">
         <i class="fa-regular fa-circle-question"></i>
       </button>
@@ -198,5 +230,93 @@
 
 <script src="/static/js/main.js?v={{ sv }}"></script>
 {% block scripts %}{% endblock %}
+
+<script>
+// ── ALERTAS GLOBAL ────────────────────────────────────────────────────────
+let _alertasOpen = false;
+
+async function cargarAlertas() {
+  try {
+    // Generar alertas automáticas en background
+    fetch('/api/alertas/generar', { method: 'POST' }).catch(() => {});
+    const data = await apiGet('/api/alertas');
+    if (!data) return;
+
+    const badge = document.getElementById('alertaBadge');
+    const lista  = document.getElementById('alertasLista');
+    const noLeidas = data.no_leidas || 0;
+
+    if (noLeidas > 0) {
+      badge.style.display = 'flex';
+      badge.textContent   = noLeidas > 9 ? '9+' : noLeidas;
+    } else {
+      badge.style.display = 'none';
+    }
+
+    if (!data.alertas?.length) {
+      lista.innerHTML = `<div style="padding:30px;text-align:center;color:var(--text-muted);font-size:13px;">
+        <i class="fa-solid fa-check-circle" style="font-size:28px;opacity:.2;display:block;margin-bottom:8px;"></i>
+        Sin alertas pendientes
+      </div>`;
+      return;
+    }
+
+    const NIVELES = {
+      success: { bg: '#e8f7ee', color: '#1aaa6b', icon: 'fa-circle-check' },
+      info:    { bg: '#e8f0fb', color: '#1a7fd8', icon: 'fa-circle-info' },
+      warning: { bg: '#fff8e6', color: '#e8a020', icon: 'fa-triangle-exclamation' },
+      danger:  { bg: '#fdecea', color: '#e03c3c', icon: 'fa-circle-xmark' },
+    };
+
+    lista.innerHTML = data.alertas.map(a => {
+      const n = NIVELES[a.nivel] || NIVELES.info;
+      const dt = (a.created_at || '').replace('T',' ').substring(0,16);
+      return `<div onclick="marcarLeida(${a.id},this)" style="padding:12px 16px;border-bottom:1px solid var(--border);
+                cursor:pointer;transition:background .15s;${a.leida ? 'opacity:.5;' : ''}background:${a.leida ? 'transparent' : n.bg+'44'};"
+              onmouseenter="this.style.background='var(--surface2)'" onmouseleave="this.style.background='${a.leida ? 'transparent' : n.bg+'44'}'">
+        <div style="display:flex;gap:10px;align-items:flex-start;">
+          <i class="fa-solid ${n.icon}" style="color:${n.color};margin-top:2px;flex-shrink:0;"></i>
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:12px;font-weight:${a.leida ? '400' : '700'};color:var(--primary);
+                        white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${a.titulo}</div>
+            ${a.mensaje ? `<div style="font-size:11px;color:var(--text-muted);margin-top:2px;">${a.mensaje}</div>` : ''}
+            <div style="font-size:10px;color:var(--text-muted);margin-top:4px;">${dt}</div>
+          </div>
+          ${!a.leida ? '<span style="width:7px;height:7px;background:#e03c3c;border-radius:50%;flex-shrink:0;margin-top:4px;"></span>' : ''}
+        </div>
+      </div>`;
+    }).join('');
+  } catch(e) {}
+}
+
+async function marcarLeida(id, el) {
+  await fetch(`/api/alertas/${id}/leer`, { method: 'POST' });
+  if (el) el.style.opacity = '.5';
+  cargarAlertas();
+}
+
+async function leerTodasAlertas() {
+  await fetch('/api/alertas/leer-todas', { method: 'POST' });
+  cargarAlertas();
+}
+
+function toggleAlertas() {
+  const dd = document.getElementById('alertasDropdown');
+  _alertasOpen = !_alertasOpen;
+  dd.style.display = _alertasOpen ? 'block' : 'none';
+  if (_alertasOpen) cargarAlertas();
+}
+
+document.addEventListener('click', e => {
+  if (_alertasOpen && !e.target.closest('#btnAlertas') && !e.target.closest('#alertasDropdown')) {
+    document.getElementById('alertasDropdown').style.display = 'none';
+    _alertasOpen = false;
+  }
+});
+
+// Cargar badge al iniciar y cada 5 min
+cargarAlertas();
+setInterval(cargarAlertas, 300000);
+</script>
 </body>
 </html>

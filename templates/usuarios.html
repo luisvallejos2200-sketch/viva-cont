@@ -1,0 +1,350 @@
+{% extends "base.html" %}
+{% block title %}Usuarios{% endblock %}
+{% block breadcrumb %}Gestión de Usuarios{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="page-title"><i class="fa-solid fa-users" style="color:var(--accent)"></i> Usuarios</h1>
+    <p class="page-subtitle">Administra los accesos y roles del equipo</p>
+  </div>
+  <button class="btn btn-primary" onclick="abrirModalNuevoUsuario()">
+    <i class="fa-solid fa-user-plus"></i> Nuevo Usuario
+  </button>
+</div>
+
+<!-- KPIs rápidos -->
+<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:22px;" id="usuariosKpis">
+  <div class="card" style="padding:16px 18px;">
+    <div style="font-size:11px;color:var(--text-muted);font-weight:700;text-transform:uppercase;letter-spacing:.5px;">Total usuarios</div>
+    <div style="font-size:28px;font-weight:800;color:var(--primary);" id="kpiTotal">—</div>
+  </div>
+  <div class="card" style="padding:16px 18px;">
+    <div style="font-size:11px;color:var(--text-muted);font-weight:700;text-transform:uppercase;letter-spacing:.5px;">Activos</div>
+    <div style="font-size:28px;font-weight:800;color:var(--success);" id="kpiActivos">—</div>
+  </div>
+  <div class="card" style="padding:16px 18px;">
+    <div style="font-size:11px;color:var(--text-muted);font-weight:700;text-transform:uppercase;letter-spacing:.5px;">Administradores</div>
+    <div style="font-size:28px;font-weight:800;color:var(--accent);" id="kpiAdmins">—</div>
+  </div>
+  <div class="card" style="padding:16px 18px;">
+    <div style="font-size:11px;color:var(--text-muted);font-weight:700;text-transform:uppercase;letter-spacing:.5px;">Último acceso</div>
+    <div style="font-size:13px;font-weight:700;color:var(--primary);margin-top:6px;" id="kpiUltimo">—</div>
+  </div>
+</div>
+
+<!-- Tabla -->
+<div class="card">
+  <div class="card-header" style="justify-content:space-between;">
+    <h3 class="card-title"><i class="fa-solid fa-table-list"></i> Equipo de trabajo</h3>
+    <input type="text" class="form-control" id="buscarUsuario" placeholder="Buscar usuario…"
+           style="max-width:240px;padding:6px 12px;font-size:13px;" oninput="filtrarUsuarios()">
+  </div>
+  <div class="card-body" style="padding:0;">
+    <div id="tablaUsuariosWrap" style="overflow-x:auto;">
+      <table class="table" id="tablaUsuarios">
+        <thead>
+          <tr>
+            <th>Usuario</th>
+            <th>Email</th>
+            <th>Rol</th>
+            <th>Estado</th>
+            <th>Último acceso</th>
+            <th>Creado</th>
+            <th style="text-align:right;">Acciones</th>
+          </tr>
+        </thead>
+        <tbody id="tbodyUsuarios">
+          <tr><td colspan="7" class="text-center" style="padding:40px;">
+            <span class="spinner"></span> Cargando…
+          </td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Audit Log -->
+<div class="card" style="margin-top:20px;">
+  <div class="card-header" style="justify-content:space-between;">
+    <h3 class="card-title"><i class="fa-solid fa-shield-halved" style="color:var(--accent)"></i> Registro de Auditoría</h3>
+    <button class="btn btn-outline btn-sm" onclick="cargarAuditLog()">
+      <i class="fa-solid fa-rotate-right"></i> Actualizar
+    </button>
+  </div>
+  <div class="card-body" style="padding:0;">
+    <div style="overflow-x:auto;">
+      <table class="table" style="font-size:12px;">
+        <thead>
+          <tr>
+            <th>Fecha/Hora</th>
+            <th>Usuario</th>
+            <th>Acción</th>
+            <th>Módulo</th>
+            <th>Detalle</th>
+            <th>IP</th>
+          </tr>
+        </thead>
+        <tbody id="tbodyAudit">
+          <tr><td colspan="6" class="text-center" style="padding:30px;">
+            <span class="spinner"></span> Cargando…
+          </td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div id="auditPagination" style="padding:12px 16px;display:flex;gap:8px;align-items:center;justify-content:flex-end;"></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let _usuarios = [];
+let _auditPage = 1;
+
+const ROLES = {
+  super_admin: { label: 'Super Admin', color: '#7c3aed' },
+  admin:       { label: 'Admin',       color: '#e8a020' },
+  contador:    { label: 'Contador',    color: '#1a7fd8' },
+  viewer:      { label: 'Solo lectura',color: '#64748b' },
+};
+
+function badgeRol(rol) {
+  const r = ROLES[rol] || { label: rol, color: '#64748b' };
+  return `<span class="badge" style="background:${r.color}20;color:${r.color};border:1px solid ${r.color}40;">${r.label}</span>`;
+}
+
+async function cargarUsuarios() {
+  const data = await apiGet('/api/usuarios');
+  if (!data) return;
+  _usuarios = Array.isArray(data) ? data : [];
+
+  // KPIs
+  const activos = _usuarios.filter(u => u.activo == 1).length;
+  const admins  = _usuarios.filter(u => ['super_admin','admin'].includes(u.rol)).length;
+  const ultimo  = _usuarios.filter(u => u.ultimo_acceso).sort((a,b) => b.ultimo_acceso > a.ultimo_acceso ? 1 : -1)[0];
+  document.getElementById('kpiTotal').textContent   = _usuarios.length;
+  document.getElementById('kpiActivos').textContent = activos;
+  document.getElementById('kpiAdmins').textContent  = admins;
+  document.getElementById('kpiUltimo').textContent  = ultimo ? fmtDate(ultimo.ultimo_acceso.split('T')[0]) : '—';
+
+  renderTablaUsuarios(_usuarios);
+}
+
+function renderTablaUsuarios(lista) {
+  const tbody = document.getElementById('tbodyUsuarios');
+  if (!lista.length) {
+    tbody.innerHTML = '<tr><td colspan="7" class="text-center" style="padding:40px;color:var(--text-muted);">No hay usuarios registrados</td></tr>';
+    return;
+  }
+  tbody.innerHTML = lista.map(u => `
+    <tr style="${u.activo == 0 ? 'opacity:.5;' : ''}">
+      <td>
+        <div style="display:flex;align-items:center;gap:10px;">
+          <div style="width:34px;height:34px;border-radius:50%;background:linear-gradient(135deg,var(--accent),#1a3c6e);
+                      display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:14px;flex-shrink:0;">
+            ${(u.nombre||'?')[0].toUpperCase()}
+          </div>
+          <div>
+            <div style="font-weight:600;font-size:13px;">${u.nombre || '—'}</div>
+            <div style="font-size:11px;color:var(--text-muted);">@${u.username}</div>
+          </div>
+        </div>
+      </td>
+      <td style="font-size:12px;">${u.email || '—'}</td>
+      <td>${badgeRol(u.rol)}</td>
+      <td><span class="badge ${u.activo == 1 ? 'badge-success' : 'badge-default'}">${u.activo == 1 ? 'Activo' : 'Inactivo'}</span></td>
+      <td style="font-size:12px;">${u.ultimo_acceso ? fmtDate(u.ultimo_acceso.split('T')[0]) + ' ' + (u.ultimo_acceso.split('T')[1]||'').substring(0,5) : 'Nunca'}</td>
+      <td style="font-size:12px;">${fmtDate((u.created_at||'').split('T')[0])}</td>
+      <td style="text-align:right;">
+        <button class="btn btn-ghost btn-sm btn-icon" title="Editar" onclick="editarUsuario(${u.id})">
+          <i class="fa-solid fa-pen-to-square"></i>
+        </button>
+        ${u.rol !== 'super_admin' ? `
+        <button class="btn btn-ghost btn-sm btn-icon text-danger" title="Desactivar" onclick="desactivarUsuario(${u.id},'${u.nombre}')">
+          <i class="fa-solid fa-user-slash"></i>
+        </button>` : ''}
+      </td>
+    </tr>`).join('');
+}
+
+function filtrarUsuarios() {
+  const q = document.getElementById('buscarUsuario').value.toLowerCase();
+  const filtrados = _usuarios.filter(u =>
+    (u.nombre||'').toLowerCase().includes(q) ||
+    (u.username||'').toLowerCase().includes(q) ||
+    (u.email||'').toLowerCase().includes(q)
+  );
+  renderTablaUsuarios(filtrados);
+}
+
+function abrirModalNuevoUsuario() {
+  openModal('Nuevo Usuario',
+    `<div class="form-group">
+       <label class="form-label">Nombre completo</label>
+       <input type="text" class="form-control" id="nu_nombre" placeholder="Ej: María García" />
+     </div>
+     <div class="form-row form-row-2">
+       <div class="form-group">
+         <label class="form-label">Email</label>
+         <input type="email" class="form-control" id="nu_email" placeholder="correo@empresa.com" />
+       </div>
+       <div class="form-group">
+         <label class="form-label">Username</label>
+         <input type="text" class="form-control" id="nu_username" placeholder="mgarcia" />
+       </div>
+     </div>
+     <div class="form-row form-row-2">
+       <div class="form-group">
+         <label class="form-label">Contraseña</label>
+         <input type="password" class="form-control" id="nu_password" placeholder="Mínimo 8 caracteres" />
+       </div>
+       <div class="form-group">
+         <label class="form-label">Rol</label>
+         <select class="form-control" id="nu_rol">
+           <option value="viewer">Solo lectura</option>
+           <option value="contador">Contador</option>
+           <option value="admin">Admin</option>
+         </select>
+       </div>
+     </div>
+     <div style="background:var(--surface2);border-radius:8px;padding:10px 14px;font-size:11px;color:var(--text-muted);margin-top:4px;">
+       <strong>Roles:</strong> Admin = acceso completo + gestión de usuarios · Contador = todo excepto usuarios · Solo lectura = consulta sin editar
+     </div>`,
+    `<button class="btn btn-outline" onclick="closeModal()">Cancelar</button>
+     <button class="btn btn-primary" onclick="crearUsuario()"><i class="fa-solid fa-user-plus"></i> Crear Usuario</button>`
+  );
+}
+
+async function crearUsuario() {
+  const payload = {
+    nombre:   document.getElementById('nu_nombre').value.trim(),
+    email:    document.getElementById('nu_email').value.trim(),
+    username: document.getElementById('nu_username').value.trim(),
+    password: document.getElementById('nu_password').value,
+    rol:      document.getElementById('nu_rol').value,
+  };
+  if (!payload.nombre || !payload.email || !payload.username || !payload.password) {
+    showToast('warning','Campos incompletos','Completa todos los campos');
+    return;
+  }
+  if (payload.password.length < 8) {
+    showToast('warning','Contraseña muy corta','Mínimo 8 caracteres');
+    return;
+  }
+  const res = await apiPost('/api/usuarios', payload);
+  if (!res) return;
+  if (res.ok) {
+    closeModal();
+    showToast('success','Usuario creado', res.message || 'Acceso creado correctamente');
+    cargarUsuarios();
+  } else {
+    showToast('error','Error', res.error || 'No se pudo crear el usuario');
+  }
+}
+
+function editarUsuario(uid) {
+  const u = _usuarios.find(x => x.id == uid);
+  if (!u) return;
+  openModal(`Editar — ${u.nombre}`,
+    `<div class="form-group">
+       <label class="form-label">Nombre completo</label>
+       <input type="text" class="form-control" id="eu_nombre" value="${u.nombre||''}" />
+     </div>
+     <div class="form-row form-row-2">
+       <div class="form-group">
+         <label class="form-label">Rol</label>
+         <select class="form-control" id="eu_rol" ${u.rol==='super_admin'?'disabled':''}>
+           <option value="viewer" ${u.rol==='viewer'?'selected':''}>Solo lectura</option>
+           <option value="contador" ${u.rol==='contador'?'selected':''}>Contador</option>
+           <option value="admin" ${u.rol==='admin'?'selected':''}>Admin</option>
+           ${u.rol==='super_admin'?'<option value="super_admin" selected>Super Admin</option>':''}
+         </select>
+       </div>
+       <div class="form-group">
+         <label class="form-label">Estado</label>
+         <select class="form-control" id="eu_activo">
+           <option value="1" ${u.activo?'selected':''}>Activo</option>
+           <option value="0" ${!u.activo?'selected':''}>Inactivo</option>
+         </select>
+       </div>
+     </div>
+     <div class="form-group">
+       <label class="form-label">Nueva contraseña <span style="color:var(--text-muted);font-weight:400;">(dejar vacío para no cambiar)</span></label>
+       <input type="password" class="form-control" id="eu_password" placeholder="••••••••" />
+     </div>`,
+    `<button class="btn btn-outline" onclick="closeModal()">Cancelar</button>
+     <button class="btn btn-primary" onclick="guardarUsuario(${uid})"><i class="fa-solid fa-floppy-disk"></i> Guardar</button>`
+  );
+}
+
+async function guardarUsuario(uid) {
+  const payload = {
+    nombre:  document.getElementById('eu_nombre').value.trim(),
+    rol:     document.getElementById('eu_rol').value,
+    activo:  document.getElementById('eu_activo').value === '1',
+    password:document.getElementById('eu_password').value,
+  };
+  const res = await apiPut(`/api/usuarios/${uid}`, payload);
+  if (!res) return;
+  if (res.ok) {
+    closeModal();
+    showToast('success','Guardado','Usuario actualizado');
+    cargarUsuarios();
+  } else {
+    showToast('error','Error', res.error || 'Error al actualizar');
+  }
+}
+
+async function desactivarUsuario(uid, nombre) {
+  if (!confirm(`¿Desactivar el acceso de ${nombre}?`)) return;
+  const res = await apiDelete(`/api/usuarios/${uid}`);
+  if (res?.ok) {
+    showToast('success','Desactivado',`${nombre} ya no puede acceder`);
+    cargarUsuarios();
+  }
+}
+
+// ── Audit Log ─────────────────────────────────────────────────────────────
+const ACCION_COLORS = {
+  LOGIN:              '#1aaa6b',
+  LOGIN_FAILED:       '#e03c3c',
+  LOGOUT:             '#64748b',
+  SUNAT_ENVIO:        '#1a7fd8',
+  USUARIO_CREADO:     '#e8a020',
+  USUARIO_ACTUALIZADO:'#7c3aed',
+  USUARIO_DESACTIVADO:'#e03c3c',
+};
+
+async function cargarAuditLog(page = 1) {
+  _auditPage = page;
+  const data = await apiGet(`/api/audit-log?page=${page}`);
+  if (!data) return;
+
+  const tbody = document.getElementById('tbodyAudit');
+  if (!data.items?.length) {
+    tbody.innerHTML = '<tr><td colspan="6" class="text-center" style="padding:30px;color:var(--text-muted);">Sin registros de auditoría aún</td></tr>';
+    return;
+  }
+  tbody.innerHTML = data.items.map(a => {
+    const color = ACCION_COLORS[a.accion] || 'var(--text-muted)';
+    const dt = (a.created_at || '').replace('T',' ').substring(0,16);
+    return `<tr>
+      <td class="mono" style="font-size:11px;white-space:nowrap;">${dt}</td>
+      <td style="font-size:12px;font-weight:600;">@${a.username||'—'}</td>
+      <td><span style="font-size:11px;font-weight:700;color:${color};
+                background:${color}18;padding:2px 8px;border-radius:4px;">${a.accion}</span></td>
+      <td style="font-size:11px;color:var(--text-muted);">${a.modulo||'—'}</td>
+      <td style="font-size:11px;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
+          title="${a.detalle||''}">${a.detalle||'—'}</td>
+      <td style="font-size:11px;color:var(--text-muted);font-family:monospace;">${a.ip||'—'}</td>
+    </tr>`;
+  }).join('');
+
+  renderPagination('auditPagination', data.total, page, 50, 'cargarAuditLog');
+}
+
+cargarUsuarios();
+cargarAuditLog();
+</script>
+{% endblock %}

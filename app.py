@@ -5,12 +5,30 @@ import uuid
 import threading
 import time as _time
 import urllib.request
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 from datetime import datetime
 from functools import wraps
 
 from flask import Flask, render_template, request, jsonify, send_file, session, redirect, url_for, flash
 from flask_cors import CORS
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 from werkzeug.security import generate_password_hash, check_password_hash
+
+# ── Sentry (opcional — configurar SENTRY_DSN en env vars de Render) ──────────
+_SENTRY_DSN = os.environ.get("SENTRY_DSN", "")
+if _SENTRY_DSN:
+    import sentry_sdk
+    from sentry_sdk.integrations.flask import FlaskIntegration
+    sentry_sdk.init(
+        dsn=_SENTRY_DSN,
+        integrations=[FlaskIntegration()],
+        traces_sample_rate=0.2,
+        environment="production" if os.environ.get("RENDER") else "development",
+    )
+    print("[SENTRY] inicializado correctamente", file=sys.stderr)
 
 sys.path.insert(0, os.path.dirname(__file__))
 from database import init_db, get_connection, row_to_dict, rows_to_list
@@ -47,7 +65,74 @@ CORS(app, origins=_ALLOWED_ORIGINS, supports_credentials=True)
 from werkzeug.middleware.proxy_fix import ProxyFix
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 
+# ── Rate Limiter ──────────────────────────────────────────────────────────────
+limiter = Limiter(
+    key_func=get_remote_address,
+    app=app,
+    default_limits=["300 per minute"],
+    storage_uri="memory://",
+)
+
 init_db()
+
+# ── Email helper ──────────────────────────────────────────────────────────────
+_SMTP_HOST = os.environ.get("SMTP_HOST", "smtp.gmail.com")
+_SMTP_PORT = int(os.environ.get("SMTP_PORT", "587"))
+_SMTP_USER = os.environ.get("SMTP_USER", "")
+_SMTP_PASS = os.environ.get("SMTP_PASS", "")
+_EMAIL_FROM = os.environ.get("EMAIL_FROM", "VIVA CONT <noreply@vivaempresasglobal.com>")
+
+def send_email(to: str, subject: str, html_body: str):
+    """Envía email via SMTP. Silencioso si no hay credenciales configuradas."""
+    if not (_SMTP_USER and _SMTP_PASS and to):
+        return False
+    try:
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = subject
+        msg["From"]    = _EMAIL_FROM
+        msg["To"]      = to
+        msg.attach(MIMEText(html_body, "html", "utf-8"))
+        with smtplib.SMTP(_SMTP_HOST, _SMTP_PORT, timeout=10) as srv:
+            srv.starttls()
+            srv.login(_SMTP_USER, _SMTP_PASS)
+            srv.sendmail(_SMTP_USER, [to], msg.as_string())
+        print(f"[EMAIL] enviado a {to}: {subject}", file=sys.stderr)
+        return True
+    except Exception as e:
+        print(f"[EMAIL] error: {e}", file=sys.stderr)
+        return False
+
+# ── Audit log helper ──────────────────────────────────────────────────────────
+def audit(accion: str, modulo: str = "", detalle: str = ""):
+    """Registra una acción en audit_log. Silencioso ante errores."""
+    try:
+        conn = get_connection()
+        conn.execute(
+            """INSERT INTO audit_log (cliente_id, usuario_id, username, accion, modulo, detalle, ip)
+               VALUES (?,?,?,?,?,?,?)""",
+            (session.get("cliente_id"), session.get("user_id"),
+             session.get("username"), accion, modulo, detalle[:500] if detalle else "",
+             request.headers.get("X-Forwarded-For", request.remote_addr or "")[:45])
+        )
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass
+
+# ── Alertas helper ────────────────────────────────────────────────────────────
+def crear_alerta(cliente_id: int, tipo: str, titulo: str,
+                  mensaje: str = "", nivel: str = "info", url: str = ""):
+    try:
+        conn = get_connection()
+        conn.execute(
+            """INSERT INTO alertas (cliente_id, tipo, titulo, mensaje, nivel, url)
+               VALUES (?,?,?,?,?,?)""",
+            (cliente_id, tipo, titulo, mensaje, nivel, url)
+        )
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass
 
 # Cache-busting version derived from git commit hash (set once at startup)
 import subprocess as _sp
@@ -157,6 +242,7 @@ def login_required(f):
 
 
 @app.route("/login", methods=["GET", "POST"])
+@limiter.limit("10 per minute", methods=["POST"])
 def login():
     if session.get("user_id"):
         return redirect(url_for("dashboard"))
@@ -181,6 +267,7 @@ def login():
             session["user_name"]   = user["nombre"]
             session["user_rol"]    = user["rol"]
             session["user_email"]  = user["email"]
+            session["username"]    = user["username"]
             session["cliente_id"]  = user["cliente_id"]
             session["privilegios"] = user["privilegios"] or "[]"
             conn2 = get_connection()
@@ -190,19 +277,21 @@ def login():
                 conn2.commit()
             finally:
                 conn2.close()
-            # Validate next to prevent open redirect: only allow internal paths
+            audit("LOGIN", "auth", f"Acceso desde {request.headers.get('X-Forwarded-For', ip)}")
             next_url = request.args.get("next", "")
             if next_url and (next_url.startswith("/") and not next_url.startswith("//")):
                 safe_next = next_url
             else:
                 safe_next = url_for("dashboard")
             return redirect(safe_next)
+        audit("LOGIN_FAILED", "auth", f"Intento fallido: {username}")
         error = "Usuario o contraseña incorrectos"
     return render_template("login.html", error=error)
 
 
 @app.route("/logout")
 def logout():
+    audit("LOGOUT", "auth")
     session.clear()
     return redirect(url_for("login"))
 
@@ -1599,6 +1688,15 @@ def api_enviar_sunat(fid):
             fid, cid(),
         ))
         conn.commit()
+
+        # Notificación: alerta interna + email automático
+        _email_dest = str(empresa.get("email") or session.get("user_email") or "")
+        threading.Thread(
+            target=_notify_sunat_result,
+            args=(fid, sunat_estado, sunat_desc, _email_dest),
+            daemon=True
+        ).start()
+        audit("SUNAT_ENVIO", "facturador", f"Factura #{fid} → {sunat_estado}")
 
         if aceptada:
             return jsonify({
@@ -3335,6 +3433,296 @@ def server_error(e):
 @app.errorhandler(413)
 def too_large(e):
     return jsonify({"error": "Archivo demasiado grande. Máximo 50 MB."}), 413
+
+@app.errorhandler(429)
+def ratelimit_error(e):
+    return jsonify({"error": "Demasiadas solicitudes. Intenta en unos segundos."}), 429
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# MÓDULO: USUARIOS (multi-usuario por empresa)
+# ══════════════════════════════════════════════════════════════════════════════
+
+@app.route("/usuarios")
+@login_required
+def page_usuarios():
+    if session.get("user_rol") not in ("super_admin", "admin"):
+        return redirect(url_for("dashboard"))
+    return render_template("usuarios.html")
+
+@app.route("/api/usuarios", methods=["GET"])
+@login_required
+def api_get_usuarios():
+    if session.get("user_rol") not in ("super_admin", "admin"):
+        return jsonify({"error": "Sin permisos"}), 403
+    conn = get_connection()
+    rows = conn.execute(
+        """SELECT id, nombre, email, username, rol, activo, ultimo_acceso, created_at
+           FROM usuarios WHERE cliente_id=? ORDER BY created_at DESC""",
+        (cid(),)
+    ).fetchall()
+    conn.close()
+    return jsonify([row_to_dict(r) for r in rows])
+
+@app.route("/api/usuarios", methods=["POST"])
+@login_required
+@limiter.limit("10 per minute")
+def api_crear_usuario():
+    if session.get("user_rol") not in ("super_admin", "admin"):
+        return jsonify({"error": "Sin permisos"}), 403
+    data = request.get_json() or {}
+    nombre   = (data.get("nombre") or "").strip()
+    email    = (data.get("email") or "").strip().lower()
+    username = (data.get("username") or "").strip().lower()
+    password = data.get("password") or ""
+    rol      = data.get("rol", "viewer")
+    if not all([nombre, email, username, password]):
+        return jsonify({"error": "Todos los campos son obligatorios"}), 400
+    if rol not in ("admin", "contador", "viewer"):
+        rol = "viewer"
+    conn = get_connection()
+    existe = conn.execute(
+        "SELECT id FROM usuarios WHERE username=? OR email=?", (username, email)
+    ).fetchone()
+    if existe:
+        conn.close()
+        return jsonify({"error": "El usuario o email ya existe"}), 409
+    ph = generate_password_hash(password, method="pbkdf2:sha256:50000")
+    privs = '["estados_cuenta","analisis_bancario","estados_resultados","balance_general","facturador"]'
+    conn.execute(
+        """INSERT INTO usuarios (cliente_id, nombre, email, username, password_hash, rol, privilegios, activo)
+           VALUES (?,?,?,?,?,?,?,1)""",
+        (cid(), nombre, email, username, ph, rol, privs)
+    )
+    conn.commit()
+    conn.close()
+    audit("USUARIO_CREADO", "usuarios", f"Creó usuario {username} con rol {rol}")
+    return jsonify({"ok": True, "message": f"Usuario {username} creado correctamente"})
+
+@app.route("/api/usuarios/<int:uid>", methods=["PUT"])
+@login_required
+def api_actualizar_usuario(uid):
+    if session.get("user_rol") not in ("super_admin", "admin"):
+        return jsonify({"error": "Sin permisos"}), 403
+    data   = request.get_json() or {}
+    nombre = (data.get("nombre") or "").strip()
+    rol    = data.get("rol", "viewer")
+    activo = 1 if data.get("activo", True) else 0
+    if rol not in ("admin", "contador", "viewer"):
+        rol = "viewer"
+    conn = get_connection()
+    conn.execute(
+        "UPDATE usuarios SET nombre=?, rol=?, activo=? WHERE id=? AND cliente_id=?",
+        (nombre, rol, activo, uid, cid())
+    )
+    if data.get("password"):
+        ph = generate_password_hash(data["password"], method="pbkdf2:sha256:50000")
+        conn.execute("UPDATE usuarios SET password_hash=? WHERE id=? AND cliente_id=?",
+                     (ph, uid, cid()))
+    conn.commit()
+    conn.close()
+    audit("USUARIO_ACTUALIZADO", "usuarios", f"Actualizó usuario id={uid}")
+    return jsonify({"ok": True})
+
+@app.route("/api/usuarios/<int:uid>", methods=["DELETE"])
+@login_required
+def api_eliminar_usuario(uid):
+    if session.get("user_rol") not in ("super_admin", "admin"):
+        return jsonify({"error": "Sin permisos"}), 403
+    if uid == session.get("user_id"):
+        return jsonify({"error": "No puedes eliminarte a ti mismo"}), 400
+    conn = get_connection()
+    conn.execute("UPDATE usuarios SET activo=0 WHERE id=? AND cliente_id=?", (uid, cid()))
+    conn.commit()
+    conn.close()
+    audit("USUARIO_DESACTIVADO", "usuarios", f"Desactivó usuario id={uid}")
+    return jsonify({"ok": True})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# MÓDULO: ALERTAS
+# ══════════════════════════════════════════════════════════════════════════════
+
+@app.route("/api/alertas", methods=["GET"])
+@login_required
+def api_get_alertas():
+    conn = get_connection()
+    rows = conn.execute(
+        """SELECT id, tipo, titulo, mensaje, nivel, leida, url, created_at
+           FROM alertas WHERE cliente_id=? ORDER BY created_at DESC LIMIT 30""",
+        (cid(),)
+    ).fetchall()
+    no_leidas = conn.execute(
+        "SELECT COUNT(*) FROM alertas WHERE cliente_id=? AND leida=0", (cid(),)
+    ).fetchone()[0]
+    conn.close()
+    return jsonify({"alertas": [row_to_dict(r) for r in rows], "no_leidas": int(no_leidas or 0)})
+
+@app.route("/api/alertas/<int:aid>/leer", methods=["POST"])
+@login_required
+def api_leer_alerta(aid):
+    conn = get_connection()
+    conn.execute("UPDATE alertas SET leida=1 WHERE id=? AND cliente_id=?", (aid, cid()))
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True})
+
+@app.route("/api/alertas/leer-todas", methods=["POST"])
+@login_required
+def api_leer_todas_alertas():
+    conn = get_connection()
+    conn.execute("UPDATE alertas SET leida=1 WHERE cliente_id=?", (cid(),))
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True})
+
+@app.route("/api/alertas/generar", methods=["POST"])
+@login_required
+def api_generar_alertas():
+    """Genera alertas inteligentes automáticas basadas en el estado actual."""
+    conn = get_connection()
+    c_id = cid()
+    alertas_creadas = 0
+    try:
+        hoy = datetime.now().strftime("%Y-%m-%d")
+
+        # 1. Facturas rechazadas por SUNAT sin reintentar
+        rechazadas = conn.execute(
+            """SELECT COUNT(*) FROM facturas
+               WHERE cliente_id=? AND sunat_estado='RECHAZADA' AND estado='EMITIDA'""",
+            (c_id,)
+        ).fetchone()[0]
+        if int(rechazadas or 0) > 0:
+            existe = conn.execute(
+                "SELECT id FROM alertas WHERE cliente_id=? AND tipo='SUNAT_RECHAZADA' AND leida=0",
+                (c_id,)
+            ).fetchone()
+            if not existe:
+                conn.execute(
+                    """INSERT INTO alertas (cliente_id, tipo, titulo, mensaje, nivel, url)
+                       VALUES (?,?,?,?,?,?)""",
+                    (c_id, "SUNAT_RECHAZADA",
+                     f"{rechazadas} factura(s) rechazada(s) por SUNAT",
+                     "Hay comprobantes que SUNAT no aceptó. Revisa y reenvía desde el Facturador.",
+                     "danger", "/facturador")
+                )
+                alertas_creadas += 1
+
+        # 2. Facturas emitidas sin enviar a SUNAT
+        pendientes = conn.execute(
+            """SELECT COUNT(*) FROM facturas
+               WHERE cliente_id=? AND estado='EMITIDA'
+               AND (sunat_estado IS NULL OR sunat_estado='')
+               AND tipo_comprobante IN ('FACTURA','BOLETA')""",
+            (c_id,)
+        ).fetchone()[0]
+        if int(pendientes or 0) > 0:
+            existe = conn.execute(
+                "SELECT id FROM alertas WHERE cliente_id=? AND tipo='PENDIENTE_SUNAT' AND leida=0",
+                (c_id,)
+            ).fetchone()
+            if not existe:
+                conn.execute(
+                    """INSERT INTO alertas (cliente_id, tipo, titulo, mensaje, nivel, url)
+                       VALUES (?,?,?,?,?,?)""",
+                    (c_id, "PENDIENTE_SUNAT",
+                     f"{pendientes} comprobante(s) pendiente(s) de envío a SUNAT",
+                     "Tienes facturas/boletas emitidas que aún no han sido enviadas a SUNAT.",
+                     "warning", "/facturador")
+                )
+                alertas_creadas += 1
+
+        # 3. Comparativa mensual: caída > 20% vs mes anterior
+        from database import execute_batch
+        cur_act, cur_ant = execute_batch(conn, [
+            ("""SELECT COALESCE(SUM(total),0) AS monto FROM facturas
+                WHERE cliente_id=? AND estado='EMITIDA'
+                AND strftime('%Y-%m',fecha_emision)=strftime('%Y-%m','now')""", (c_id,)),
+            ("""SELECT COALESCE(SUM(total),0) AS monto FROM facturas
+                WHERE cliente_id=? AND estado='EMITIDA'
+                AND strftime('%Y-%m',fecha_emision)=strftime('%Y-%m','now','-1 month')""", (c_id,)),
+        ])
+        m_act = float((cur_act.fetchone() or {}).get("monto", 0) or 0)
+        m_ant = float((cur_ant.fetchone() or {}).get("monto", 0) or 0)
+        if m_ant > 0 and m_act < m_ant * 0.8:
+            caida = round((1 - m_act / m_ant) * 100)
+            existe = conn.execute(
+                "SELECT id FROM alertas WHERE cliente_id=? AND tipo='CAIDA_FACTURACION' AND leida=0",
+                (c_id,)
+            ).fetchone()
+            if not existe:
+                conn.execute(
+                    """INSERT INTO alertas (cliente_id, tipo, titulo, mensaje, nivel, url)
+                       VALUES (?,?,?,?,?,?)""",
+                    (c_id, "CAIDA_FACTURACION",
+                     f"Facturación bajó {caida}% vs mes anterior",
+                     f"Este mes llevas S/ {m_act:,.2f} vs S/ {m_ant:,.2f} del mes pasado.",
+                     "warning", "/facturador")
+                )
+                alertas_creadas += 1
+
+        conn.commit()
+    finally:
+        conn.close()
+    return jsonify({"ok": True, "alertas_creadas": alertas_creadas})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# MÓDULO: AUDIT LOG
+# ══════════════════════════════════════════════════════════════════════════════
+
+@app.route("/api/audit-log", methods=["GET"])
+@login_required
+def api_audit_log():
+    if session.get("user_rol") not in ("super_admin", "admin"):
+        return jsonify({"error": "Sin permisos"}), 403
+    page    = int(request.args.get("page", 1))
+    per     = 50
+    offset  = (page - 1) * per
+    conn    = get_connection()
+    total   = conn.execute(
+        "SELECT COUNT(*) FROM audit_log WHERE cliente_id=?", (cid(),)
+    ).fetchone()[0]
+    rows    = conn.execute(
+        """SELECT id, username, accion, modulo, detalle, ip, created_at
+           FROM audit_log WHERE cliente_id=? ORDER BY created_at DESC LIMIT ? OFFSET ?""",
+        (cid(), per, offset)
+    ).fetchall()
+    conn.close()
+    return jsonify({"total": int(total or 0), "page": page, "items": [row_to_dict(r) for r in rows]})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# HOOK: audit en envío a SUNAT + email automático
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _notify_sunat_result(fid: int, estado: str, desc: str, email_dest: str):
+    """Envía email y crea alerta cuando SUNAT acepta/rechaza una factura."""
+    nivel  = "success" if estado == "ACEPTADA" else "danger"
+    emoji  = "✅" if estado == "ACEPTADA" else "❌"
+    titulo = f"{emoji} Comprobante {estado} por SUNAT"
+    crear_alerta(session.get("cliente_id", 1), f"SUNAT_{estado}", titulo,
+                 desc[:200] if desc else "", nivel, "/facturador")
+    if email_dest and estado == "ACEPTADA":
+        html = f"""
+        <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:24px;">
+          <div style="background:#1a3c6e;padding:16px 24px;border-radius:8px 8px 0 0;">
+            <h2 style="color:#fff;margin:0;">VIVA CONT — Facturador Electrónico</h2>
+          </div>
+          <div style="background:#f9f9f9;padding:24px;border-radius:0 0 8px 8px;border:1px solid #e0e0e0;">
+            <h3 style="color:#1aaa6b;">✅ Comprobante aceptado por SUNAT</h3>
+            <p>El comprobante <strong>#{fid}</strong> fue aceptado exitosamente.</p>
+            <p style="color:#555;font-size:13px;">{desc[:300] if desc else ''}</p>
+            <a href="https://vivacont.vivaempresasglobal.com/facturador"
+               style="display:inline-block;background:#1a3c6e;color:#fff;padding:10px 20px;
+                      border-radius:6px;text-decoration:none;margin-top:12px;">
+               Ver en VIVA CONT →
+            </a>
+            <hr style="margin:20px 0;border:none;border-top:1px solid #e0e0e0;">
+            <p style="font-size:11px;color:#999;">VIVA CONT · Viva Consulting Empresas</p>
+          </div>
+        </div>"""
+        send_email(email_dest, titulo, html)
 
 
 if __name__ == "__main__":

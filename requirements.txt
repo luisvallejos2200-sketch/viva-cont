@@ -13,6 +13,10 @@ pyotp>=2.9.0
 qrcode[pil]>=7.4.0
 Pillow>=10.0.0
 # libsql-experimental removed — using Turso HTTP API (no binary deps)
+# PDF avanzado — OCR para PDFs escaneados
+PyMuPDF>=1.24.0
+pytesseract>=0.3.10
+pdf2image>=1.17.0
 # Testing
 pytest>=8.0.0
 pytest-flask>=1.3.0

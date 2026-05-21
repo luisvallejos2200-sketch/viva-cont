@@ -3,7 +3,7 @@ services:
     name: viva-cont
     runtime: python
     plan: free
-    buildCommand: pip install -r requirements.txt
+    buildCommand: apt-get install -y tesseract-ocr poppler-utils 2>/dev/null || true && pip install -r requirements.txt
     startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers 1 --threads 4 --worker-class gthread --preload --timeout 120 --keep-alive 5
     healthCheckPath: /health
     envVars:

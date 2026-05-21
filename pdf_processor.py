@@ -1,6 +1,7 @@
 """
 VIVA CONT – Procesador de PDFs Bancarios
 Estrategias múltiples para extraer transacciones de PDFs de BCP, BBVA, Interbank y Scotiabank.
+Incluye OCR para PDFs escaneados (imágenes sin texto extraíble).
 """
 import re
 import io
@@ -12,6 +13,71 @@ from collections import defaultdict
 # ── Límites de seguridad ──────────────────────────────────────
 _PDF_MAX_PAGES    = 15    # máximo de páginas a procesar con pdfplumber
 _PDF_TIMEOUT_SEC  = 18   # segundos antes de abortar el procesamiento
+
+
+# ══════════════════════════════════════════════════════════════
+# ESTRATEGIA 0: PyMuPDF — extracción mejorada (más rápida y robusta que pdfplumber)
+# ══════════════════════════════════════════════════════════════
+
+def _extract_with_pymupdf(pdf_path: str) -> str:
+    """
+    Extrae texto con PyMuPDF (fitz). Maneja PDFs que pdfplumber no lee bien.
+    Retorna el texto completo o '' si no hay texto o fitz no está disponible.
+    """
+    try:
+        import fitz  # PyMuPDF
+        text_parts = []
+        with fitz.open(pdf_path) as doc:
+            for i, page in enumerate(doc):
+                if i >= _PDF_MAX_PAGES:
+                    break
+                t = page.get_text("text")
+                if t:
+                    text_parts.append(t)
+        return "\n".join(text_parts)
+    except Exception:
+        return ""
+
+
+# ══════════════════════════════════════════════════════════════
+# ESTRATEGIA OCR: pytesseract — para PDFs escaneados (imágenes)
+# ══════════════════════════════════════════════════════════════
+
+def _extract_with_ocr(pdf_path: str) -> str:
+    """
+    Convierte páginas del PDF a imágenes y aplica OCR con tesseract.
+    Solo se usa cuando NINGUNA otra estrategia extrae texto.
+    Retorna el texto extraído o '' si OCR no está disponible/falla.
+    """
+    try:
+        import pytesseract
+        from pdf2image import convert_from_path
+        from PIL import Image
+
+        # Convertir solo primeras _PDF_MAX_PAGES páginas, resolución media
+        images = convert_from_path(
+            pdf_path,
+            dpi=200,
+            first_page=1,
+            last_page=min(_PDF_MAX_PAGES, 10),  # OCR es lento — max 10 págs
+        )
+        text_parts = []
+        for img in images:
+            # Configuración optimizada para texto bancario
+            custom_cfg = r'--oem 3 --psm 6 -l spa+eng'
+            try:
+                t = pytesseract.image_to_string(img, config=custom_cfg)
+                if t.strip():
+                    text_parts.append(t)
+            except Exception:
+                pass
+
+        return "\n".join(text_parts)
+
+    except ImportError:
+        return ""   # OCR no disponible en este entorno
+    except Exception:
+        return ""
 
 # ── Constantes ────────────────────────────────────────────────
 MESES_ES = {
@@ -959,6 +1025,7 @@ def extract_bcp_soles(pdf_path: str, banco: str = "BCP SOLES") -> dict:
 def _extract_bcp_soles_inner(pdf_path: str, banco: str = "BCP SOLES") -> dict:
     """
     Lógica interna de extracción — se ejecuta en thread con timeout.
+    Cascade: pypdf → PyMuPDF → pdfplumber → OCR (para escaneados)
     """
     archivo = pdf_path
 
@@ -971,7 +1038,31 @@ def _extract_bcp_soles_inner(pdf_path: str, banco: str = "BCP SOLES") -> dict:
     debug_info = []
     full_txt = ""
 
-    # ── Ruta rápida: pypdf primero (3-5× más veloz que pdfplumber) ───────────
+    # ── Estrategia 0A: PyMuPDF — más robusto que pypdf para muchos formatos ──
+    try:
+        _fitz_text = _extract_with_pymupdf(pdf_path)
+        if _fitz_text.strip():
+            full_txt = _fitz_text
+            debug_info.append(f"fitz: {len(_fitz_text)} chars")
+            for strategy_fn, label in [
+                (_strategy_scotiabank,         "fitz+scotiabank"),
+                (_strategy_text_regex_on_text, "fitz+text_regex"),
+                (_strategy_bcp_ddmm,           "fitz+bcp_ddmm"),
+            ]:
+                try:
+                    txs = strategy_fn(_fitz_text, banco, archivo)
+                    debug_info.append(f"{label}: {len(txs)}")
+                    if len(txs) >= 2:
+                        return {"transactions": txs, "total": len(txs),
+                                "strategy": label, "raw_text": _fitz_text}
+                except Exception as _e:
+                    debug_info.append(f"{label} falló: {_e}")
+        else:
+            debug_info.append("fitz: sin texto")
+    except Exception as _e:
+        debug_info.append(f"fitz error: {_e}")
+
+    # ── Estrategia 0B: pypdf (rápido, 3-5× más veloz que pdfplumber) ─────────
     try:
         from pypdf import PdfReader
         _reader = PdfReader(pdf_path)
@@ -1112,6 +1203,32 @@ def _extract_bcp_soles_inner(pdf_path: str, banco: str = "BCP SOLES") -> dict:
 
     except Exception as e:
         debug_info.append(f"No se pudo abrir el PDF: {e}")
+
+    # ── ÚLTIMO RECURSO: OCR con tesseract (PDFs escaneados / imágenes) ────────
+    if not full_txt.strip():
+        debug_info.append("OCR: intentando (PDF sin texto extraíble)...")
+        try:
+            ocr_text = _extract_with_ocr(pdf_path)
+            if ocr_text.strip():
+                full_txt = ocr_text
+                debug_info.append(f"OCR: {len(ocr_text)} chars extraídos")
+                for strategy_fn, label in [
+                    (_strategy_scotiabank,         "ocr+scotiabank"),
+                    (_strategy_text_regex_on_text, "ocr+text_regex"),
+                    (_strategy_bcp_ddmm,           "ocr+bcp_ddmm"),
+                ]:
+                    try:
+                        txs = strategy_fn(ocr_text, banco, archivo)
+                        debug_info.append(f"{label}: {len(txs)}")
+                        if len(txs) >= 2:
+                            return {"transactions": txs, "total": len(txs),
+                                    "strategy": label, "raw_text": ocr_text}
+                    except Exception as _e:
+                        debug_info.append(f"{label} falló: {_e}")
+            else:
+                debug_info.append("OCR: sin resultado (PDF es imagen sin texto reconocible)")
+        except Exception as e:
+            debug_info.append(f"OCR error: {e}")
 
     return {
         "transactions": [], "total": 0, "strategy": "none",

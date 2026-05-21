@@ -1393,7 +1393,8 @@ def _nubefact_post(token: str, ruc: str, payload: dict, ruta: str = "") -> dict:
 
 def _build_nubefact_payload(factura: dict, empresa: dict, items: list) -> dict:
     """Build the Nubefact UBL 2.1 payload from a factura record."""
-    tipo_map   = {"FACTURA": 1, "BOLETA": 3, "NOTA_CREDITO": 7, "NOTA_DEBITO": 8}
+    tipo_map   = {"FACTURA": 1, "BOLETA": 3, "LIQUIDACION_COMPRA": 4,
+                  "NOTA_CREDITO": 7, "NOTA_DEBITO": 8}
     moneda_map = {"PEN": 1, "USD": 2}
 
     ruc_cliente = str(factura.get("ruc_cliente") or "")
@@ -1518,6 +1519,11 @@ def api_enviar_sunat(fid):
         factura = row_to_dict(c.fetchone())
         if not factura:
             return jsonify({"error": "Factura no encontrada"}), 404
+
+        # Documentos internos no se envían a SUNAT
+        _TIPOS_SUNAT = {"FACTURA", "BOLETA", "NOTA_CREDITO", "NOTA_DEBITO", "LIQUIDACION_COMPRA"}
+        if factura.get("tipo_comprobante") not in _TIPOS_SUNAT:
+            return jsonify({"error": f"El tipo '{factura.get('tipo_comprobante')}' es un documento interno y no se envía a SUNAT."}), 400
 
         c.execute("SELECT * FROM empresa WHERE cliente_id=?", (cid(),))
         empresa = row_to_dict(c.fetchone()) or {}

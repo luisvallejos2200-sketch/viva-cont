@@ -199,11 +199,21 @@
       <div class="form-row form-row-3" style="margin-bottom:8px;">
         <div class="form-group">
           <label class="form-label">Tipo Comprobante</label>
-          <select class="form-control" id="fTipo" onchange="document.getElementById('fSerie').value=serieDefault(this.value)">
-            <option value="FACTURA">FACTURA</option>
-            <option value="BOLETA">BOLETA DE VENTA</option>
-            <option value="NOTA_CREDITO">NOTA DE CRÉDITO</option>
-            <option value="NOTA_DEBITO">NOTA DE DÉBITO</option>
+          <select class="form-control" id="fTipo" onchange="onTipoChange(this.value)">
+            <optgroup label="── Comprobantes SUNAT ──">
+              <option value="FACTURA">FACTURA</option>
+              <option value="BOLETA">BOLETA DE VENTA</option>
+              <option value="NOTA_CREDITO">NOTA DE CRÉDITO</option>
+              <option value="NOTA_DEBITO">NOTA DE DÉBITO</option>
+              <option value="LIQUIDACION_COMPRA">LIQUIDACIÓN DE COMPRA</option>
+            </optgroup>
+            <optgroup label="── Documentos Comerciales ──">
+              <option value="PROFORMA">PROFORMA / PRESUPUESTO</option>
+              <option value="COTIZACION">COTIZACIÓN</option>
+              <option value="NOTA_PEDIDO">NOTA DE PEDIDO</option>
+              <option value="ORDEN_COMPRA">ORDEN DE COMPRA</option>
+              <option value="GUIA_REMISION">GUÍA DE REMISIÓN</option>
+            </optgroup>
           </select>
         </div>
         <div class="form-group">
@@ -305,11 +315,14 @@
     </div>
     <div class="modal-footer">
       <button class="btn btn-outline" onclick="closeFacturaModal()">Cancelar</button>
-      <button class="btn btn-outline btn-sm" onclick="guardarFactura('BORRADOR')">
+      <button class="btn btn-outline btn-sm" id="btnGuardarBorrador" onclick="guardarFactura('BORRADOR')">
         <i class="fa-solid fa-floppy-disk"></i> Guardar Borrador
       </button>
-      <button class="btn btn-success" onclick="guardarYEnviarSunat()">
+      <button class="btn btn-success" id="btnEmitirSunat" onclick="guardarYEnviarSunat()">
         <i class="fa-solid fa-satellite-dish"></i> Emitir + Enviar SUNAT
+      </button>
+      <button class="btn btn-primary" id="btnEmitirDoc" style="display:none" onclick="guardarFactura('EMITIDA')">
+        <i class="fa-solid fa-file-circle-check"></i> Emitir Documento
       </button>
     </div>
   </div>
@@ -499,13 +512,16 @@ async function loadFacturas(page = 1) {
 
   tbody.innerHTML = facturas.map(f => {
     const monSym = f.moneda === 'USD' ? '$' : 'S/';
-    const badgeSunat = !f.sunat_estado
-      ? '<span class="badge badge-default" style="font-size:10px;">Sin enviar</span>'
-      : f.sunat_estado === 'ACEPTADA'
-        ? '<span class="badge badge-success" style="font-size:10px;"><i class="fa-solid fa-circle-check"></i> Aceptada</span>'
-        : '<span class="badge badge-danger" style="font-size:10px;"><i class="fa-solid fa-circle-xmark"></i> Rechazada</span>';
+    const esTipoSunat = ['FACTURA','BOLETA','NOTA_CREDITO','NOTA_DEBITO','LIQUIDACION_COMPRA'].includes(f.tipo_comprobante);
+    const badgeSunat = !esTipoSunat
+      ? '<span class="badge badge-default" style="font-size:10px;">Interno</span>'
+      : !f.sunat_estado
+        ? '<span class="badge badge-default" style="font-size:10px;">Sin enviar</span>'
+        : f.sunat_estado === 'ACEPTADA'
+          ? '<span class="badge badge-success" style="font-size:10px;"><i class="fa-solid fa-circle-check"></i> Aceptada</span>'
+          : '<span class="badge badge-danger" style="font-size:10px;"><i class="fa-solid fa-circle-xmark"></i> Rechazada</span>';
 
-    const btnSunat = (f.estado === 'EMITIDA' && (!f.sunat_estado || f.sunat_estado === 'RECHAZADA'))
+    const btnSunat = (esTipoSunat && f.estado === 'EMITIDA' && (!f.sunat_estado || f.sunat_estado === 'RECHAZADA'))
       ? `<button class="btn btn-ghost btn-sm btn-icon" style="color:#1a7fd8" onclick="enviarSunat(${f.id})" title="Enviar a SUNAT">
            <i class="fa-solid fa-satellite-dish"></i></button>`
       : '';
@@ -520,7 +536,7 @@ async function loadFacturas(page = 1) {
 
     return `<tr>
       <td class="mono font-bold">${f.serie}-${String(f.correlativo).padStart(6,'0')}</td>
-      <td><span class="badge badge-primary">${f.tipo_comprobante}</span></td>
+      <td>${badgeDocTipo(f.tipo_comprobante)}</td>
       <td>${fmtDate(f.fecha_emision)}</td>
       <td class="mono" style="font-size:11px">${f.ruc_cliente || '—'}</td>
       <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${f.razon_social_cliente || '—'}</td>
@@ -553,21 +569,54 @@ async function loadFacturas(page = 1) {
 }
 
 // ── NUEVA FACTURA ────────────────────────────────────────────
+// Tipos que van a SUNAT via Nubefact
+const TIPOS_SUNAT = new Set(['FACTURA','BOLETA','NOTA_CREDITO','NOTA_DEBITO','LIQUIDACION_COMPRA']);
+
+// Badge de tipo de documento
+function badgeDocTipo(tipo) {
+  const map = {
+    'FACTURA':            ['badge-primary',  'FACTURA'],
+    'BOLETA':             ['badge-info',     'BOLETA'],
+    'NOTA_CREDITO':       ['badge-warning',  'N. CRÉDITO'],
+    'NOTA_DEBITO':        ['badge-danger',   'N. DÉBITO'],
+    'LIQUIDACION_COMPRA': ['badge-default',  'LIQUIDACIÓN'],
+    'PROFORMA':           ['badge-success',  'PROFORMA'],
+    'COTIZACION':         ['badge-success',  'COTIZACIÓN'],
+    'NOTA_PEDIDO':        ['badge-success',  'N. PEDIDO'],
+    'ORDEN_COMPRA':       ['badge-success',  'O. COMPRA'],
+    'GUIA_REMISION':      ['badge-info',     'G. REMISIÓN'],
+  };
+  const [cls, label] = map[tipo] || ['badge-default', tipo];
+  return `<span class="badge ${cls}" style="font-size:10px;">${label}</span>`;
+}
+
 // Devuelve la serie correcta según modo y tipo
 function serieDefault(tipo) {
   const demo = (empresaData.nubefact_modo || 'demo') === 'demo';
+  // Documentos comerciales — sin serie formal
+  if (!TIPOS_SUNAT.has(tipo)) return tipo.slice(0,3).toUpperCase();
   if (demo) {
-    // Nubefact series pre-configuradas para pruebas
-    if (tipo === 'BOLETA')       return 'BB11';
-    if (tipo === 'NOTA_CREDITO') return 'FF11';  // NC sobre factura
-    if (tipo === 'NOTA_DEBITO')  return 'FF11';  // ND sobre factura
-    return 'FF11';  // FACTURA
+    // Series pre-configuradas por Nubefact para pruebas
+    if (tipo === 'BOLETA')             return 'BB11';
+    if (tipo === 'NOTA_CREDITO')       return 'FF11';
+    if (tipo === 'NOTA_DEBITO')        return 'FF11';
+    if (tipo === 'LIQUIDACION_COMPRA') return 'LL11';
+    return 'FF11';
   }
-  // Producción — series reales
-  if (tipo === 'BOLETA')       return 'B001';
-  if (tipo === 'NOTA_CREDITO') return 'FC01';
-  if (tipo === 'NOTA_DEBITO')  return 'FD01';
+  // Producción — series reales SUNAT
+  if (tipo === 'BOLETA')             return 'B001';
+  if (tipo === 'NOTA_CREDITO')       return 'FC01';
+  if (tipo === 'NOTA_DEBITO')        return 'FD01';
+  if (tipo === 'LIQUIDACION_COMPRA') return 'LC01';
   return 'F001';
+}
+
+function onTipoChange(tipo) {
+  document.getElementById('fSerie').value = serieDefault(tipo);
+  const esSunat = TIPOS_SUNAT.has(tipo);
+  document.getElementById('btnEmitirSunat').style.display  = esSunat ? '' : 'none';
+  document.getElementById('btnEmitirDoc').style.display    = esSunat ? 'none' : '';
+  document.getElementById('btnGuardarBorrador').style.display = esSunat ? '' : 'none';
 }
 
 function openNuevaFactura() {
@@ -576,8 +625,8 @@ function openNuevaFactura() {
     '<i class="fa-solid fa-file-invoice-dollar"></i> Nueva Factura';
   document.getElementById('facturaId').value = '';
   const tipo = 'FACTURA';
-  document.getElementById('fTipo').value          = tipo;
-  document.getElementById('fSerie').value         = serieDefault(tipo);
+  document.getElementById('fTipo').value = tipo;
+  onTipoChange(tipo);
   document.getElementById('fCorrelativo').value   = '';
   document.getElementById('fFechaEmision').value  = new Date().toISOString().slice(0,10);
   document.getElementById('fFechaVenc').value     = '';

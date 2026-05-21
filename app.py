@@ -1617,6 +1617,61 @@ def api_enviar_sunat(fid):
             pass
 
 
+@app.route("/api/facturas/<int:fid>/pdf")
+@login_required
+def api_factura_pdf_proxy(fid):
+    """Proxy que descarga el PDF desde Nubefact con el token y lo sirve al browser."""
+    import urllib.request, urllib.error
+    from flask import Response, stream_with_context
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            "SELECT enlace_pdf FROM facturas WHERE id=? AND cliente_id=?",
+            (fid, cid())
+        ).fetchone()
+        emp = row_to_dict(conn.execute(
+            "SELECT nubefact_token FROM empresa WHERE cliente_id=?", (cid(),)
+        ).fetchone()) or {}
+    finally:
+        conn.close()
+
+    if not row or not row[0]:
+        return jsonify({"error": "PDF no disponible para este comprobante"}), 404
+
+    pdf_url = row[0].strip()
+    if not pdf_url.startswith("https://"):
+        return jsonify({"error": "URL de PDF inválida"}), 400
+
+    token = (emp.get("nubefact_token") or "").strip()
+    try:
+        req = urllib.request.Request(pdf_url)
+        if token:
+            req.add_header("Authorization", f"Token {token}")
+        req.add_header("User-Agent", "VIVA-CONT/1.0")
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            content_type = resp.headers.get("Content-Type", "application/pdf")
+            data = resp.read()
+    except urllib.error.HTTPError as e:
+        return jsonify({"error": f"Nubefact respondió {e.code}"}), 502
+    except Exception as e:
+        return jsonify({"error": f"No se pudo descargar el PDF: {str(e)}"}), 502
+
+    # Nombre de archivo para descarga
+    import re
+    fname = re.sub(r'[^a-zA-Z0-9_\-.]', '_', pdf_url.split("/")[-1]) or "comprobante.pdf"
+
+    return Response(
+        data,
+        status=200,
+        headers={
+            "Content-Type": "application/pdf",
+            "Content-Disposition": f'inline; filename="{fname}"',
+            "Content-Length": str(len(data)),
+            "Cache-Control": "private, max-age=3600",
+        }
+    )
+
+
 @app.route("/api/nubefact/diagnostico", methods=["GET"])
 @login_required
 def api_nubefact_diagnostico():
@@ -1777,7 +1832,7 @@ def api_facturas_stats():
             GROUP BY ruc_cliente ORDER BY monto DESC LIMIT 8
         """
         ULTIMAS_SQL = f"""
-            SELECT serie, correlativo, tipo_comprobante,
+            SELECT id, serie, correlativo, tipo_comprobante,
                    razon_social_cliente AS cliente, total, fecha_emision, enlace_pdf
             FROM {_T} WHERE cliente_id=? AND sunat_estado='ACEPTADA'
             ORDER BY id DESC LIMIT 5
@@ -1833,7 +1888,8 @@ def api_facturas_stats():
             for r in _rows(cur_top)
         ]
         ultimas_sunat = [
-            {"serie": r["serie"] or "",
+            {"id": int(r["id"] or 0),
+             "serie": r["serie"] or "",
              "correlativo": str(r["correlativo"] or "").zfill(6),
              "tipo": r["tipo_comprobante"] or "",
              "cliente": r["cliente"] or "—",

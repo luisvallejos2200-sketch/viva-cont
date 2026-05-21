@@ -859,7 +859,7 @@ async function loadFacturas(page = 1) {
            <i class="fa-solid fa-satellite-dish"></i></button>`
       : '';
     const btnPdf = f.enlace_pdf
-      ? `<a href="${f.enlace_pdf}" target="_blank" class="btn btn-ghost btn-sm btn-icon text-danger" title="Descargar PDF SUNAT">
+      ? `<a href="/api/facturas/${f.id}/pdf" target="_blank" class="btn btn-ghost btn-sm btn-icon text-danger" title="Ver PDF SUNAT">
            <i class="fa-solid fa-file-pdf"></i></a>`
       : '';
     const btnXml = f.enlace_xml
@@ -1647,8 +1647,8 @@ async function loadDashboard() {
         <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;">${u.cliente || '—'}</td>
         <td class="text-right font-bold">S/ ${(u.total||0).toLocaleString('es-PE',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
         <td style="font-size:11px;">${fmtDate(u.fecha)}</td>
-        <td>${u.pdf
-          ? `<a href="${u.pdf}" target="_blank" class="btn btn-ghost btn-sm btn-icon text-danger" title="PDF SUNAT"><i class="fa-solid fa-file-pdf"></i></a>`
+        <td>${u.pdf && u.id
+          ? `<a href="/api/facturas/${u.id}/pdf" target="_blank" class="btn btn-ghost btn-sm btn-icon text-danger" title="Ver PDF SUNAT"><i class="fa-solid fa-file-pdf"></i></a>`
           : '<span style="color:var(--text-muted);font-size:11px;">—</span>'}</td>
       </tr>`).join('');
   }
@@ -1774,7 +1774,7 @@ async function verFactura(id) {
            <i class="fa-solid fa-circle-check" style="color:#1aaa6b;font-size:18px;"></i>
            <div><strong style="color:#1aaa6b;">Aceptada por SUNAT</strong><br/>
            <span style="font-size:11px;color:#555;">${f.sunat_descripcion || ''}</span></div>
-           ${f.enlace_pdf ? `<a href="${f.enlace_pdf}" target="_blank" class="btn btn-sm" style="margin-left:auto;background:#e03c3c;color:#fff;border:none;padding:4px 10px;border-radius:6px;font-size:11px;"><i class="fa-solid fa-file-pdf"></i> PDF SUNAT</a>` : ''}
+           ${f.enlace_pdf ? `<a href="/api/facturas/${f.id}/pdf" target="_blank" class="btn btn-sm" style="margin-left:auto;background:#e03c3c;color:#fff;border:none;padding:4px 10px;border-radius:6px;font-size:11px;"><i class="fa-solid fa-file-pdf"></i> PDF SUNAT</a>` : ''}
            ${f.enlace_xml ? `<a href="${f.enlace_xml}" target="_blank" class="btn btn-sm" style="margin-left:4px;background:#e8a020;color:#fff;border:none;padding:4px 10px;border-radius:6px;font-size:11px;"><i class="fa-solid fa-code"></i> XML</a>` : ''}
          </div>`
       : `<div style="background:#fdecea;border:1px solid #e03c3c;border-radius:8px;padding:10px 14px;margin-bottom:12px;">

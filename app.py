@@ -1797,7 +1797,8 @@ def api_update_empresa():
     data = request.get_json() or {}
     fields = ["ruc", "razon_social", "nombre_comercial", "direccion", "telefono", "email",
               "regimen", "nubefact_token", "nubefact_modo", "nubefact_ruta",
-              "logo_base64", "factura_color", "factura_footer"]
+              "logo_base64", "factura_color", "factura_footer",
+              "serie_factura", "serie_boleta", "serie_nc", "serie_nd", "serie_lc"]
     # Skip empty-string updates for critical fields to avoid overwriting with blank
     protected = {"ruc", "razon_social"}
     sets = ", ".join(f"{f} = ?" for f in fields if f in data and not (f in protected and not data[f]))

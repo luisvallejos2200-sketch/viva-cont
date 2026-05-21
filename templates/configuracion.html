@@ -111,6 +111,47 @@
       </div>
     </div>
   </div>
+  <!-- Series de comprobantes -->
+  <div class="card">
+    <div class="card-header">
+      <h3 class="card-title"><i class="fa-solid fa-hashtag" style="color:var(--accent)"></i> Series de Comprobantes</h3>
+    </div>
+    <div class="card-body">
+      <div class="stat-mini" style="margin-bottom:12px;padding:10px 14px;background:rgba(232,160,32,.08);border-radius:8px;border-left:3px solid #e8a020;">
+        <span class="stat-mini-label" style="font-size:11px;line-height:1.5;">
+          Configura las series exactamente como las tienes registradas en <strong>Nubefact → Series de Comprobantes</strong>.
+          En modo Demo usa las series de prueba que Nubefact te asignó.
+        </span>
+      </div>
+      <div class="form-row form-row-2">
+        <div class="form-group">
+          <label class="form-label">Serie Factura</label>
+          <input type="text" class="form-control mono" id="cfgSerieFactura" maxlength="4" placeholder="F001" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Serie Boleta</label>
+          <input type="text" class="form-control mono" id="cfgSerieBoleta" maxlength="4" placeholder="B001" />
+        </div>
+      </div>
+      <div class="form-row form-row-3">
+        <div class="form-group">
+          <label class="form-label">Serie Nota Crédito</label>
+          <input type="text" class="form-control mono" id="cfgSerieNC" maxlength="4" placeholder="FC01" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Serie Nota Débito</label>
+          <input type="text" class="form-control mono" id="cfgSerieND" maxlength="4" placeholder="FD01" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Serie Liquidación</label>
+          <input type="text" class="form-control mono" id="cfgSerieLC" maxlength="4" placeholder="LC01" />
+        </div>
+      </div>
+      <button class="btn btn-primary btn-sm" style="width:100%" onclick="guardarEmpresa()">
+        <i class="fa-solid fa-floppy-disk"></i> Guardar Series
+      </button>
+    </div>
+  </div>
   </div><!-- end left column -->
 
   <!-- Info del sistema -->
@@ -204,6 +245,12 @@ async function loadEmpresa() {
   document.getElementById('cfgNubefactToken').value   = data.nubefact_token || '';
   document.getElementById('cfgNubefactModo').value    = data.nubefact_modo || 'demo';
   document.getElementById('cfgNubefactRuta').value    = data.nubefact_ruta || '';
+  // Series
+  document.getElementById('cfgSerieFactura').value = data.serie_factura || 'F001';
+  document.getElementById('cfgSerieBoleta').value  = data.serie_boleta  || 'B001';
+  document.getElementById('cfgSerieNC').value      = data.serie_nc      || 'FC01';
+  document.getElementById('cfgSerieND').value      = data.serie_nd      || 'FD01';
+  document.getElementById('cfgSerieLC').value      = data.serie_lc      || 'LC01';
 }
 
 async function guardarEmpresa() {
@@ -218,6 +265,11 @@ async function guardarEmpresa() {
     nubefact_token:  document.getElementById('cfgNubefactToken').value.trim(),
     nubefact_modo:   document.getElementById('cfgNubefactModo').value,
     nubefact_ruta:   document.getElementById('cfgNubefactRuta').value.trim(),
+    serie_factura:   document.getElementById('cfgSerieFactura').value.trim().toUpperCase() || 'F001',
+    serie_boleta:    document.getElementById('cfgSerieBoleta').value.trim().toUpperCase()  || 'B001',
+    serie_nc:        document.getElementById('cfgSerieNC').value.trim().toUpperCase()      || 'FC01',
+    serie_nd:        document.getElementById('cfgSerieND').value.trim().toUpperCase()      || 'FD01',
+    serie_lc:        document.getElementById('cfgSerieLC').value.trim().toUpperCase()      || 'LC01',
   };
   const res = await apiPut('/api/empresa', payload);
   if (!res) return;

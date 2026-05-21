@@ -481,6 +481,12 @@ def _do_init(conn):
     _migrate(conn, "ALTER TABLE empresa ADD COLUMN logo_base64 TEXT")
     _migrate(conn, "ALTER TABLE empresa ADD COLUMN factura_color TEXT DEFAULT '#1a3c6e'")
     _migrate(conn, "ALTER TABLE empresa ADD COLUMN factura_footer TEXT")
+    # Series de comprobantes configurables
+    _migrate(conn, "ALTER TABLE empresa ADD COLUMN serie_factura TEXT DEFAULT 'F001'")
+    _migrate(conn, "ALTER TABLE empresa ADD COLUMN serie_boleta TEXT DEFAULT 'B001'")
+    _migrate(conn, "ALTER TABLE empresa ADD COLUMN serie_nc TEXT DEFAULT 'FC01'")
+    _migrate(conn, "ALTER TABLE empresa ADD COLUMN serie_nd TEXT DEFAULT 'FD01'")
+    _migrate(conn, "ALTER TABLE empresa ADD COLUMN serie_lc TEXT DEFAULT 'LC01'")
 
     # ── CLIENTE RAÍZ: Viva Consulting (id=1) ──────────────
     c.execute("SELECT COUNT(*) FROM clientes WHERE id=1")

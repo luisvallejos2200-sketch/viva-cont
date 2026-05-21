@@ -590,25 +590,15 @@ function badgeDocTipo(tipo) {
   return `<span class="badge ${cls}" style="font-size:10px;">${label}</span>`;
 }
 
-// Devuelve la serie correcta según modo y tipo
+// Devuelve la serie correcta según tipo — usa las series configuradas en empresa
 function serieDefault(tipo) {
-  const demo = (empresaData.nubefact_modo || 'demo') === 'demo';
-  // Documentos comerciales — sin serie formal
   if (!TIPOS_SUNAT.has(tipo)) return tipo.slice(0,3).toUpperCase();
-  if (demo) {
-    // Series pre-configuradas por Nubefact para pruebas
-    if (tipo === 'BOLETA')             return 'BB11';
-    if (tipo === 'NOTA_CREDITO')       return 'FF11';
-    if (tipo === 'NOTA_DEBITO')        return 'FF11';
-    if (tipo === 'LIQUIDACION_COMPRA') return 'LL11';
-    return 'FF11';
-  }
-  // Producción — series reales SUNAT
-  if (tipo === 'BOLETA')             return 'B001';
-  if (tipo === 'NOTA_CREDITO')       return 'FC01';
-  if (tipo === 'NOTA_DEBITO')        return 'FD01';
-  if (tipo === 'LIQUIDACION_COMPRA') return 'LC01';
-  return 'F001';
+  // Usar las series guardadas en configuración (exactas para Nubefact)
+  if (tipo === 'BOLETA')             return empresaData.serie_boleta   || 'B001';
+  if (tipo === 'NOTA_CREDITO')       return empresaData.serie_nc       || 'FC01';
+  if (tipo === 'NOTA_DEBITO')        return empresaData.serie_nd       || 'FD01';
+  if (tipo === 'LIQUIDACION_COMPRA') return empresaData.serie_lc       || 'LC01';
+  return empresaData.serie_factura || 'F001';
 }
 
 function onTipoChange(tipo) {

@@ -1354,7 +1354,7 @@ def api_anular_factura(fid):
 # ─────────────────────────────────────────────────────────
 
 def _nubefact_post(token: str, ruc: str, payload: dict) -> dict:
-    """POST to Nubefact OSE API. Returns parsed JSON (even on 4xx errors)."""
+    """POST to Nubefact OSE API. Always returns a dict or raises a descriptive Exception."""
     import urllib.error
     url  = f"https://api.nubefact.com/api/v1/{ruc}/invoices"
     body = json.dumps(payload).encode("utf-8")
@@ -1366,19 +1366,24 @@ def _nubefact_post(token: str, ruc: str, payload: dict) -> dict:
     try:
         with urllib.request.urlopen(req, timeout=30) as r:
             raw = r.read()
-            if raw:
+            if not raw:
+                return {"aceptada_por_sunat": False,
+                        "errors": f"Nubefact devolvió HTTP 200 con cuerpo vacío"}
+            try:
                 return json.loads(raw)
-            return {"aceptada_por_sunat": False, "errors": f"Nubefact HTTP {r.status} sin cuerpo"}
+            except Exception:
+                raise Exception(f"Nubefact HTTP 200 respuesta no-JSON: {raw[:300].decode('utf-8','replace')}")
     except urllib.error.HTTPError as e:
-        raw = e.read()
+        raw = e.read() or b""
+        raw_str = raw.decode("utf-8", "replace")
         if raw:
             try:
                 return json.loads(raw)
             except Exception:
-                raise Exception(f"Nubefact HTTP {e.code} {e.reason}: {raw[:200]}")
+                raise Exception(f"Nubefact HTTP {e.code} {e.reason}: {raw_str[:300]}")
         raise Exception(
-            f"Nubefact HTTP {e.code} {e.reason} — "
-            f"Verifica que el token y el RUC ({ruc}) estén registrados en tu cuenta Nubefact"
+            f"Nubefact HTTP {e.code} {e.reason} (sin cuerpo) — "
+            f"Verifica que el token sea válido y el RUC {ruc} esté registrado en tu cuenta Nubefact"
         )
 
 
@@ -1585,6 +1590,41 @@ def api_enviar_sunat(fid):
                 conn.close()
         except Exception:
             pass
+
+
+@app.route("/api/nubefact/diagnostico", methods=["GET"])
+@login_required
+def api_nubefact_diagnostico():
+    """Devuelve info de config Nubefact + respuesta cruda del API para debug."""
+    import urllib.error
+    conn = get_connection()
+    emp  = row_to_dict(conn.execute("SELECT * FROM empresa WHERE cliente_id=?", (cid(),)).fetchone()) or {}
+    conn.close()
+    token = (emp.get("nubefact_token") or "").strip()
+    ruc   = (emp.get("ruc") or "").strip()
+    info  = {
+        "ruc_configurado": ruc,
+        "token_longitud":  len(token),
+        "token_preview":   (token[:6] + "…" + token[-4:]) if len(token) > 10 else ("(vacío)" if not token else token),
+        "nubefact_modo":   emp.get("nubefact_modo", ""),
+    }
+    if not token or not ruc:
+        return jsonify({"info": info, "error": "Token o RUC vacíos"})
+    # Ping mínimo
+    url  = f"https://api.nubefact.com/api/v1/{ruc}/invoices"
+    body = json.dumps({"operacion": "generar_comprobante"}).encode()
+    req  = urllib.request.Request(url, data=body,
+        headers={"Authorization": f"Token {token}", "Content-Type": "application/json"},
+        method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=15) as r:
+            raw = r.read()
+            return jsonify({"info": info, "http_code": 200, "respuesta": raw.decode("utf-8","replace")[:500]})
+    except urllib.error.HTTPError as e:
+        raw = (e.read() or b"").decode("utf-8","replace")
+        return jsonify({"info": info, "http_code": e.code, "http_reason": e.reason, "respuesta": raw[:500]})
+    except Exception as ex:
+        return jsonify({"info": info, "error": str(ex)})
 
 
 @app.route("/api/nubefact/probar", methods=["POST"])

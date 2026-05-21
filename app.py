@@ -1711,15 +1711,14 @@ def api_nubefact_probar():
 @app.route("/api/facturas/stats", methods=["GET"])
 @login_required
 def api_facturas_stats():
-    """Dashboard ejecutivo — 8 queries → 2 HTTP calls via execute_batch."""
+    """Dashboard ejecutivo — 8 queries → 1 HTTP call via execute_batch."""
     from database import execute_batch
     conn = get_connection()
     try:
-        _T = "facturas"
+        _T   = "facturas"
         cid_ = cid()
 
-        # ══ BATCH 1: mega-query (totales + mes actual + mes anterior + YTD) ══
-        # All in ONE SQL scan → ONE HTTP round-trip to Turso
+        # ── ONE mega-query: totales + mes_actual + mes_anterior + YTD ──────
         MEGA_SQL = f"""
             SELECT
               COUNT(*)  AS total,
@@ -1738,21 +1737,18 @@ def api_facturas_stats():
                 AND (sunat_estado IS NULL OR sunat_estado='RECHAZADA')
                 AND tipo_comprobante IN ('FACTURA','BOLETA','NOTA_CREDITO','NOTA_DEBITO','LIQUIDACION_COMPRA')
                 THEN 1 ELSE 0 END),0) AS pendientes_sunat,
-              -- Mes actual
               COALESCE(SUM(CASE WHEN estado='EMITIDA'
                 AND strftime('%Y-%m',fecha_emision)=strftime('%Y-%m','now')
                 THEN total ELSE 0 END),0) AS mes_act_monto,
               COALESCE(SUM(CASE WHEN estado='EMITIDA'
                 AND strftime('%Y-%m',fecha_emision)=strftime('%Y-%m','now')
                 THEN 1 ELSE 0 END),0) AS mes_act_cantidad,
-              -- Mes anterior
               COALESCE(SUM(CASE WHEN estado='EMITIDA'
                 AND strftime('%Y-%m',fecha_emision)=strftime('%Y-%m',date('now','-1 month'))
                 THEN total ELSE 0 END),0) AS mes_ant_monto,
               COALESCE(SUM(CASE WHEN estado='EMITIDA'
                 AND strftime('%Y-%m',fecha_emision)=strftime('%Y-%m',date('now','-1 month'))
                 THEN 1 ELSE 0 END),0) AS mes_ant_cantidad,
-              -- YTD
               COALESCE(SUM(CASE WHEN estado='EMITIDA'
                 AND strftime('%Y',fecha_emision)=strftime('%Y','now')
                 THEN total ELSE 0 END),0) AS ytd_monto,
@@ -1761,8 +1757,6 @@ def api_facturas_stats():
                 THEN 1 ELSE 0 END),0) AS ytd_cantidad
             FROM {_T} WHERE cliente_id=?
         """
-
-        # ══ BATCH 2: four GROUP-BY queries in ONE HTTP round-trip ══
         MENSUAL_SQL = f"""
             SELECT strftime('%Y-%m', fecha_emision) AS mes,
                    COALESCE(SUM(total),0) AS monto, COUNT(*) AS cantidad
@@ -1789,76 +1783,85 @@ def api_facturas_stats():
             ORDER BY id DESC LIMIT 5
         """
 
-        # ── Fire both batches (2 HTTP calls total) ────────────────
-        [cur_mega]                              = execute_batch(conn, [(MEGA_SQL, (cid_,))])
-        cur_men, cur_tip, cur_top, cur_ult      = execute_batch(conn, [
+        # ── ALL 5 queries → 1 single HTTP POST to Turso ──────────────────
+        cur_mega, cur_men, cur_tip, cur_top, cur_ult = execute_batch(conn, [
+            (MEGA_SQL,    (cid_,)),
             (MENSUAL_SQL, (cid_,)),
             (TIPO_SQL,    (cid_,)),
             (TOP_SQL,     (cid_,)),
             (ULTIMAS_SQL, (cid_,)),
         ])
 
-        # ── Parse mega-row ────────────────────────────────────────
+        # ── Parse mega row ────────────────────────────────────────────────
         mega = row_to_dict(cur_mega.fetchone()) or {}
-        def _f(v): return float(v) if isinstance(v, (int, float)) else (float(v) if v else 0.0)
+        def _i(k): return int(mega.get(k) or 0)
+        def _fv(k): return float(mega.get(k) or 0)
 
-        tot = {k: _f(mega.get(k, 0)) for k in (
-            "total","emitidas","borradores","anuladas",
-            "sunat_aceptadas","sunat_rechazadas","monto_total","promedio",
-            "max_factura","clientes_unicos","monto_usd","monto_pen","pendientes_sunat"
-        )}
-        tot["total"]           = int(mega.get("total", 0) or 0)
-        tot["emitidas"]        = int(mega.get("emitidas", 0) or 0)
-        tot["borradores"]      = int(mega.get("borradores", 0) or 0)
-        tot["anuladas"]        = int(mega.get("anuladas", 0) or 0)
-        tot["sunat_aceptadas"] = int(mega.get("sunat_aceptadas", 0) or 0)
-        tot["sunat_rechazadas"]= int(mega.get("sunat_rechazadas", 0) or 0)
-        tot["clientes_unicos"] = int(mega.get("clientes_unicos", 0) or 0)
-        tot["pendientes_sunat"]= int(mega.get("pendientes_sunat", 0) or 0)
-
-        m_act = float(mega.get("mes_act_monto") or 0)
-        m_ant = float(mega.get("mes_ant_monto") or 0)
+        tot = {
+            "total":            _i("total"),
+            "emitidas":         _i("emitidas"),
+            "borradores":       _i("borradores"),
+            "anuladas":         _i("anuladas"),
+            "sunat_aceptadas":  _i("sunat_aceptadas"),
+            "sunat_rechazadas": _i("sunat_rechazadas"),
+            "clientes_unicos":  _i("clientes_unicos"),
+            "pendientes_sunat": _i("pendientes_sunat"),
+            "monto_total":      _fv("monto_total"),
+            "promedio":         _fv("promedio"),
+            "max_factura":      _fv("max_factura"),
+            "monto_usd":        _fv("monto_usd"),
+            "monto_pen":        _fv("monto_pen"),
+        }
+        m_act = _fv("mes_act_monto")
+        m_ant = _fv("mes_ant_monto")
         crec  = round((m_act - m_ant) / m_ant * 100, 1) if m_ant else None
 
-        # ── Parse group-by rows ────────────────────────────────────
+        def _rows(cur):
+            return [row_to_dict(x) for x in (cur.fetchall() or [])]
+
         mensual = [
             {"mes": r["mes"], "monto": float(r["monto"] or 0), "cantidad": int(r["cantidad"] or 0)}
-            for r in [row_to_dict(x) for x in (cur_men.fetchall() or [])]
+            for r in _rows(cur_men) if r.get("mes")
         ]
         por_tipo = [
             {"tipo": r["tipo"], "cantidad": int(r["cantidad"] or 0), "monto": float(r["monto"] or 0)}
-            for r in [row_to_dict(x) for x in (cur_tip.fetchall() or [])]
+            for r in _rows(cur_tip) if r.get("tipo")
         ]
         top_clientes = [
-            {"cliente": r["cliente"], "ruc": r["ruc"],
+            {"cliente": r["cliente"] or "—", "ruc": r["ruc"] or "—",
              "facturas": int(r["facturas"] or 0), "monto": float(r["monto"] or 0)}
-            for r in [row_to_dict(x) for x in (cur_top.fetchall() or [])]
+            for r in _rows(cur_top)
         ]
         ultimas_sunat = [
-            {"serie": r["serie"],
+            {"serie": r["serie"] or "",
              "correlativo": str(r["correlativo"] or "").zfill(6),
-             "tipo": r["tipo_comprobante"],
-             "cliente": r["cliente"],
+             "tipo": r["tipo_comprobante"] or "",
+             "cliente": r["cliente"] or "—",
              "total": float(r["total"] or 0),
-             "fecha": r["fecha_emision"],
+             "fecha": r["fecha_emision"] or "",
              "pdf": r["enlace_pdf"] or ""}
-            for r in [row_to_dict(x) for x in (cur_ult.fetchall() or [])]
+            for r in _rows(cur_ult)
         ]
 
         return jsonify({
+            "ok":           True,
             "totales":      tot,
-            "mes_actual":   {"monto": m_act,
-                             "cantidad": int(mega.get("mes_act_cantidad") or 0)},
-            "mes_anterior": {"monto": m_ant,
-                             "cantidad": int(mega.get("mes_ant_cantidad") or 0)},
-            "ytd":          {"monto": float(mega.get("ytd_monto") or 0),
-                             "cantidad": int(mega.get("ytd_cantidad") or 0)},
+            "mes_actual":   {"monto": m_act, "cantidad": _i("mes_act_cantidad")},
+            "mes_anterior": {"monto": m_ant, "cantidad": _i("mes_ant_cantidad")},
+            "ytd":          {"monto": _fv("ytd_monto"), "cantidad": _i("ytd_cantidad")},
             "crecimiento_mensual": crec,
             "mensual":      mensual,
             "por_tipo":     por_tipo,
             "top_clientes": top_clientes,
             "ultimas_sunat": ultimas_sunat,
         })
+
+    except Exception as e:
+        import traceback, sys
+        print(f"[stats ERROR] {e}", file=sys.stderr)
+        traceback.print_exc(file=sys.stderr)
+        return jsonify({"ok": False, "error": str(e)}), 500
+
     finally:
         conn.close()
 

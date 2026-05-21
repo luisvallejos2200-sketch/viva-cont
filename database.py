@@ -158,9 +158,12 @@ def execute_batch(conn, queries: list):
     """Run multiple (sql, params) read-queries in ONE network round-trip.
 
     On Turso: packages all statements into a single /v2/pipeline POST.
-    On SQLite: falls back to sequential execution.
+    Turso returns N+1 results (N execute + 1 close). We filter only
+    results whose response.type == "execute" to avoid cursor count mismatch.
+    On SQLite: sequential (in-process, no latency).
 
-    Returns a list of _TursoCursor-like objects (fetchone / fetchall).
+    Returns a list of _TursoCursor objects — same count as queries.
+    Raises if the count doesn't match (signals a Turso error).
     """
     if isinstance(conn, _TursoConn):
         stmts = [{"sql": sql, "args": _to_args(list(params))}
@@ -168,13 +171,26 @@ def execute_batch(conn, queries: list):
         results = _turso_post(stmts)
         out = []
         for r in results:
-            if isinstance(r, dict) and r.get("type") == "ok":
-                cur = _TursoCursor()
-                cur._load(r)
-                out.append(cur)
+            if not isinstance(r, dict):
+                continue
+            if r.get("type") != "ok":
+                # Propagate Turso execution errors
+                err = r.get("error", {}).get("message", "Turso error")
+                raise Exception(f"Turso batch error: {err}")
+            resp = r.get("response", {})
+            if resp.get("type") != "execute":
+                # Skip "close" and any other non-execute responses
+                continue
+            cur = _TursoCursor()
+            cur._load(r)
+            out.append(cur)
+        if len(out) != len(queries):
+            raise Exception(
+                f"execute_batch: expected {len(queries)} results, got {len(out)}"
+            )
         return out
     else:
-        # SQLite — in-process, no network, sequential is fine
+        # SQLite — in-process, sequential is fine
         out = []
         for sql, params in queries:
             cur = conn.cursor()

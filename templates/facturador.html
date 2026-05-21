@@ -746,32 +746,35 @@ const _DASH_KPI_IDS = [
 ];
 
 function showDashSkeleton() {
-  _DASH_KPI_IDS.forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.innerHTML = '<span class="kpi-skel">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span>';
-  });
-  ['chartMensual','chartTipos','chartTopClientes','chartEstados'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) { el.style.opacity = '0'; el.parentElement.style.position = 'relative'; }
-  });
-  // Chart placeholder shimmer
-  document.querySelectorAll('.card-body canvas').forEach(c => {
-    if (!c.nextElementSibling?.classList.contains('chart-skel-overlay')) {
-      const div = document.createElement('div');
-      div.className = 'chart-skel-overlay card-skel';
-      div.style.cssText = 'position:absolute;inset:12px;border-radius:8px;z-index:1;';
-      c.parentElement.style.position = 'relative';
-      c.parentElement.appendChild(div);
-    }
-  });
+  try {
+    _DASH_KPI_IDS.forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.innerHTML = '<span class="kpi-skel">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span>';
+    });
+    // Simple chart skeleton: grey rect inside each chart card-body
+    ['chartMensual','chartTipos','chartTopClientes','chartEstados'].forEach(id => {
+      const canvas = document.getElementById(id);
+      if (!canvas) return;
+      const parent = canvas.closest('.card-body') || canvas.parentElement;
+      if (parent && !parent.querySelector('.chart-skel-overlay')) {
+        const div = document.createElement('div');
+        div.className = 'chart-skel-overlay card-skel';
+        div.style.cssText = 'height:200px;border-radius:8px;margin:4px 0;';
+        canvas.style.display = 'none';
+        parent.insertBefore(div, canvas);
+      }
+    });
+  } catch(e) { console.warn('showDashSkeleton:', e); }
 }
 
 function hideDashSkeleton() {
-  ['chartMensual','chartTipos','chartTopClientes','chartEstados'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.style.opacity = '1';
-  });
-  document.querySelectorAll('.chart-skel-overlay').forEach(el => el.remove());
+  try {
+    document.querySelectorAll('.chart-skel-overlay').forEach(el => el.remove());
+    ['chartMensual','chartTipos','chartTopClientes','chartEstados'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.style.display = '';
+    });
+  } catch(e) { console.warn('hideDashSkeleton:', e); }
 }
 
 function showDashError() {
@@ -1250,11 +1253,22 @@ function gaugeBar(label, value, max, colorFrom, colorTo, suffix='%') {
 // ── DASHBOARD ────────────────────────────────────────────────
 async function loadDashboard() {
   showDashSkeleton();
-  let d;
+  let d = null;
   try {
-    d = _dashStatsPrefetch ? await _dashStatsPrefetch : await apiGet('/api/facturas/stats');
-  } catch(e) { d = null; }
-  _dashStatsPrefetch = null;
+    if (_dashStatsPrefetch) {
+      d = await _dashStatsPrefetch;
+    } else {
+      const res = await fetch('/api/facturas/stats');
+      const json = await res.json();
+      d = (json && json.ok !== false) ? json : null;
+      if (!d) console.error('[dash] API error:', json?.error);
+    }
+  } catch(e) {
+    console.error('[dash] fetch failed:', e);
+    d = null;
+  } finally {
+    _dashStatsPrefetch = null;
+  }
   hideDashSkeleton();
   if (!d) { showDashError(); return; }
   document.getElementById('dash-error-banner')?.remove();
@@ -1839,10 +1853,11 @@ async function verFactura(id) {
 
 loadFacturas(1);
 loadEmpresaData();
-// Pre-fetch dashboard stats en background — cuando el usuario
-// haga clic en la tab, los datos ya están listos (0 espera percibida)
+// Pre-fetch stats en background — datos listos antes de que el usuario
+// haga clic en Dashboard → render casi instantáneo.
 _dashStatsPrefetch = fetch('/api/facturas/stats')
-  .then(r => r.ok ? r.json() : null)
-  .catch(() => null);
+  .then(r => r.json())                    // siempre parsea JSON (backend ahora retorna JSON en errores)
+  .then(d => (d && d.ok !== false) ? d : null)
+  .catch(e => { console.warn('[dash prefetch]', e); return null; });
 </script>
 {% endblock %}

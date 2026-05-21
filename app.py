@@ -71,19 +71,31 @@ def set_cache_headers(response):
     return response
 
 
+_SERVER_START  = datetime.utcnow()
+_PING_COUNT    = 0
+_PING_LAST_OK  = None
+_PING_INTERVAL = 600  # 10 min — muy por debajo del umbral de 15 min de Render
+
 def _self_ping():
-    """Mantiene el proceso activo en Render free tier (evita cold starts cada 15 min)."""
-    _time.sleep(30)  # dar tiempo a gunicorn para arrancar
+    """Keep-alive thread: evita cold starts en Render Free.
+    Hace GET a /health cada 10 min. Registra intentos y último éxito."""
+    global _PING_COUNT, _PING_LAST_OK
+    _time.sleep(40)  # esperar que gunicorn levante completamente
     url = "https://vivacont.vivaempresasglobal.com/health"
     while True:
         try:
-            urllib.request.urlopen(url, timeout=8)
-        except Exception:
-            pass
-        _time.sleep(180)  # cada 3 minutos — bien por debajo del umbral de 15 min
+            req = urllib.request.Request(url, headers={"User-Agent": "VIVA-CONT-KeepAlive/1.0"})
+            urllib.request.urlopen(req, timeout=10)
+            _PING_COUNT  += 1
+            _PING_LAST_OK = datetime.utcnow().isoformat() + "Z"
+            print(f"[KEEP-ALIVE] ping #{_PING_COUNT} OK → {_PING_LAST_OK}", file=sys.stderr)
+        except Exception as e:
+            print(f"[KEEP-ALIVE] ping falló: {e}", file=sys.stderr)
+        _time.sleep(_PING_INTERVAL)
 
 if os.environ.get("RENDER"):
-    threading.Thread(target=_self_ping, daemon=True).start()
+    threading.Thread(target=_self_ping, daemon=True, name="viva-keepalive").start()
+    print("[KEEP-ALIVE] thread iniciado — ping cada 10 min a /health", file=sys.stderr)
 
 
 def allowed_file(filename, allowed):
@@ -208,18 +220,21 @@ def debug_db():
 
 @app.route("/health")
 def health():
-    import subprocess, database as _db
-    try:
-        sha = subprocess.check_output(["git","rev-parse","--short","HEAD"],
-                                      stderr=subprocess.DEVNULL).decode().strip()
-    except Exception:
-        sha = "unknown"
+    import database as _db
+    uptime_s = int((_time.time() - _SERVER_START.timestamp()) if _SERVER_START else 0)
+    h, rem   = divmod(uptime_s, 3600)
+    m, s     = divmod(rem, 60)
     return jsonify({
-        "status": "ok",
-        "commit": sha,
-        "turso_ok": _db._turso_ok,
-        "turso_err": _db._turso_err,
-        "use_turso": _db._USE_TURSO,
+        "status":      "ok",
+        "system":      "VIVA CONT",
+        "version":     "1.0",
+        "uptime":      f"{h}h {m}m {s}s",
+        "uptime_s":    uptime_s,
+        "started_at":  _SERVER_START.isoformat() + "Z" if _SERVER_START else None,
+        "ping_count":  _PING_COUNT,
+        "ping_last":   _PING_LAST_OK,
+        "turso":       "ok" if _db._turso_ok else ("err: " + (_db._turso_err or "?")),
+        "env":         "render" if os.environ.get("RENDER") else "local",
     }), 200
 
 

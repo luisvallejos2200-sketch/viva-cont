@@ -477,6 +477,10 @@ def _do_init(conn):
     _migrate(conn, "ALTER TABLE empresa ADD COLUMN nubefact_token TEXT")
     _migrate(conn, "ALTER TABLE empresa ADD COLUMN nubefact_modo TEXT DEFAULT 'demo'")
     _migrate(conn, "ALTER TABLE empresa ADD COLUMN nubefact_ruta TEXT")
+    # Personalización de comprobantes
+    _migrate(conn, "ALTER TABLE empresa ADD COLUMN logo_base64 TEXT")
+    _migrate(conn, "ALTER TABLE empresa ADD COLUMN factura_color TEXT DEFAULT '#1a3c6e'")
+    _migrate(conn, "ALTER TABLE empresa ADD COLUMN factura_footer TEXT")
 
     # ── CLIENTE RAÍZ: Viva Consulting (id=1) ──────────────
     c.execute("SELECT COUNT(*) FROM clientes WHERE id=1")

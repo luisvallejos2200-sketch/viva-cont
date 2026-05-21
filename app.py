@@ -1702,6 +1702,78 @@ def api_nubefact_probar():
 # API: CONFIGURACIÓN EMPRESA
 # ─────────────────────────────────────────────────────────
 
+@app.route("/api/facturas/stats", methods=["GET"])
+@login_required
+def api_facturas_stats():
+    """Dashboard analítico del facturador."""
+    conn = get_connection()
+    try:
+        c = conn.cursor()
+        # ── Totales globales ──
+        c.execute("""
+            SELECT
+              COUNT(*)                                              AS total,
+              COALESCE(SUM(CASE WHEN estado='EMITIDA'  THEN 1 ELSE 0 END),0) AS emitidas,
+              COALESCE(SUM(CASE WHEN estado='BORRADOR' THEN 1 ELSE 0 END),0) AS borradores,
+              COALESCE(SUM(CASE WHEN estado='ANULADA'  THEN 1 ELSE 0 END),0) AS anuladas,
+              COALESCE(SUM(CASE WHEN sunat_estado='ACEPTADA' THEN 1 ELSE 0 END),0) AS sunat_aceptadas,
+              COALESCE(SUM(CASE WHEN sunat_estado='RECHAZADA' THEN 1 ELSE 0 END),0) AS sunat_rechazadas,
+              COALESCE(SUM(CASE WHEN estado='EMITIDA' THEN total ELSE 0 END),0) AS monto_total,
+              COALESCE(AVG(CASE WHEN estado='EMITIDA' THEN total ELSE NULL END),0) AS promedio
+            FROM facturas WHERE cliente_id=?
+        """, (cid(),))
+        row = row_to_dict(c.fetchone()) or {}
+
+        # ── Facturación mensual — últimos 6 meses ──
+        c.execute("""
+            SELECT strftime('%Y-%m', fecha_emision) AS mes,
+                   COALESCE(SUM(total),0) AS monto,
+                   COUNT(*) AS cantidad
+            FROM facturas
+            WHERE cliente_id=? AND estado='EMITIDA'
+              AND fecha_emision >= date('now', '-6 months')
+            GROUP BY mes ORDER BY mes
+        """, (cid(),))
+        mensual = [{"mes": r["mes"], "monto": float(r["monto"]), "cantidad": int(r["cantidad"])}
+                   for r in (row_to_dict(x) for x in (c.fetchall() or []))]
+
+        # ── Top 5 clientes ──
+        c.execute("""
+            SELECT razon_social_cliente AS cliente,
+                   ruc_cliente          AS ruc,
+                   COUNT(*)             AS facturas,
+                   COALESCE(SUM(total),0) AS monto
+            FROM facturas
+            WHERE cliente_id=? AND estado='EMITIDA'
+            GROUP BY ruc_cliente
+            ORDER BY monto DESC LIMIT 5
+        """, (cid(),))
+        top_clientes = [{"cliente": r["cliente"], "ruc": r["ruc"],
+                         "facturas": int(r["facturas"]), "monto": float(r["monto"])}
+                        for r in (row_to_dict(x) for x in (c.fetchall() or []))]
+
+        # ── Este mes ──
+        c.execute("""
+            SELECT COALESCE(SUM(total),0) AS monto_mes, COUNT(*) AS cant_mes
+            FROM facturas
+            WHERE cliente_id=? AND estado='EMITIDA'
+              AND strftime('%Y-%m', fecha_emision) = strftime('%Y-%m', 'now')
+        """, (cid(),))
+        mes_row = row_to_dict(c.fetchone()) or {}
+
+        return jsonify({
+            "totales": {k: float(v) if isinstance(v, (int, float)) else v for k, v in row.items()},
+            "mensual": mensual,
+            "top_clientes": top_clientes,
+            "mes_actual": {
+                "monto": float(mes_row.get("monto_mes") or 0),
+                "cantidad": int(mes_row.get("cant_mes") or 0),
+            }
+        })
+    finally:
+        conn.close()
+
+
 @app.route("/api/empresa", methods=["GET"])
 @login_required
 def api_get_empresa():
@@ -1718,7 +1790,8 @@ def api_get_empresa():
 def api_update_empresa():
     data = request.get_json() or {}
     fields = ["ruc", "razon_social", "nombre_comercial", "direccion", "telefono", "email",
-              "regimen", "nubefact_token", "nubefact_modo", "nubefact_ruta"]
+              "regimen", "nubefact_token", "nubefact_modo", "nubefact_ruta",
+              "logo_base64", "factura_color", "factura_footer"]
     # Skip empty-string updates for critical fields to avoid overwriting with blank
     protected = {"ruc", "razon_social"}
     sets = ", ".join(f"{f} = ?" for f in fields if f in data and not (f in protected and not data[f]))

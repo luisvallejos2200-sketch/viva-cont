@@ -2,6 +2,37 @@
 {% block title %}Facturador Electrónico{% endblock %}
 {% block breadcrumb %}Facturador Electrónico{% endblock %}
 
+{% block head %}
+<style>
+/* ── Tab nav ── */
+.fac-tab {
+  padding:9px 18px;border:none;background:none;font-family:inherit;font-size:13px;
+  font-weight:600;color:var(--text-muted);cursor:pointer;border-bottom:3px solid transparent;
+  margin-bottom:-2px;transition:all .2s;display:inline-flex;align-items:center;gap:7px;
+}
+.fac-tab:hover { color:var(--primary); }
+.fac-tab.active { color:var(--primary);border-bottom-color:var(--primary); }
+.fac-tab-pane { animation:fadeIn .2s ease; }
+
+/* ── Color swatches ── */
+.color-swatch {
+  width:26px;height:26px;border-radius:50%;border:2px solid transparent;
+  cursor:pointer;transition:transform .15s,border-color .15s;
+}
+.color-swatch:hover { transform:scale(1.2);border-color:#fff;box-shadow:0 0 0 2px var(--border); }
+
+/* ── Print: full page, sin UI ── */
+@media print {
+  body > *:not(#printArea) { display:none !important; }
+  #printArea { display:block !important; }
+  .modal-overlay,.modal-header,.modal-footer,.page-header,.sidebar,
+  #toastContainer,.nav-item,#mainWrapper .page-header { display:none !important; }
+  .modal-box { box-shadow:none !important;border:none !important;max-width:100% !important; }
+  .factura-preview { font-size:11pt; }
+}
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="page-header">
   <div>
@@ -9,8 +40,8 @@
     <p class="page-subtitle">Creación y gestión de comprobantes electrónicos – SUNAT</p>
   </div>
   <div class="page-actions">
-    <button class="btn btn-outline btn-sm" id="btnFiltroEstado" onclick="toggleFiltroEstado()">
-      <i class="fa-solid fa-filter"></i> Filtrar por estado
+    <button class="btn btn-outline btn-sm" onclick="openPersonalizar()">
+      <i class="fa-solid fa-palette"></i> Personalizar
     </button>
     <button class="btn btn-accent btn-sm" onclick="openNuevaFactura()">
       <i class="fa-solid fa-plus"></i> Nueva Factura
@@ -18,8 +49,20 @@
   </div>
 </div>
 
+<!-- TAB NAV -->
+<div style="display:flex;gap:6px;margin-bottom:20px;border-bottom:2px solid var(--border);padding-bottom:0;">
+  <button class="fac-tab active" data-tab="tab-comprobantes" onclick="switchFacTab('tab-comprobantes',this)">
+    <i class="fa-solid fa-list-check"></i> Comprobantes
+  </button>
+  <button class="fac-tab" data-tab="tab-dashboard" onclick="switchFacTab('tab-dashboard',this)">
+    <i class="fa-solid fa-chart-line"></i> Dashboard
+  </button>
+</div>
+
+<!-- ═══ TAB: COMPROBANTES ═══ -->
+<div id="tab-comprobantes" class="fac-tab-pane">
 <!-- KPIs facturación -->
-<div class="kpi-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:20px;" id="facKpiGrid">
+<div class="kpi-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:20px;">
   <div class="kpi-card" style="--kpi-color:#1a3c6e;--kpi-bg:rgba(26,60,110,.1)">
     <div class="kpi-header"><span class="kpi-label">Total Facturas</span>
       <span class="kpi-icon"><i class="fa-solid fa-file-invoice"></i></span></div>
@@ -59,18 +102,10 @@
     <table class="data-table" id="tableFacturas">
       <thead>
         <tr>
-          <th>Serie-Num</th>
-          <th>Tipo</th>
-          <th>Fecha Emisión</th>
-          <th>RUC Cliente</th>
-          <th>Cliente</th>
-          <th>Moneda</th>
-          <th class="text-right">Subtotal</th>
-          <th class="text-right">IGV</th>
-          <th class="text-right">Total</th>
-          <th>Estado</th>
-          <th>SUNAT</th>
-          <th>Acciones</th>
+          <th>Serie-Num</th><th>Tipo</th><th>Fecha Emisión</th>
+          <th>RUC Cliente</th><th>Cliente</th><th>Moneda</th>
+          <th class="text-right">Subtotal</th><th class="text-right">IGV</th>
+          <th class="text-right">Total</th><th>Estado</th><th>SUNAT</th><th>Acciones</th>
         </tr>
       </thead>
       <tbody id="bodyFacturas">
@@ -80,6 +115,71 @@
   </div>
   <div id="paginationFac" class="pagination"></div>
 </div>
+</div><!-- /tab-comprobantes -->
+
+<!-- ═══ TAB: DASHBOARD ═══ -->
+<div id="tab-dashboard" class="fac-tab-pane" style="display:none;">
+<!-- KPIs dashboard -->
+<div class="kpi-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:20px;">
+  <div class="kpi-card" style="--kpi-color:#1a3c6e;--kpi-bg:rgba(26,60,110,.1)">
+    <div class="kpi-header"><span class="kpi-label">Facturado este mes</span>
+      <span class="kpi-icon"><i class="fa-solid fa-sack-dollar"></i></span></div>
+    <div class="kpi-value" id="dash-mes-monto">—</div>
+  </div>
+  <div class="kpi-card" style="--kpi-color:#1aaa6b;--kpi-bg:rgba(26,170,107,.1)">
+    <div class="kpi-header"><span class="kpi-label">Total Emitidas</span>
+      <span class="kpi-icon"><i class="fa-solid fa-file-circle-check"></i></span></div>
+    <div class="kpi-value positive" id="dash-emitidas">—</div>
+  </div>
+  <div class="kpi-card" style="--kpi-color:#6a4fcf;--kpi-bg:rgba(106,79,207,.1)">
+    <div class="kpi-header"><span class="kpi-label">Promedio por Factura</span>
+      <span class="kpi-icon"><i class="fa-solid fa-chart-simple"></i></span></div>
+    <div class="kpi-value" id="dash-promedio">—</div>
+  </div>
+  <div class="kpi-card" style="--kpi-color:#1a7fd8;--kpi-bg:rgba(26,127,216,.1)">
+    <div class="kpi-header"><span class="kpi-label">Tasa SUNAT Aceptadas</span>
+      <span class="kpi-icon"><i class="fa-solid fa-satellite-dish"></i></span></div>
+    <div class="kpi-value" id="dash-tasa-sunat">—</div>
+  </div>
+</div>
+
+<!-- Charts -->
+<div class="grid-2" style="margin-bottom:20px;">
+  <div class="card">
+    <div class="card-header">
+      <h3 class="card-title"><i class="fa-solid fa-chart-bar"></i> Facturación Mensual</h3>
+    </div>
+    <div class="card-body" style="padding:16px;">
+      <canvas id="chartMensual" height="200"></canvas>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-header">
+      <h3 class="card-title"><i class="fa-solid fa-chart-pie"></i> Estado de Comprobantes</h3>
+    </div>
+    <div class="card-body" style="padding:16px;display:flex;align-items:center;justify-content:center;">
+      <canvas id="chartEstados" height="200" style="max-width:260px;"></canvas>
+    </div>
+  </div>
+</div>
+
+<!-- Top clientes -->
+<div class="card">
+  <div class="card-header">
+    <h3 class="card-title"><i class="fa-solid fa-trophy"></i> Top 5 Clientes por Monto Facturado</h3>
+  </div>
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr><th>#</th><th>Cliente</th><th>RUC</th><th class="text-right">Facturas</th><th class="text-right">Total Facturado</th></tr>
+      </thead>
+      <tbody id="dashTopClientes">
+        <tr><td colspan="5" class="text-center" style="padding:30px;color:var(--text-muted);">Cargando...</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+</div><!-- /tab-dashboard -->
 
 <!-- ═══════════════════════════════════════════════════════ -->
 <!-- MODAL NUEVA/EDITAR FACTURA                              -->
@@ -231,13 +331,148 @@
     </div>
   </div>
 </div>
+
+<!-- MODAL PERSONALIZAR DISEÑO -->
+<div class="modal-overlay" id="personalizarModal" style="display:none;">
+  <div class="modal-box modal-xl">
+    <div class="modal-header">
+      <h3 class="modal-title"><i class="fa-solid fa-palette"></i> Personalizar Diseño de Comprobantes</h3>
+      <button class="modal-close" onclick="document.getElementById('personalizarModal').style.display='none'">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;">
+        <!-- Columna izquierda: opciones -->
+        <div>
+          <!-- Logo -->
+          <div class="form-group">
+            <label class="form-label"><i class="fa-solid fa-image"></i> Logo de la Empresa</label>
+            <div id="logoDropZone" style="border:2px dashed var(--border);border-radius:10px;padding:20px;text-align:center;cursor:pointer;transition:all .2s;background:var(--surface2);"
+              onclick="document.getElementById('logoFileInput').click()"
+              ondragover="event.preventDefault();this.style.borderColor='var(--accent)'"
+              ondragleave="this.style.borderColor='var(--border)'"
+              ondrop="handleLogoDrop(event)">
+              <div id="logoPreviewSmall">
+                <i class="fa-solid fa-cloud-arrow-up" style="font-size:28px;color:var(--text-muted);"></i>
+                <p style="margin:8px 0 0;font-size:12px;color:var(--text-muted);">Arrastra tu logo o haz clic para subir<br/><span style="font-size:11px;">PNG, JPG — máx. 500KB</span></p>
+              </div>
+            </div>
+            <input type="file" id="logoFileInput" accept="image/png,image/jpeg,image/jpg,image/svg+xml,image/webp" style="display:none" onchange="handleLogoFile(this.files[0])"/>
+            <div id="logoActions" style="display:none;margin-top:8px;gap:8px;display:none;">
+              <button class="btn btn-outline btn-sm" onclick="quitarLogo()"><i class="fa-solid fa-trash"></i> Quitar logo</button>
+            </div>
+          </div>
+
+          <!-- Color -->
+          <div class="form-row form-row-2">
+            <div class="form-group">
+              <label class="form-label"><i class="fa-solid fa-fill-drip"></i> Color Principal</label>
+              <div style="display:flex;gap:8px;align-items:center;">
+                <input type="color" id="personColorPrimario" value="#1a3c6e" style="width:44px;height:36px;border:none;border-radius:6px;cursor:pointer;padding:2px;"
+                  oninput="actualizarPreview()"/>
+                <input type="text" class="form-control" id="personColorHex" value="#1a3c6e" maxlength="7"
+                  style="font-family:monospace;" oninput="syncColor(this.value)"/>
+              </div>
+              <!-- Paleta rápida -->
+              <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;">
+                <button class="color-swatch" style="background:#1a3c6e" onclick="setColor('#1a3c6e')" title="Azul marino"></button>
+                <button class="color-swatch" style="background:#1a7fd8" onclick="setColor('#1a7fd8')" title="Azul"></button>
+                <button class="color-swatch" style="background:#1aaa6b" onclick="setColor('#1aaa6b')" title="Verde"></button>
+                <button class="color-swatch" style="background:#e03c3c" onclick="setColor('#e03c3c')" title="Rojo"></button>
+                <button class="color-swatch" style="background:#e8a020" onclick="setColor('#e8a020')" title="Naranja"></button>
+                <button class="color-swatch" style="background:#6a4fcf" onclick="setColor('#6a4fcf')" title="Morado"></button>
+                <button class="color-swatch" style="background:#2d2d2d" onclick="setColor('#2d2d2d')" title="Negro"></button>
+              </div>
+            </div>
+            <div class="form-group">
+              <label class="form-label"><i class="fa-solid fa-align-left"></i> Pie de Página</label>
+              <textarea class="form-control" id="personFooter" rows="3"
+                placeholder="Ej: Gracias por su preferencia. Transferencias a BCP 123-456789"
+                oninput="actualizarPreview()"></textarea>
+            </div>
+          </div>
+        </div>
+
+        <!-- Columna derecha: preview -->
+        <div>
+          <label class="form-label" style="display:block;margin-bottom:8px;"><i class="fa-solid fa-eye"></i> Vista Previa</label>
+          <div id="personPreview" style="border:1px solid var(--border);border-radius:10px;overflow:hidden;background:#fff;font-family:'Arial',sans-serif;font-size:12px;box-shadow:0 2px 12px rgba(0,0,0,.1);">
+            <!-- header preview -->
+            <div id="prevHeader" style="background:#1a3c6e;color:#fff;padding:16px 20px;display:flex;align-items:center;justify-content:space-between;gap:12px;">
+              <div style="display:flex;align-items:center;gap:12px;">
+                <img id="prevLogo" src="" style="max-height:48px;max-width:120px;display:none;border-radius:4px;background:#fff;padding:3px;"/>
+                <div id="prevCompany">
+                  <div style="font-weight:800;font-size:14px;">CORPORACIÓN VIVA EMPRESAS GLOBAL</div>
+                  <div style="font-size:11px;opacity:.85;">RUC: 20607308056</div>
+                </div>
+              </div>
+              <div style="background:#fff;color:#1a3c6e;padding:8px 14px;border-radius:6px;text-align:center;min-width:110px;">
+                <div style="font-weight:800;font-size:12px;" id="prevDocType">FACTURA</div>
+                <div style="font-weight:700;font-size:11px;">F001-000001</div>
+              </div>
+            </div>
+            <div style="padding:14px 20px;">
+              <div style="font-size:11px;color:#555;border-bottom:1px solid #eee;padding-bottom:8px;margin-bottom:8px;">
+                <strong>CLIENTE:</strong> Razón Social del Cliente<br/>
+                <strong>RUC:</strong> 20xxxxxxxxx
+              </div>
+              <table style="width:100%;border-collapse:collapse;font-size:10px;">
+                <thead><tr style="background:#f5f7fa;">
+                  <th style="padding:4px 6px;text-align:left;border-bottom:1px solid #e5e7eb;">Descripción</th>
+                  <th style="padding:4px 6px;text-align:right;border-bottom:1px solid #e5e7eb;">Cant.</th>
+                  <th style="padding:4px 6px;text-align:right;border-bottom:1px solid #e5e7eb;">Total</th>
+                </tr></thead>
+                <tbody><tr>
+                  <td style="padding:4px 6px;">Servicio de consultoría</td>
+                  <td style="padding:4px 6px;text-align:right;">1</td>
+                  <td style="padding:4px 6px;text-align:right;">S/ 5,000.00</td>
+                </tr></tbody>
+              </table>
+              <div style="text-align:right;margin-top:10px;font-size:11px;">
+                <div style="display:inline-block;border-top:2px solid #1a3c6e;padding-top:6px;">
+                  <strong style="font-size:13px;">TOTAL: S/ 5,900.00</strong>
+                </div>
+              </div>
+              <div id="prevFooter" style="margin-top:12px;padding-top:8px;border-top:1px solid #eee;font-size:10px;color:#888;text-align:center;display:none;"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="document.getElementById('personalizarModal').style.display='none'">Cancelar</button>
+      <button class="btn btn-primary" onclick="guardarPersonalizacion()">
+        <i class="fa-solid fa-floppy-disk"></i> Guardar Diseño
+      </button>
+    </div>
+  </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
 <script>
-let facturas        = [];
-let itemCounter     = 0;
+let facturas         = [];
+let itemCounter      = 0;
 let editingFacturaId = null;
+let empresaData      = {};   // cached for invoice preview & personalization
+let _chartMensual    = null;
+let _chartEstados    = null;
+
+// ── EMPRESA DATA (load once) ─────────────────────────────────
+async function loadEmpresaData() {
+  const d = await apiGet('/api/empresa');
+  if (d) empresaData = d;
+}
+
+// ── TAB SWITCH ───────────────────────────────────────────────
+function switchFacTab(tabId, btn) {
+  document.querySelectorAll('.fac-tab-pane').forEach(p => p.style.display = 'none');
+  document.querySelectorAll('.fac-tab').forEach(b => b.classList.remove('active'));
+  document.getElementById(tabId).style.display = 'block';
+  btn.classList.add('active');
+  if (tabId === 'tab-dashboard') loadDashboard();
+}
 
 // ── LOAD FACTURAS ───────────────────────────────────────────
 async function loadFacturas(page = 1) {
@@ -491,77 +726,6 @@ async function editarFactura(id) {
 }
 
 // ── VER ───────────────────────────────────────────────────────
-async function verFactura(id) {
-  const f = await apiGet(`/api/facturas/${id}`);
-  if (!f) return;
-  const sym = f.moneda === 'USD' ? '$' : 'S/';
-  const itemsHTML = (f.items||[]).map(i => `
-    <tr>
-      <td>${i.descripcion}</td><td>${i.unidad}</td>
-      <td class="text-right">${i.cantidad}</td>
-      <td class="text-right">${sym} ${parseFloat(i.precio_unitario).toFixed(2)}</td>
-      <td class="text-right">${sym} ${parseFloat(i.valor_venta).toFixed(2)}</td>
-      <td class="text-right">${sym} ${parseFloat(i.igv_item).toFixed(2)}</td>
-      <td class="text-right font-bold">${sym} ${parseFloat(i.precio_total).toFixed(2)}</td>
-    </tr>`).join('');
-
-  const sunatBanner = f.sunat_estado
-    ? f.sunat_estado === 'ACEPTADA'
-      ? `<div style="background:#e8f7ee;border:1px solid #1aaa6b;border-radius:8px;padding:10px 14px;margin-bottom:12px;display:flex;align-items:center;gap:10px;">
-           <i class="fa-solid fa-circle-check" style="color:#1aaa6b;font-size:18px;"></i>
-           <div><strong style="color:#1aaa6b;">Aceptada por SUNAT</strong><br/>
-           <span style="font-size:11px;color:#555;">${f.sunat_descripcion || ''}</span></div>
-           ${f.enlace_pdf ? `<a href="${f.enlace_pdf}" target="_blank" class="btn btn-sm" style="margin-left:auto;background:#e03c3c;color:#fff;border:none;padding:4px 10px;border-radius:6px;font-size:11px;"><i class="fa-solid fa-file-pdf"></i> PDF</a>` : ''}
-           ${f.enlace_xml ? `<a href="${f.enlace_xml}" target="_blank" class="btn btn-sm" style="margin-left:${f.enlace_pdf?'4px':'auto'};background:#e8a020;color:#fff;border:none;padding:4px 10px;border-radius:6px;font-size:11px;"><i class="fa-solid fa-code"></i> XML</a>` : ''}
-         </div>`
-      : `<div style="background:#fdecea;border:1px solid #e03c3c;border-radius:8px;padding:10px 14px;margin-bottom:12px;">
-           <strong style="color:#e03c3c;"><i class="fa-solid fa-circle-xmark"></i> Rechazada por SUNAT/Nubefact</strong><br/>
-           <span style="font-size:11px;color:#555;word-break:break-word;">${f.sunat_descripcion || 'Sin detalle'}</span>
-           <br/><button class="btn btn-sm" style="margin-top:8px;background:#1a7fd8;color:#fff;border:none;padding:4px 10px;border-radius:6px;font-size:11px;" onclick="document.getElementById('viewFacturaModal').style.display='none';enviarSunat(${f.id})"><i class="fa-solid fa-rotate-right"></i> Reintentar envío</button>
-         </div>`
-    : '';
-
-  document.getElementById('facturaPreviewContent').innerHTML = `
-    <div class="factura-preview">
-      ${sunatBanner}
-      <div class="f-header">
-        <div class="f-company">
-          <strong>${f.razon_social_emisor || 'VIVA CONSULTING EMPRESAS S.A.C.'}</strong>
-          RUC: ${f.ruc_emisor || '—'}<br/>
-          ${f.direccion_emisor || ''}
-        </div>
-        <div class="f-doc-box">
-          <div class="f-doc-type">${f.tipo_comprobante}</div>
-          <div class="f-doc-num">${f.serie}-${String(f.correlativo).padStart(6,'0')}</div>
-          <div style="font-size:11px;margin-top:4px;color:#666">${fmtDate(f.fecha_emision)}</div>
-        </div>
-      </div>
-      <div class="f-section">
-        <strong>CLIENTE:</strong> ${f.razon_social_cliente || '—'}<br/>
-        <strong>RUC/DNI:</strong> ${f.ruc_cliente || '—'}<br/>
-        <strong>DIRECCIÓN:</strong> ${f.direccion_cliente || '—'}
-      </div>
-      <table class="f-items-table">
-        <thead>
-          <tr><th>Descripción</th><th>Unidad</th><th>Cant.</th><th>P. Unit.</th>
-              <th>Valor Venta</th><th>IGV</th><th>Precio Total</th></tr>
-        </thead>
-        <tbody>${itemsHTML}</tbody>
-      </table>
-      <div class="clearfix">
-        <div class="f-totals">
-          <table>
-            <tr><td>Op. Gravadas:</td><td class="text-right">${sym} ${parseFloat(f.subtotal).toFixed(2)}</td></tr>
-            <tr><td>IGV (18%):</td><td class="text-right">${sym} ${parseFloat(f.igv).toFixed(2)}</td></tr>
-            <tr class="f-total-row"><td>TOTAL:</td><td class="text-right">${sym} ${parseFloat(f.total).toFixed(2)}</td></tr>
-          </table>
-        </div>
-      </div>
-      ${f.observaciones ? `<p style="margin-top:20px;font-size:11px;color:#666"><strong>Observaciones:</strong> ${f.observaciones}</p>` : ''}
-    </div>`;
-  document.getElementById('viewFacturaModal').style.display = 'flex';
-}
-
 // ── EMITIR / ANULAR ───────────────────────────────────────────
 async function emitirFactura(id) {
   const res = await apiPost(`/api/facturas/${id}/emitir`, {});
@@ -643,6 +807,281 @@ async function guardarYEnviarSunat() {
   await enviarSunat(fid);
 }
 
+// ── DASHBOARD ────────────────────────────────────────────────
+async function loadDashboard() {
+  const d = await apiGet('/api/facturas/stats');
+  if (!d) return;
+  const { totales, mensual, top_clientes, mes_actual } = d;
+
+  // KPIs
+  const sym = 'S/';
+  document.getElementById('dash-mes-monto').textContent =
+    sym + ' ' + (mes_actual.monto || 0).toLocaleString('es-PE', {minimumFractionDigits:2, maximumFractionDigits:2});
+  document.getElementById('dash-emitidas').textContent  = totales.emitidas || 0;
+  document.getElementById('dash-promedio').textContent  =
+    sym + ' ' + (totales.promedio || 0).toLocaleString('es-PE', {minimumFractionDigits:2, maximumFractionDigits:2});
+  const tasa = totales.sunat_aceptadas > 0
+    ? ((totales.sunat_aceptadas / (totales.sunat_aceptadas + totales.sunat_rechazadas)) * 100).toFixed(1) + '%'
+    : '—';
+  document.getElementById('dash-tasa-sunat').textContent = tasa;
+
+  // Bar chart — mensual
+  const labels = mensual.map(m => {
+    const [y, mo] = m.mes.split('-');
+    return ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'][parseInt(mo)-1] + ' ' + y.slice(2);
+  });
+  const montos = mensual.map(m => m.monto);
+  if (_chartMensual) _chartMensual.destroy();
+  _chartMensual = new Chart(document.getElementById('chartMensual'), {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        label: 'Facturado (S/)', data: montos,
+        backgroundColor: 'rgba(26,60,110,.75)',
+        borderColor: '#1a3c6e', borderWidth: 2, borderRadius: 6,
+      }]
+    },
+    options: {
+      responsive: true, plugins: { legend: { display: false } },
+      scales: { y: { beginAtZero: true, ticks: { callback: v => 'S/' + v.toLocaleString('es-PE') } } }
+    }
+  });
+
+  // Donut chart — estados
+  if (_chartEstados) _chartEstados.destroy();
+  _chartEstados = new Chart(document.getElementById('chartEstados'), {
+    type: 'doughnut',
+    data: {
+      labels: ['Emitidas', 'Borradores', 'Anuladas'],
+      datasets: [{
+        data: [totales.emitidas || 0, totales.borradores || 0, totales.anuladas || 0],
+        backgroundColor: ['#1aaa6b','#e8a020','#e03c3c'],
+        borderWidth: 0,
+      }]
+    },
+    options: {
+      responsive: true, cutout: '65%',
+      plugins: { legend: { position: 'bottom', labels: { padding: 16, font: { size: 12 } } } }
+    }
+  });
+
+  // Top clientes
+  const tbody = document.getElementById('dashTopClientes');
+  if (!top_clientes.length) {
+    tbody.innerHTML = '<tr><td colspan="5" class="text-center" style="padding:30px;color:var(--text-muted);">Sin datos de facturas emitidas aún</td></tr>';
+    return;
+  }
+  tbody.innerHTML = top_clientes.map((c, i) => `
+    <tr>
+      <td><span style="font-weight:700;color:var(--primary)">#${i+1}</span></td>
+      <td>${c.cliente || '—'}</td>
+      <td class="mono" style="font-size:11px">${c.ruc || '—'}</td>
+      <td class="text-right">${c.facturas}</td>
+      <td class="text-right font-bold">S/ ${c.monto.toLocaleString('es-PE', {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
+    </tr>`).join('');
+}
+
+// ── PERSONALIZACIÓN ──────────────────────────────────────────
+async function openPersonalizar() {
+  await loadEmpresaData();
+  const color  = empresaData.factura_color  || '#1a3c6e';
+  const footer = empresaData.factura_footer || '';
+  const logo   = empresaData.logo_base64    || '';
+
+  document.getElementById('personColorPrimario').value = color;
+  document.getElementById('personColorHex').value      = color;
+  document.getElementById('personFooter').value        = footer;
+
+  if (logo) {
+    const img = document.getElementById('prevLogo');
+    img.src = logo; img.style.display = 'block';
+    document.getElementById('logoPreviewSmall').innerHTML =
+      `<img src="${logo}" style="max-height:60px;max-width:160px;border-radius:6px;"/>
+       <p style="margin:6px 0 0;font-size:11px;color:var(--success);"><i class="fa-solid fa-circle-check"></i> Logo cargado</p>`;
+    document.getElementById('logoActions').style.display = 'flex';
+  }
+  actualizarPreview();
+  document.getElementById('personalizarModal').style.display = 'flex';
+}
+
+function setColor(hex) {
+  document.getElementById('personColorPrimario').value = hex;
+  document.getElementById('personColorHex').value      = hex;
+  actualizarPreview();
+}
+
+function syncColor(val) {
+  if (/^#[0-9a-fA-F]{6}$/.test(val)) {
+    document.getElementById('personColorPrimario').value = val;
+    actualizarPreview();
+  }
+}
+
+function actualizarPreview() {
+  const color  = document.getElementById('personColorPrimario').value;
+  document.getElementById('personColorHex').value = color;
+  document.getElementById('prevHeader').style.background = color;
+  document.getElementById('prevDocType').style.color     = color;
+  const footer = document.getElementById('personFooter').value.trim();
+  const footEl = document.getElementById('prevFooter');
+  if (footer) { footEl.textContent = footer; footEl.style.display = 'block'; }
+  else { footEl.style.display = 'none'; }
+}
+
+function handleLogoFile(file) {
+  if (!file) return;
+  if (file.size > 600_000) { showToast('warning','Logo muy grande','Usa una imagen menor a 500KB'); return; }
+  const reader = new FileReader();
+  reader.onload = e => {
+    const b64 = e.target.result;
+    empresaData.logo_base64 = b64;
+    const img = document.getElementById('prevLogo');
+    img.src = b64; img.style.display = 'block';
+    document.getElementById('logoPreviewSmall').innerHTML =
+      `<img src="${b64}" style="max-height:60px;max-width:160px;border-radius:6px;"/>
+       <p style="margin:6px 0 0;font-size:11px;color:var(--success);"><i class="fa-solid fa-circle-check"></i> Logo listo</p>`;
+    document.getElementById('logoActions').style.display = 'flex';
+  };
+  reader.readAsDataURL(file);
+}
+
+function handleLogoDrop(e) {
+  e.preventDefault();
+  document.getElementById('logoDropZone').style.borderColor = 'var(--border)';
+  const file = e.dataTransfer.files[0];
+  if (file && file.type.startsWith('image/')) handleLogoFile(file);
+}
+
+function quitarLogo() {
+  empresaData.logo_base64 = '';
+  document.getElementById('prevLogo').style.display = 'none';
+  document.getElementById('logoPreviewSmall').innerHTML =
+    `<i class="fa-solid fa-cloud-arrow-up" style="font-size:28px;color:var(--text-muted);"></i>
+     <p style="margin:8px 0 0;font-size:12px;color:var(--text-muted);">Arrastra tu logo o haz clic para subir<br/><span style="font-size:11px;">PNG, JPG — máx. 500KB</span></p>`;
+  document.getElementById('logoActions').style.display = 'none';
+}
+
+async function guardarPersonalizacion() {
+  const payload = {
+    factura_color:  document.getElementById('personColorPrimario').value,
+    factura_footer: document.getElementById('personFooter').value.trim(),
+    logo_base64:    empresaData.logo_base64 || '',
+  };
+  const res = await apiPut('/api/empresa', payload);
+  if (!res) return;
+  empresaData = { ...empresaData, ...payload };
+  showToast('success','Diseño guardado','Los cambios se aplicarán en todos los comprobantes');
+  document.getElementById('personalizarModal').style.display = 'none';
+}
+
+// ── VER FACTURA (con logo y diseño personalizado) ─────────────
+async function verFactura(id) {
+  await loadEmpresaData();
+  const f = await apiGet(`/api/facturas/${id}`);
+  if (!f) return;
+  const sym    = f.moneda === 'USD' ? '$' : 'S/';
+  const color  = empresaData.factura_color  || '#1a3c6e';
+  const logo   = empresaData.logo_base64    || '';
+  const footer = empresaData.factura_footer || '';
+
+  const itemsHTML = (f.items||[]).map(i => `
+    <tr>
+      <td style="padding:6px 8px;border-bottom:1px solid #f0f0f0;">${i.descripcion}</td>
+      <td style="padding:6px 8px;border-bottom:1px solid #f0f0f0;text-align:center;">${i.unidad}</td>
+      <td style="padding:6px 8px;border-bottom:1px solid #f0f0f0;text-align:right;">${i.cantidad}</td>
+      <td style="padding:6px 8px;border-bottom:1px solid #f0f0f0;text-align:right;">${sym} ${parseFloat(i.precio_unitario).toFixed(2)}</td>
+      <td style="padding:6px 8px;border-bottom:1px solid #f0f0f0;text-align:right;">${sym} ${parseFloat(i.valor_venta).toFixed(2)}</td>
+      <td style="padding:6px 8px;border-bottom:1px solid #f0f0f0;text-align:right;">${sym} ${parseFloat(i.igv_item).toFixed(2)}</td>
+      <td style="padding:6px 8px;border-bottom:1px solid #f0f0f0;text-align:right;font-weight:700;">${sym} ${parseFloat(i.precio_total).toFixed(2)}</td>
+    </tr>`).join('');
+
+  const sunatBanner = f.sunat_estado
+    ? f.sunat_estado === 'ACEPTADA'
+      ? `<div style="background:#e8f7ee;border:1px solid #1aaa6b;border-radius:8px;padding:10px 14px;margin-bottom:12px;display:flex;align-items:center;gap:10px;">
+           <i class="fa-solid fa-circle-check" style="color:#1aaa6b;font-size:18px;"></i>
+           <div><strong style="color:#1aaa6b;">Aceptada por SUNAT</strong><br/>
+           <span style="font-size:11px;color:#555;">${f.sunat_descripcion || ''}</span></div>
+           ${f.enlace_pdf ? `<a href="${f.enlace_pdf}" target="_blank" class="btn btn-sm" style="margin-left:auto;background:#e03c3c;color:#fff;border:none;padding:4px 10px;border-radius:6px;font-size:11px;"><i class="fa-solid fa-file-pdf"></i> PDF SUNAT</a>` : ''}
+           ${f.enlace_xml ? `<a href="${f.enlace_xml}" target="_blank" class="btn btn-sm" style="margin-left:4px;background:#e8a020;color:#fff;border:none;padding:4px 10px;border-radius:6px;font-size:11px;"><i class="fa-solid fa-code"></i> XML</a>` : ''}
+         </div>`
+      : `<div style="background:#fdecea;border:1px solid #e03c3c;border-radius:8px;padding:10px 14px;margin-bottom:12px;">
+           <strong style="color:#e03c3c;"><i class="fa-solid fa-circle-xmark"></i> Rechazada por SUNAT/Nubefact</strong><br/>
+           <span style="font-size:11px;color:#555;word-break:break-word;">${f.sunat_descripcion || 'Sin detalle'}</span>
+           <br/><button class="btn btn-sm" style="margin-top:8px;background:#1a7fd8;color:#fff;border:none;padding:4px 10px;border-radius:6px;font-size:11px;" onclick="document.getElementById('viewFacturaModal').style.display='none';enviarSunat(${f.id})"><i class="fa-solid fa-rotate-right"></i> Reintentar envío</button>
+         </div>`
+    : '';
+
+  const logoHTML = logo
+    ? `<img src="${logo}" style="max-height:56px;max-width:140px;object-fit:contain;border-radius:4px;background:#fff;padding:3px;" />`
+    : '';
+
+  const footerHTML = footer
+    ? `<div style="margin-top:20px;padding-top:12px;border-top:1px solid #e5e7eb;font-size:10px;color:#888;text-align:center;">${footer}</div>`
+    : '';
+
+  document.getElementById('facturaPreviewContent').innerHTML = `
+    <div class="factura-preview" style="font-family:'Arial',sans-serif;font-size:12px;color:#222;">
+      ${sunatBanner}
+      <!-- HEADER -->
+      <div style="background:${color};color:#fff;padding:18px 22px;border-radius:10px 10px 0 0;display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:0;">
+        <div style="display:flex;align-items:center;gap:14px;">
+          ${logoHTML}
+          <div>
+            <div style="font-weight:800;font-size:15px;line-height:1.2;">${f.razon_social_emisor || empresaData.razon_social || 'EMPRESA'}</div>
+            <div style="font-size:11px;opacity:.85;margin-top:2px;">RUC: ${f.ruc_emisor || empresaData.ruc || '—'}</div>
+            <div style="font-size:10px;opacity:.75;">${f.direccion_emisor || empresaData.direccion || ''}</div>
+          </div>
+        </div>
+        <div style="background:#fff;color:${color};padding:10px 16px;border-radius:8px;text-align:center;min-width:120px;flex-shrink:0;">
+          <div style="font-weight:800;font-size:13px;">${f.tipo_comprobante}</div>
+          <div style="font-weight:700;font-size:12px;margin-top:2px;">${f.serie}-${String(f.correlativo).padStart(6,'0')}</div>
+          <div style="font-size:10px;margin-top:3px;opacity:.7;">${fmtDate(f.fecha_emision)}</div>
+        </div>
+      </div>
+      <!-- CLIENTE -->
+      <div style="padding:14px 22px;background:#f8fafc;border-left:4px solid ${color};margin-bottom:0;">
+        <strong>CLIENTE:</strong> ${f.razon_social_cliente || '—'}&nbsp;&nbsp;
+        <strong>RUC/DNI:</strong> ${f.ruc_cliente || '—'}&nbsp;&nbsp;
+        <strong>DIRECCIÓN:</strong> ${f.direccion_cliente || '—'}
+      </div>
+      <!-- ITEMS -->
+      <div style="padding:16px 22px;">
+        <table style="width:100%;border-collapse:collapse;font-size:12px;">
+          <thead>
+            <tr style="background:${color};color:#fff;">
+              <th style="padding:8px 8px;text-align:left;font-weight:700;">Descripción</th>
+              <th style="padding:8px 8px;text-align:center;font-weight:700;">Unidad</th>
+              <th style="padding:8px 8px;text-align:right;font-weight:700;">Cant.</th>
+              <th style="padding:8px 8px;text-align:right;font-weight:700;">P. Unit.</th>
+              <th style="padding:8px 8px;text-align:right;font-weight:700;">Valor Venta</th>
+              <th style="padding:8px 8px;text-align:right;font-weight:700;">IGV</th>
+              <th style="padding:8px 8px;text-align:right;font-weight:700;">Total</th>
+            </tr>
+          </thead>
+          <tbody>${itemsHTML}</tbody>
+        </table>
+        <!-- TOTALES -->
+        <div style="display:flex;justify-content:flex-end;margin-top:14px;">
+          <table style="font-size:12px;min-width:220px;">
+            <tr><td style="padding:4px 8px;color:#555;">Op. Gravadas:</td>
+                <td style="padding:4px 8px;text-align:right;">${sym} ${parseFloat(f.subtotal).toFixed(2)}</td></tr>
+            <tr><td style="padding:4px 8px;color:#555;">IGV (18%):</td>
+                <td style="padding:4px 8px;text-align:right;">${sym} ${parseFloat(f.igv).toFixed(2)}</td></tr>
+            <tr style="background:${color};color:#fff;border-radius:6px;">
+              <td style="padding:8px 12px;font-weight:800;font-size:13px;border-radius:6px 0 0 6px;">TOTAL:</td>
+              <td style="padding:8px 12px;text-align:right;font-weight:800;font-size:14px;border-radius:0 6px 6px 0;">${sym} ${parseFloat(f.total).toFixed(2)}</td>
+            </tr>
+          </table>
+        </div>
+        ${f.observaciones ? `<p style="margin-top:16px;font-size:11px;color:#666;border-top:1px dashed #e5e7eb;padding-top:10px;"><strong>Observaciones:</strong> ${f.observaciones}</p>` : ''}
+        ${footerHTML}
+      </div>
+    </div>`;
+  document.getElementById('viewFacturaModal').style.display = 'flex';
+}
+
 loadFacturas(1);
+loadEmpresaData();
 </script>
 {% endblock %}

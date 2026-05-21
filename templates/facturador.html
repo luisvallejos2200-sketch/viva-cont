@@ -21,6 +21,41 @@
 }
 .color-swatch:hover { transform:scale(1.2);border-color:#fff;box-shadow:0 0 0 2px var(--border); }
 
+/* ── Dashboard KPI cards ── */
+.dash-kpi-grid {
+  display:grid;
+  grid-template-columns:repeat(6,1fr);
+  gap:14px;
+  margin-bottom:20px;
+}
+@media(max-width:1300px){.dash-kpi-grid{grid-template-columns:repeat(3,1fr);}}
+@media(max-width:700px) {.dash-kpi-grid{grid-template-columns:repeat(2,1fr);}}
+.dash-kpi-card {
+  background:var(--card);border-radius:12px;border:1px solid var(--border);
+  padding:15px 14px;display:flex;align-items:flex-start;gap:11px;
+  box-shadow:0 2px 8px rgba(0,0,0,.06);transition:transform .15s,box-shadow .15s;
+}
+.dash-kpi-card:hover{transform:translateY(-2px);box-shadow:0 6px 20px rgba(0,0,0,.1);}
+.dash-kpi-icon{
+  width:42px;height:42px;border-radius:10px;
+  display:flex;align-items:center;justify-content:center;
+  color:#fff;font-size:17px;flex-shrink:0;
+}
+.dash-kpi-body{flex:1;min-width:0;}
+.dash-kpi-label{font-size:9.5px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.6px;margin-bottom:4px;}
+.dash-kpi-value{font-size:17px;font-weight:800;color:var(--primary);line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.dash-kpi-trend{font-size:11px;margin-top:5px;font-weight:600;}
+.dash-kpi-sub  {font-size:10px;color:var(--text-muted);margin-top:3px;line-height:1.3;}
+/* ── Dashboard 2-col grids ── */
+.dash-2col{display:grid;grid-template-columns:2fr 1fr;gap:16px;margin-bottom:20px;}
+.dash-2col-eq{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px;}
+@media(max-width:900px){.dash-2col,.dash-2col-eq{grid-template-columns:1fr;}}
+/* ── Comparison mini-cards ── */
+.dash-comp-card{background:var(--surface2);border-radius:8px;padding:12px 14px;}
+.dash-comp-label{font-size:9.5px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:5px;}
+.dash-comp-value{font-size:16px;font-weight:800;color:var(--primary);}
+.dash-comp-sub  {font-size:10px;color:var(--text-muted);margin-top:2px;}
+
 /* ── Print: full page, sin UI ── */
 @media print {
   body > *:not(#printArea) { display:none !important; }
@@ -119,66 +154,190 @@
 
 <!-- ═══ TAB: DASHBOARD ═══ -->
 <div id="tab-dashboard" class="fac-tab-pane" style="display:none;">
-<!-- KPIs dashboard -->
-<div class="kpi-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:20px;">
-  <div class="kpi-card" style="--kpi-color:#1a3c6e;--kpi-bg:rgba(26,60,110,.1)">
-    <div class="kpi-header"><span class="kpi-label">Facturado este mes</span>
-      <span class="kpi-icon"><i class="fa-solid fa-sack-dollar"></i></span></div>
-    <div class="kpi-value" id="dash-mes-monto">—</div>
-  </div>
-  <div class="kpi-card" style="--kpi-color:#1aaa6b;--kpi-bg:rgba(26,170,107,.1)">
-    <div class="kpi-header"><span class="kpi-label">Total Emitidas</span>
-      <span class="kpi-icon"><i class="fa-solid fa-file-circle-check"></i></span></div>
-    <div class="kpi-value positive" id="dash-emitidas">—</div>
-  </div>
-  <div class="kpi-card" style="--kpi-color:#6a4fcf;--kpi-bg:rgba(106,79,207,.1)">
-    <div class="kpi-header"><span class="kpi-label">Promedio por Factura</span>
-      <span class="kpi-icon"><i class="fa-solid fa-chart-simple"></i></span></div>
-    <div class="kpi-value" id="dash-promedio">—</div>
-  </div>
-  <div class="kpi-card" style="--kpi-color:#1a7fd8;--kpi-bg:rgba(26,127,216,.1)">
-    <div class="kpi-header"><span class="kpi-label">Tasa SUNAT Aceptadas</span>
-      <span class="kpi-icon"><i class="fa-solid fa-satellite-dish"></i></span></div>
-    <div class="kpi-value" id="dash-tasa-sunat">—</div>
-  </div>
-</div>
 
-<!-- Charts -->
-<div class="grid-2" style="margin-bottom:20px;">
-  <div class="card">
-    <div class="card-header">
-      <h3 class="card-title"><i class="fa-solid fa-chart-bar"></i> Facturación Mensual</h3>
+  <!-- ── ROW 1: 6 KPI cards ── -->
+  <div class="dash-kpi-grid">
+    <!-- 1. Facturado este mes -->
+    <div class="dash-kpi-card">
+      <div class="dash-kpi-icon" style="background:linear-gradient(135deg,#1a3c6e,#1a7fd8)">
+        <i class="fa-solid fa-sack-dollar"></i>
+      </div>
+      <div class="dash-kpi-body">
+        <div class="dash-kpi-label">Facturado Este Mes</div>
+        <div class="dash-kpi-value" id="dash-mes-monto">—</div>
+        <div class="dash-kpi-trend" id="dash-crec-badge">&nbsp;</div>
+      </div>
     </div>
-    <div class="card-body" style="padding:16px;">
-      <canvas id="chartMensual" height="200"></canvas>
+    <!-- 2. YTD -->
+    <div class="dash-kpi-card">
+      <div class="dash-kpi-icon" style="background:linear-gradient(135deg,#1aaa6b,#0d7c4f)">
+        <i class="fa-solid fa-calendar-check"></i>
+      </div>
+      <div class="dash-kpi-body">
+        <div class="dash-kpi-label">Acumulado Año (YTD)</div>
+        <div class="dash-kpi-value" id="dash-ytd-monto">—</div>
+        <div class="dash-kpi-sub" id="dash-ytd-cant">— facturas</div>
+      </div>
+    </div>
+    <!-- 3. Clientes únicos -->
+    <div class="dash-kpi-card">
+      <div class="dash-kpi-icon" style="background:linear-gradient(135deg,#6a4fcf,#9b72f5)">
+        <i class="fa-solid fa-users"></i>
+      </div>
+      <div class="dash-kpi-body">
+        <div class="dash-kpi-label">Clientes Únicos</div>
+        <div class="dash-kpi-value" id="dash-clientes">—</div>
+        <div class="dash-kpi-sub">con facturas emitidas</div>
+      </div>
+    </div>
+    <!-- 4. Ticket promedio -->
+    <div class="dash-kpi-card">
+      <div class="dash-kpi-icon" style="background:linear-gradient(135deg,#e8a020,#c47b00)">
+        <i class="fa-solid fa-receipt"></i>
+      </div>
+      <div class="dash-kpi-body">
+        <div class="dash-kpi-label">Ticket Promedio</div>
+        <div class="dash-kpi-value" id="dash-promedio">—</div>
+        <div class="dash-kpi-sub" id="dash-max-fact">Máx: —</div>
+      </div>
+    </div>
+    <!-- 5. Tasa SUNAT -->
+    <div class="dash-kpi-card">
+      <div class="dash-kpi-icon" style="background:linear-gradient(135deg,#1a7fd8,#0d5fa0)">
+        <i class="fa-solid fa-satellite-dish"></i>
+      </div>
+      <div class="dash-kpi-body">
+        <div class="dash-kpi-label">Tasa SUNAT Aceptadas</div>
+        <div class="dash-kpi-value" id="dash-tasa-sunat">—</div>
+        <div class="dash-kpi-sub" id="dash-sunat-detail">&nbsp;</div>
+      </div>
+    </div>
+    <!-- 6. Pendientes SUNAT -->
+    <div class="dash-kpi-card" id="dash-pendientes-card">
+      <div class="dash-kpi-icon" style="background:linear-gradient(135deg,#e03c3c,#a01818)">
+        <i class="fa-solid fa-triangle-exclamation"></i>
+      </div>
+      <div class="dash-kpi-body">
+        <div class="dash-kpi-label">Pendientes SUNAT</div>
+        <div class="dash-kpi-value" id="dash-pendientes">—</div>
+        <div class="dash-kpi-sub">sin enviar a SUNAT</div>
+      </div>
     </div>
   </div>
-  <div class="card">
-    <div class="card-header">
-      <h3 class="card-title"><i class="fa-solid fa-chart-pie"></i> Estado de Comprobantes</h3>
-    </div>
-    <div class="card-body" style="padding:16px;display:flex;align-items:center;justify-content:center;">
-      <canvas id="chartEstados" height="200" style="max-width:260px;"></canvas>
-    </div>
-  </div>
-</div>
 
-<!-- Top clientes -->
-<div class="card">
-  <div class="card-header">
-    <h3 class="card-title"><i class="fa-solid fa-trophy"></i> Top 5 Clientes por Monto Facturado</h3>
+  <!-- ── ROW 2: Tendencia 12m + Mix comprobantes ── -->
+  <div class="dash-2col">
+    <div class="card">
+      <div class="card-header">
+        <h3 class="card-title">
+          <i class="fa-solid fa-chart-area" style="color:#1a7fd8"></i>
+          Tendencia de Facturación — Últimos 12 Meses
+        </h3>
+        <span id="dash-chart-total-label" style="font-size:11px;color:var(--text-muted);font-weight:600;"></span>
+      </div>
+      <div class="card-body" style="padding:16px 14px 10px;">
+        <canvas id="chartMensual" height="200"></canvas>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header">
+        <h3 class="card-title"><i class="fa-solid fa-chart-pie" style="color:#6a4fcf"></i> Mix de Comprobantes</h3>
+      </div>
+      <div class="card-body" style="padding:14px;display:flex;flex-direction:column;align-items:center;gap:10px;">
+        <canvas id="chartTipos" style="max-width:200px;max-height:200px;"></canvas>
+        <div id="dashTiposLegend" style="width:100%;display:flex;flex-direction:column;gap:5px;"></div>
+      </div>
+    </div>
   </div>
-  <div class="table-wrap">
-    <table class="data-table">
-      <thead>
-        <tr><th>#</th><th>Cliente</th><th>RUC</th><th class="text-right">Facturas</th><th class="text-right">Total Facturado</th></tr>
-      </thead>
-      <tbody id="dashTopClientes">
-        <tr><td colspan="5" class="text-center" style="padding:30px;color:var(--text-muted);">Cargando...</td></tr>
-      </tbody>
-    </table>
+
+  <!-- ── ROW 3: Top 8 clientes + Comparativo mensual + YTD ── -->
+  <div class="dash-2col">
+    <div class="card">
+      <div class="card-header">
+        <h3 class="card-title"><i class="fa-solid fa-trophy" style="color:#e8a020"></i> Top 8 Clientes por Facturación</h3>
+      </div>
+      <div class="card-body" style="padding:16px 14px 10px;">
+        <canvas id="chartTopClientes" height="270"></canvas>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:14px;">
+      <!-- Comparativo mensual -->
+      <div class="card">
+        <div class="card-header">
+          <h3 class="card-title"><i class="fa-solid fa-scale-balanced" style="color:#1aaa6b"></i> Comparativo Mensual</h3>
+        </div>
+        <div class="card-body">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">
+            <div class="dash-comp-card" style="border-left:4px solid #1aaa6b;">
+              <div class="dash-comp-label"><i class="fa-solid fa-calendar-day"></i> Este Mes</div>
+              <div class="dash-comp-value" id="comp-mes-act-monto">—</div>
+              <div class="dash-comp-sub" id="comp-mes-act-cant">—</div>
+            </div>
+            <div class="dash-comp-card" style="border-left:4px solid var(--border);">
+              <div class="dash-comp-label"><i class="fa-solid fa-calendar-minus"></i> Mes Anterior</div>
+              <div class="dash-comp-value" id="comp-mes-ant-monto">—</div>
+              <div class="dash-comp-sub" id="comp-mes-ant-cant">—</div>
+            </div>
+          </div>
+          <div id="comp-crec-bar"></div>
+        </div>
+      </div>
+      <!-- YTD resumen -->
+      <div class="card">
+        <div class="card-header">
+          <h3 class="card-title"><i class="fa-solid fa-chart-column" style="color:#1a3c6e"></i> Resumen Año en Curso</h3>
+        </div>
+        <div class="card-body">
+          <div class="stat-mini">
+            <span class="stat-mini-label">Facturado YTD (S/)</span>
+            <span class="stat-mini-value" id="ytd-pen" style="font-weight:800;">—</span>
+          </div>
+          <div class="stat-mini">
+            <span class="stat-mini-label">Facturado YTD (USD)</span>
+            <span class="stat-mini-value" id="ytd-usd">—</span>
+          </div>
+          <div class="stat-mini">
+            <span class="stat-mini-label">Total Comprobantes</span>
+            <span class="stat-mini-value" id="ytd-total-docs">—</span>
+          </div>
+          <div class="stat-mini">
+            <span class="stat-mini-label">Emitidos</span>
+            <span class="stat-mini-value" id="ytd-emitidas">—</span>
+          </div>
+          <div class="stat-mini">
+            <span class="stat-mini-label">Aceptadas por SUNAT</span>
+            <span class="stat-mini-value" id="ytd-sunat-ac" style="color:var(--success);font-weight:700;">—</span>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
-</div>
+
+  <!-- ── ROW 4: Últimas aceptadas SUNAT ── -->
+  <div class="card" style="margin-bottom:4px;">
+    <div class="card-header">
+      <h3 class="card-title">
+        <i class="fa-solid fa-circle-check" style="color:#1aaa6b"></i>
+        Últimas Aceptadas por SUNAT
+      </h3>
+    </div>
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Comprobante</th><th>Tipo</th><th>Cliente</th>
+            <th class="text-right">Total</th><th>Fecha</th><th>PDF</th>
+          </tr>
+        </thead>
+        <tbody id="dashUltimasSunat">
+          <tr><td colspan="6" class="text-center" style="padding:30px;color:var(--text-muted);">
+            <span class="spinner"></span> Cargando...
+          </td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
 </div><!-- /tab-dashboard -->
 
 <!-- ═══════════════════════════════════════════════════════ -->
@@ -469,8 +628,9 @@ let facturas         = [];
 let itemCounter      = 0;
 let editingFacturaId = null;
 let empresaData      = {};   // cached for invoice preview & personalization
-let _chartMensual    = null;
-let _chartEstados    = null;
+let _chartMensual     = null;
+let _chartTipos       = null;
+let _chartTopClientes = null;
 
 // ── EMPRESA DATA (load once) ─────────────────────────────────
 async function loadEmpresaData() {
@@ -873,75 +1033,297 @@ async function guardarYEnviarSunat() {
 async function loadDashboard() {
   const d = await apiGet('/api/facturas/stats');
   if (!d) return;
-  const { totales, mensual, top_clientes, mes_actual } = d;
+  const {
+    totales, mensual, top_clientes, ultimas_sunat,
+    mes_actual, mes_anterior, ytd, crecimiento_mensual, por_tipo
+  } = d;
 
-  // KPIs
-  const sym = 'S/';
-  document.getElementById('dash-mes-monto').textContent =
-    sym + ' ' + (mes_actual.monto || 0).toLocaleString('es-PE', {minimumFractionDigits:2, maximumFractionDigits:2});
-  document.getElementById('dash-emitidas').textContent  = totales.emitidas || 0;
-  document.getElementById('dash-promedio').textContent  =
-    sym + ' ' + (totales.promedio || 0).toLocaleString('es-PE', {minimumFractionDigits:2, maximumFractionDigits:2});
-  const tasa = totales.sunat_aceptadas > 0
-    ? ((totales.sunat_aceptadas / (totales.sunat_aceptadas + totales.sunat_rechazadas)) * 100).toFixed(1) + '%'
-    : '—';
-  document.getElementById('dash-tasa-sunat').textContent = tasa;
+  const fmtS = (n, sym='S/') =>
+    sym + ' ' + (parseFloat(n)||0).toLocaleString('es-PE',{minimumFractionDigits:2,maximumFractionDigits:2});
+  const fmtN = n =>
+    (parseFloat(n)||0).toLocaleString('es-PE',{minimumFractionDigits:2,maximumFractionDigits:2});
+  const MESES = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
 
-  // Bar chart — mensual
-  const labels = mensual.map(m => {
+  // ── KPI 1: Este mes + crecimiento ──────────────────────────
+  document.getElementById('dash-mes-monto').textContent = fmtS(mes_actual.monto);
+  const crecEl = document.getElementById('dash-crec-badge');
+  if (crecimiento_mensual !== null && crecimiento_mensual !== undefined) {
+    const pos   = crecimiento_mensual >= 0;
+    const arrow = pos ? '↑' : '↓';
+    const col   = pos ? '#1aaa6b' : '#e03c3c';
+    crecEl.innerHTML = `<span style="color:${col};font-weight:700;">${arrow} ${Math.abs(crecimiento_mensual).toFixed(1)}%</span>`
+                     + `<span style="color:var(--text-muted);font-weight:400;"> vs mes ant.</span>`;
+  } else {
+    crecEl.innerHTML = '<span style="color:var(--text-muted);">Sin período anterior</span>';
+  }
+
+  // ── KPI 2: YTD ─────────────────────────────────────────────
+  document.getElementById('dash-ytd-monto').textContent = fmtS(ytd.monto);
+  document.getElementById('dash-ytd-cant').textContent  = (ytd.cantidad||0) + ' facturas en el año';
+
+  // ── KPI 3: Clientes únicos ─────────────────────────────────
+  document.getElementById('dash-clientes').textContent = totales.clientes_unicos || 0;
+
+  // ── KPI 4: Ticket promedio + máximo ────────────────────────
+  document.getElementById('dash-promedio').textContent  = fmtS(totales.promedio);
+  document.getElementById('dash-max-fact').textContent  = 'Máx: ' + fmtS(totales.max_factura);
+
+  // ── KPI 5: Tasa SUNAT ──────────────────────────────────────
+  const ac   = parseInt(totales.sunat_aceptadas)  || 0;
+  const re   = parseInt(totales.sunat_rechazadas) || 0;
+  const tasa = (ac + re) > 0 ? ((ac / (ac + re)) * 100).toFixed(1) + '%' : '100%';
+  document.getElementById('dash-tasa-sunat').textContent  = tasa;
+  document.getElementById('dash-sunat-detail').textContent = `${ac} aceptadas · ${re} rechazadas`;
+
+  // ── KPI 6: Pendientes SUNAT ────────────────────────────────
+  const pend = parseInt(totales.pendientes_sunat) || 0;
+  document.getElementById('dash-pendientes').textContent = pend;
+  if (pend > 0) {
+    document.getElementById('dash-pendientes-card').style.outline = '2px solid rgba(224,60,60,.35)';
+  }
+
+  // ── CHART 1: Línea tendencia 12 meses ──────────────────────
+  const labels   = mensual.map(m => {
     const [y, mo] = m.mes.split('-');
-    return ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'][parseInt(mo)-1] + ' ' + y.slice(2);
+    return MESES[parseInt(mo)-1] + " '" + y.slice(2);
   });
-  const montos = mensual.map(m => m.monto);
+  const montos     = mensual.map(m => m.monto);
+  const cantidades = mensual.map(m => m.cantidad);
+  const totalChart = montos.reduce((a,b) => a+b, 0);
+
+  document.getElementById('dash-chart-total-label').textContent =
+    '12 meses: S/ ' + totalChart.toLocaleString('es-PE',{minimumFractionDigits:2,maximumFractionDigits:2});
+
   if (_chartMensual) _chartMensual.destroy();
-  _chartMensual = new Chart(document.getElementById('chartMensual'), {
-    type: 'bar',
+  const ctxM = document.getElementById('chartMensual');
+  const grad = ctxM.getContext('2d').createLinearGradient(0, 0, 0, 260);
+  grad.addColorStop(0, 'rgba(26,127,216,.30)');
+  grad.addColorStop(1, 'rgba(26,127,216,.01)');
+  _chartMensual = new Chart(ctxM, {
+    type: 'line',
     data: {
       labels,
-      datasets: [{
-        label: 'Facturado (S/)', data: montos,
-        backgroundColor: 'rgba(26,60,110,.75)',
-        borderColor: '#1a3c6e', borderWidth: 2, borderRadius: 6,
-      }]
+      datasets: [
+        {
+          label: 'Facturado (S/)',
+          data: montos,
+          borderColor: '#1a7fd8',
+          backgroundColor: grad,
+          borderWidth: 2.5,
+          fill: true,
+          tension: 0.42,
+          pointBackgroundColor: '#1a7fd8',
+          pointRadius: 4,
+          pointHoverRadius: 7,
+          yAxisID: 'y',
+        },
+        {
+          label: 'Nº Comprobantes',
+          data: cantidades,
+          borderColor: '#e8a020',
+          backgroundColor: 'transparent',
+          borderWidth: 1.8,
+          borderDash: [5,3],
+          pointRadius: 3,
+          tension: 0.42,
+          yAxisID: 'y2',
+        }
+      ]
     },
     options: {
-      responsive: true, plugins: { legend: { display: false } },
-      scales: { y: { beginAtZero: true, ticks: { callback: v => 'S/' + v.toLocaleString('es-PE') } } }
+      responsive: true,
+      interaction: { mode:'index', intersect:false },
+      plugins: {
+        legend: { display:true, position:'top', labels:{ boxWidth:11, font:{size:11} } },
+        tooltip: {
+          callbacks: {
+            label: ctx => ctx.datasetIndex === 0
+              ? ' S/ ' + ctx.parsed.y.toLocaleString('es-PE',{minimumFractionDigits:2})
+              : ' ' + ctx.parsed.y + ' docs'
+          }
+        }
+      },
+      scales: {
+        y:  {
+          beginAtZero:true,
+          grid:{ color:'rgba(0,0,0,.05)' },
+          ticks:{ callback: v => v>=1000 ? 'S/'+Math.round(v/1000)+'k' : 'S/'+v, font:{size:10} }
+        },
+        y2: {
+          beginAtZero:true, position:'right',
+          grid:{ display:false },
+          ticks:{ stepSize:1, font:{size:10} }
+        }
+      }
     }
   });
 
-  // Donut chart — estados
-  if (_chartEstados) _chartEstados.destroy();
-  _chartEstados = new Chart(document.getElementById('chartEstados'), {
-    type: 'doughnut',
-    data: {
-      labels: ['Emitidas', 'Borradores', 'Anuladas'],
-      datasets: [{
-        data: [totales.emitidas || 0, totales.borradores || 0, totales.anuladas || 0],
-        backgroundColor: ['#1aaa6b','#e8a020','#e03c3c'],
-        borderWidth: 0,
-      }]
-    },
-    options: {
-      responsive: true, cutout: '65%',
-      plugins: { legend: { position: 'bottom', labels: { padding: 16, font: { size: 12 } } } }
-    }
-  });
+  // ── CHART 2: Donut por tipo de comprobante ─────────────────
+  const TIPO_COLORS = {
+    'FACTURA':            '#1a3c6e',
+    'BOLETA':             '#1a7fd8',
+    'NOTA_CREDITO':       '#e8a020',
+    'NOTA_DEBITO':        '#e03c3c',
+    'LIQUIDACION_COMPRA': '#6a4fcf',
+    'PROFORMA':           '#1aaa6b',
+    'COTIZACION':         '#0d7c4f',
+    'NOTA_PEDIDO':        '#9b72f5',
+    'ORDEN_COMPRA':       '#c47b00',
+    'GUIA_REMISION':      '#4fa8d8',
+  };
+  const tipoLabels = por_tipo.map(t => t.tipo.replace(/_/g,' '));
+  const tipoMontos = por_tipo.map(t => t.monto);
+  const tipoColsArr= por_tipo.map(t => TIPO_COLORS[t.tipo] || '#aaa');
 
-  // Top clientes
-  const tbody = document.getElementById('dashTopClientes');
-  if (!top_clientes.length) {
-    tbody.innerHTML = '<tr><td colspan="5" class="text-center" style="padding:30px;color:var(--text-muted);">Sin datos de facturas emitidas aún</td></tr>';
-    return;
+  if (_chartTipos) _chartTipos.destroy();
+  if (por_tipo.length) {
+    _chartTipos = new Chart(document.getElementById('chartTipos'), {
+      type: 'doughnut',
+      data: {
+        labels: tipoLabels,
+        datasets: [{
+          data: tipoMontos,
+          backgroundColor: tipoColsArr,
+          borderWidth: 2,
+          borderColor: 'transparent',
+          hoverBorderWidth: 3,
+        }]
+      },
+      options: {
+        responsive: true, cutout: '62%',
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: ctx => {
+                const tot2 = ctx.dataset.data.reduce((a,b)=>a+b,0);
+                const pct  = tot2 > 0 ? ((ctx.parsed/tot2)*100).toFixed(1) : 0;
+                return ` S/ ${ctx.parsed.toLocaleString('es-PE',{minimumFractionDigits:2})} (${pct}%)`;
+              }
+            }
+          }
+        }
+      }
+    });
+    // Custom legend
+    const totalTipo = tipoMontos.reduce((a,b)=>a+b,0);
+    document.getElementById('dashTiposLegend').innerHTML = por_tipo.map((t,i) => {
+      const pct = totalTipo > 0 ? ((t.monto/totalTipo)*100).toFixed(1) : 0;
+      return `<div style="display:flex;align-items:center;gap:7px;font-size:10.5px;">
+        <span style="width:9px;height:9px;border-radius:50%;background:${tipoColsArr[i]};flex-shrink:0;"></span>
+        <span style="flex:1;color:var(--text);">${t.tipo.replace(/_/g,' ')}</span>
+        <span style="font-weight:700;color:var(--primary);">${pct}%</span>
+        <span style="color:var(--text-muted);">(${t.cantidad})</span>
+      </div>`;
+    }).join('');
+  } else {
+    document.getElementById('dashTiposLegend').innerHTML =
+      '<p style="font-size:11px;color:var(--text-muted);text-align:center;">Sin datos</p>';
   }
-  tbody.innerHTML = top_clientes.map((c, i) => `
-    <tr>
-      <td><span style="font-weight:700;color:var(--primary)">#${i+1}</span></td>
-      <td>${c.cliente || '—'}</td>
-      <td class="mono" style="font-size:11px">${c.ruc || '—'}</td>
-      <td class="text-right">${c.facturas}</td>
-      <td class="text-right font-bold">S/ ${c.monto.toLocaleString('es-PE', {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
-    </tr>`).join('');
+
+  // ── CHART 3: Barras horizontales top clientes ──────────────
+  if (_chartTopClientes) _chartTopClientes.destroy();
+  if (top_clientes.length) {
+    const BAR_COLS = ['#1a3c6e','#1a7fd8','#1aaa6b','#6a4fcf','#e8a020','#e03c3c','#4fa8d8','#9b72f5'];
+    const clienteLabels = top_clientes.map(c => {
+      const name = c.cliente || c.ruc || '—';
+      return name.length > 24 ? name.slice(0,22)+'…' : name;
+    });
+    const clienteMontos = top_clientes.map(c => c.monto);
+    const barCols       = BAR_COLS.slice(0, top_clientes.length);
+
+    _chartTopClientes = new Chart(document.getElementById('chartTopClientes'), {
+      type: 'bar',
+      data: {
+        labels: clienteLabels,
+        datasets: [{
+          label: 'Total S/',
+          data: clienteMontos,
+          backgroundColor: barCols.map(c => c + 'CC'),
+          borderColor: barCols,
+          borderWidth: 1.5,
+          borderRadius: 4,
+        }]
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        plugins: {
+          legend: { display:false },
+          tooltip: {
+            callbacks: {
+              label: ctx => ' S/ ' + ctx.parsed.x.toLocaleString('es-PE',{minimumFractionDigits:2})
+            }
+          }
+        },
+        scales: {
+          x: {
+            beginAtZero:true,
+            grid: { color:'rgba(0,0,0,.05)' },
+            ticks: { callback: v => v>=1000 ? 'S/'+Math.round(v/1000)+'k':'S/'+v, font:{size:10} }
+          },
+          y: { grid:{ display:false }, ticks:{ font:{size:10.5} } }
+        }
+      }
+    });
+  }
+
+  // ── Comparativo mensual ────────────────────────────────────
+  document.getElementById('comp-mes-act-monto').textContent = fmtS(mes_actual.monto);
+  document.getElementById('comp-mes-act-cant').textContent  = `${mes_actual.cantidad||0} facturas`;
+  document.getElementById('comp-mes-ant-monto').textContent = fmtS(mes_anterior.monto);
+  document.getElementById('comp-mes-ant-cant').textContent  = `${mes_anterior.cantidad||0} facturas`;
+
+  const maxComp = Math.max(mes_actual.monto, mes_anterior.monto, 1);
+  const pct1 = Math.round((mes_actual.monto  / maxComp) * 100);
+  const pct2 = Math.round((mes_anterior.monto / maxComp) * 100);
+  document.getElementById('comp-crec-bar').innerHTML = `
+    <div style="font-size:9.5px;color:var(--text-muted);margin-bottom:7px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;">Comparativa visual</div>
+    <div style="margin-bottom:8px;">
+      <div style="display:flex;justify-content:space-between;font-size:10px;margin-bottom:3px;">
+        <span style="color:#1aaa6b;font-weight:700;">Este mes</span>
+        <span style="font-weight:600;">${pct1}%</span>
+      </div>
+      <div style="height:7px;background:var(--surface2);border-radius:4px;overflow:hidden;">
+        <div style="height:100%;width:${pct1}%;background:linear-gradient(90deg,#1aaa6b,#0d7c4f);border-radius:4px;transition:width 1.2s ease;"></div>
+      </div>
+    </div>
+    <div>
+      <div style="display:flex;justify-content:space-between;font-size:10px;margin-bottom:3px;">
+        <span style="color:var(--text-muted);font-weight:700;">Mes anterior</span>
+        <span style="font-weight:600;">${pct2}%</span>
+      </div>
+      <div style="height:7px;background:var(--surface2);border-radius:4px;overflow:hidden;">
+        <div style="height:100%;width:${pct2}%;background:linear-gradient(90deg,var(--border),var(--text-muted));border-radius:4px;transition:width 1.2s ease;"></div>
+      </div>
+    </div>`;
+
+  // ── YTD resumen ───────────────────────────────────────────
+  document.getElementById('ytd-pen').textContent      = 'S/ ' + fmtN(totales.monto_pen);
+  document.getElementById('ytd-usd').textContent      = '$ '  + fmtN(totales.monto_usd);
+  document.getElementById('ytd-total-docs').textContent = totales.total     || 0;
+  document.getElementById('ytd-emitidas').textContent   = totales.emitidas  || 0;
+  document.getElementById('ytd-sunat-ac').textContent   = totales.sunat_aceptadas || 0;
+
+  // ── Últimas SUNAT aceptadas ───────────────────────────────
+  const tbody2 = document.getElementById('dashUltimasSunat');
+  if (!ultimas_sunat || !ultimas_sunat.length) {
+    tbody2.innerHTML = `<tr><td colspan="6" class="text-center" style="padding:32px;color:var(--text-muted);">
+      <i class="fa-solid fa-satellite-dish" style="font-size:28px;opacity:.25;display:block;margin-bottom:8px;"></i>
+      Aún no hay comprobantes aceptados por SUNAT</td></tr>`;
+  } else {
+    tbody2.innerHTML = ultimas_sunat.map(u => `
+      <tr>
+        <td class="mono font-bold" style="font-size:12px;">${u.serie}-${u.correlativo}</td>
+        <td>${badgeDocTipo(u.tipo)}</td>
+        <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;">${u.cliente || '—'}</td>
+        <td class="text-right font-bold">S/ ${(u.total||0).toLocaleString('es-PE',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
+        <td style="font-size:11px;">${fmtDate(u.fecha)}</td>
+        <td>${u.pdf
+          ? `<a href="${u.pdf}" target="_blank" class="btn btn-ghost btn-sm btn-icon text-danger" title="PDF SUNAT"><i class="fa-solid fa-file-pdf"></i></a>`
+          : '<span style="color:var(--text-muted);font-size:11px;">—</span>'}</td>
+      </tr>`).join('');
+  }
 }
 
 // ── PERSONALIZACIÓN ──────────────────────────────────────────

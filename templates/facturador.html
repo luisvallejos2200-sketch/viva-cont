@@ -199,7 +199,7 @@
       <div class="form-row form-row-3" style="margin-bottom:8px;">
         <div class="form-group">
           <label class="form-label">Tipo Comprobante</label>
-          <select class="form-control" id="fTipo">
+          <select class="form-control" id="fTipo" onchange="document.getElementById('fSerie').value=serieDefault(this.value)">
             <option value="FACTURA">FACTURA</option>
             <option value="BOLETA">BOLETA DE VENTA</option>
             <option value="NOTA_CREDITO">NOTA DE CRÉDITO</option>
@@ -553,14 +553,32 @@ async function loadFacturas(page = 1) {
 }
 
 // ── NUEVA FACTURA ────────────────────────────────────────────
+// Devuelve la serie correcta según modo y tipo
+function serieDefault(tipo) {
+  const demo = (empresaData.nubefact_modo || 'demo') === 'demo';
+  if (demo) {
+    // Nubefact series pre-configuradas para pruebas
+    if (tipo === 'BOLETA')       return 'BB11';
+    if (tipo === 'NOTA_CREDITO') return 'FF11';  // NC sobre factura
+    if (tipo === 'NOTA_DEBITO')  return 'FF11';  // ND sobre factura
+    return 'FF11';  // FACTURA
+  }
+  // Producción — series reales
+  if (tipo === 'BOLETA')       return 'B001';
+  if (tipo === 'NOTA_CREDITO') return 'FC01';
+  if (tipo === 'NOTA_DEBITO')  return 'FD01';
+  return 'F001';
+}
+
 function openNuevaFactura() {
   editingFacturaId = null;
   document.getElementById('facturaModalTitle').innerHTML =
     '<i class="fa-solid fa-file-invoice-dollar"></i> Nueva Factura';
   document.getElementById('facturaId').value = '';
-  document.getElementById('fSerie').value         = 'F001';
+  const tipo = 'FACTURA';
+  document.getElementById('fTipo').value          = tipo;
+  document.getElementById('fSerie').value         = serieDefault(tipo);
   document.getElementById('fCorrelativo').value   = '';
-  document.getElementById('fTipo').value          = 'FACTURA';
   document.getElementById('fFechaEmision').value  = new Date().toISOString().slice(0,10);
   document.getElementById('fFechaVenc').value     = '';
   document.getElementById('fMoneda').value        = 'PEN';
@@ -572,6 +590,11 @@ function openNuevaFactura() {
   itemCounter = 0;
   addItem();
   recalcTotals();
+  // Mostrar badge demo
+  const demo = (empresaData.nubefact_modo || 'demo') === 'demo';
+  document.getElementById('facturaModalTitle').innerHTML =
+    `<i class="fa-solid fa-file-invoice-dollar"></i> Nueva Factura
+     ${demo ? '<span style="font-size:11px;background:#e8a020;color:#fff;padding:2px 8px;border-radius:10px;margin-left:8px;font-weight:600;">DEMO</span>' : ''}`;
   document.getElementById('facturaModal').style.display = 'flex';
 }
 

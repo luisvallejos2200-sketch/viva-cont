@@ -435,7 +435,8 @@
         </thead>
         <tbody id="dashUltimasSunat">
           <tr><td colspan="6" class="text-center" style="padding:30px;color:var(--text-muted);">
-            <span class="spinner"></span> Cargando...
+            <i class="fa-solid fa-satellite-dish" style="font-size:28px;opacity:.2;display:block;margin-bottom:8px;"></i>
+            Aún no hay comprobantes aceptados por SUNAT
           </td></tr>
         </tbody>
       </table>
@@ -1279,6 +1280,7 @@ async function loadDashboard() {
 
   const MESES = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
   const fmtS  = (n, sym='S/ ') => sym + (parseFloat(n)||0).toLocaleString('es-PE',{minimumFractionDigits:2,maximumFractionDigits:2});
+  const fmtN  = n => (parseFloat(n)||0).toLocaleString('es-PE',{minimumFractionDigits:2,maximumFractionDigits:2});
 
   // ── KPI 1: Este mes + crecimiento (ANIMADO) ────────────────
   countUp('dash-mes-monto', parseFloat(mes_actual.monto)||0);

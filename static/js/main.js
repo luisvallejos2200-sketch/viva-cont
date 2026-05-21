@@ -360,7 +360,7 @@ function setLoading(btnId, loading, text = '') {
     npStart();
     try {
       const html = await fetchPage(url);
-      const { content, title, breadcrumb, scripts } = parsePage(html);
+      const { content, title, breadcrumb, scripts, headStyles } = parsePage(html);
 
       destroyCharts();
 

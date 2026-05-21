@@ -114,13 +114,6 @@
       <span class="nav-icon"><i class="fa-solid fa-users"></i></span>
       <span class="nav-label">Usuarios</span>
     </a>
-    {% endif %}
-
-    {% if rol in ('super_admin','admin') %}
-    <a href="/usuarios" class="nav-item {% if request.path == '/usuarios' %}active{% endif %}">
-      <span class="nav-icon"><i class="fa-solid fa-users"></i></span>
-      <span class="nav-label">Usuarios</span>
-    </a>
     <a href="/configuracion" class="nav-item {% if request.path == '/configuracion' %}active{% endif %}">
       <span class="nav-icon"><i class="fa-solid fa-gear"></i></span>
       <span class="nav-label">Configuración</span>

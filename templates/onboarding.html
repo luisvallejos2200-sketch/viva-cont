@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Configuración inicial — VIVA CONT</title>
+  <link rel="stylesheet" href="/static/css/style.css?v={{ sv }}"/>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
+  <style>
+    body { background: var(--bg); display:flex; align-items:center; justify-content:center;
+           min-height:100vh; padding:24px; }
+    .ob-shell { width:100%; max-width:680px; }
+    .ob-header { text-align:center; margin-bottom:32px; }
+    .ob-logo { font-size:32px; font-weight:900; color:var(--primary); letter-spacing:-1px; }
+    .ob-logo span { color:var(--accent); }
+    .ob-subtitle { color:var(--text-muted); font-size:14px; margin-top:6px; }
+
+    /* Steps indicator */
+    .ob-steps { display:flex; align-items:center; justify-content:center;
+                gap:0; margin-bottom:32px; }
+    .ob-step  { display:flex; flex-direction:column; align-items:center; gap:6px; flex:1; }
+    .ob-step-circle { width:36px; height:36px; border-radius:50%; border:2px solid var(--border);
+                      display:flex; align-items:center; justify-content:center;
+                      font-size:14px; font-weight:700; color:var(--text-muted);
+                      background:var(--card); transition:all .3s; }
+    .ob-step.done .ob-step-circle  { background:var(--success); border-color:var(--success); color:#fff; }
+    .ob-step.active .ob-step-circle{ background:var(--primary); border-color:var(--primary); color:#fff; }
+    .ob-step-label { font-size:10px; font-weight:700; text-transform:uppercase;
+                     letter-spacing:.5px; color:var(--text-muted); }
+    .ob-step.active .ob-step-label { color:var(--primary); }
+    .ob-step.done  .ob-step-label  { color:var(--success); }
+    .ob-connector  { flex:1; height:2px; background:var(--border); margin-bottom:22px; transition:background .3s; }
+    .ob-connector.done { background:var(--success); }
+
+    /* Cards */
+    .ob-card { background:var(--card); border-radius:16px; padding:32px;
+               box-shadow:0 4px 24px rgba(0,0,0,.08); }
+    .ob-card-title { font-size:20px; font-weight:800; color:var(--primary);
+                     margin-bottom:6px; display:flex; align-items:center; gap:10px; }
+    .ob-card-desc  { color:var(--text-muted); font-size:13px; margin-bottom:24px; line-height:1.6; }
+    .ob-actions { display:flex; gap:12px; justify-content:flex-end; margin-top:28px; }
+
+    /* Progress bar top */
+    .ob-progress { height:4px; background:var(--border); border-radius:2px; margin-bottom:28px; overflow:hidden; }
+    .ob-progress-fill { height:100%; background:linear-gradient(90deg,var(--accent),var(--primary));
+                        border-radius:2px; transition:width .4s ease; }
+
+    /* Step panes */
+    .ob-pane { display:none; }
+    .ob-pane.active { display:block; }
+
+    /* Success step */
+    .ob-success { text-align:center; padding:20px 0; }
+    .ob-success-icon { font-size:64px; color:var(--success); margin-bottom:16px; animation:popIn .4s ease; }
+    @keyframes popIn { from{transform:scale(0)}to{transform:scale(1)} }
+    .ob-success h2 { font-size:24px; font-weight:800; color:var(--primary); margin-bottom:8px; }
+    .ob-success p  { color:var(--text-muted); font-size:14px; line-height:1.6; }
+
+    .ob-info-box { background:rgba(26,127,216,.07); border:1px solid rgba(26,127,216,.2);
+                   border-radius:10px; padding:12px 16px; margin-bottom:16px; font-size:12px;
+                   color:var(--text-muted); line-height:1.6; }
+    .ob-info-box strong { color:var(--primary); }
+  </style>
+</head>
+<body>
+<div class="ob-shell">
+  <div class="ob-header">
+    <div class="ob-logo">VIVA <span>CONT</span></div>
+    <div class="ob-subtitle">Configuración inicial del sistema · Tarda menos de 3 minutos</div>
+  </div>
+
+  <!-- Progress bar -->
+  <div class="ob-progress">
+    <div class="ob-progress-fill" id="obProgress" style="width:0%"></div>
+  </div>
+
+  <!-- Steps indicator -->
+  <div class="ob-steps">
+    <div class="ob-step active" id="step-ind-1">
+      <div class="ob-step-circle" id="step-circle-1">1</div>
+      <div class="ob-step-label">Empresa</div>
+    </div>
+    <div class="ob-connector" id="conn-1"></div>
+    <div class="ob-step" id="step-ind-2">
+      <div class="ob-step-circle" id="step-circle-2">2</div>
+      <div class="ob-step-label">Nubefact</div>
+    </div>
+    <div class="ob-connector" id="conn-2"></div>
+    <div class="ob-step" id="step-ind-3">
+      <div class="ob-step-circle" id="step-circle-3">3</div>
+      <div class="ob-step-label">Series</div>
+    </div>
+    <div class="ob-connector" id="conn-3"></div>
+    <div class="ob-step" id="step-ind-4">
+      <div class="ob-step-circle" id="step-circle-4"><i class="fa-solid fa-check" style="font-size:13px;"></i></div>
+      <div class="ob-step-label">¡Listo!</div>
+    </div>
+  </div>
+
+  <div class="ob-card">
+
+    <!-- PASO 1: Datos de la empresa -->
+    <div class="ob-pane active" id="pane-1">
+      <div class="ob-card-title"><i class="fa-solid fa-building" style="color:var(--accent);"></i> Datos de tu empresa</div>
+      <div class="ob-card-desc">Esta información aparecerá en todas tus facturas y boletas electrónicas.</div>
+      <div class="form-row form-row-2">
+        <div class="form-group">
+          <label class="form-label">RUC <span style="color:#e03c3c;">*</span></label>
+          <input type="text" class="form-control" id="ob_ruc" maxlength="11" placeholder="20600000000"
+                 oninput="this.value=this.value.replace(/\D/g,'')"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Régimen Tributario</label>
+          <select class="form-control" id="ob_regimen">
+            <option value="GENERAL">Régimen General</option>
+            <option value="MYPE">Régimen MYPE Tributario</option>
+            <option value="ESPECIAL">Régimen Especial de Renta</option>
+            <option value="NRUS">Nuevo RUS</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Razón Social <span style="color:#e03c3c;">*</span></label>
+        <input type="text" class="form-control" id="ob_razon_social" placeholder="CORPORACIÓN EJEMPLO S.A.C."/>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Nombre Comercial</label>
+        <input type="text" class="form-control" id="ob_nombre_comercial" placeholder="Nombre que aparece en facturas"/>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Dirección fiscal</label>
+        <input type="text" class="form-control" id="ob_direccion" placeholder="Av. Ejemplo 123, Lima"/>
+      </div>
+      <div class="form-row form-row-2">
+        <div class="form-group">
+          <label class="form-label">Teléfono</label>
+          <input type="text" class="form-control" id="ob_telefono" placeholder="+51 999 999 999"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Email</label>
+          <input type="email" class="form-control" id="ob_email" placeholder="facturacion@empresa.com"/>
+        </div>
+      </div>
+      <div class="ob-actions">
+        <button class="btn btn-primary" onclick="paso1Siguiente()">
+          Siguiente <i class="fa-solid fa-arrow-right"></i>
+        </button>
+      </div>
+    </div>
+
+    <!-- PASO 2: Nubefact -->
+    <div class="ob-pane" id="pane-2">
+      <div class="ob-card-title"><i class="fa-solid fa-satellite-dish" style="color:#1a7fd8;"></i> Integración SUNAT — Nubefact</div>
+      <div class="ob-card-desc">Conecta con Nubefact OSE para emitir facturas electrónicas válidas ante SUNAT.</div>
+
+      <div class="ob-info-box">
+        <strong>¿Cómo obtener tu token?</strong><br/>
+        1. Entra a <strong>nubefact.com</strong> → Mi cuenta → Token de acceso<br/>
+        2. Copia también la <strong>RUTA (URL)</strong> desde Configuración → API Integración<br/>
+        3. Pégalos abajo. Puedes empezar en modo <strong>Demo</strong> para hacer pruebas.
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">RUTA (URL de integración)</label>
+        <input type="text" class="form-control" id="ob_ruta"
+               placeholder="https://api.nubefact.com/api/v1/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"/>
+      </div>
+      <div class="form-row form-row-2">
+        <div class="form-group">
+          <label class="form-label">Token Nubefact</label>
+          <input type="password" class="form-control" id="ob_token" placeholder="Tu token de Nubefact"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Modo</label>
+          <select class="form-control" id="ob_modo">
+            <option value="demo">Demo (pruebas — sin costo)</option>
+            <option value="produccion">Producción (SUNAT real)</option>
+          </select>
+        </div>
+      </div>
+      <div class="ob-actions">
+        <button class="btn btn-outline" onclick="irPaso(1)">
+          <i class="fa-solid fa-arrow-left"></i> Atrás
+        </button>
+        <button class="btn btn-outline" onclick="saltarNubefact()" style="color:var(--text-muted);">
+          Configurar después
+        </button>
+        <button class="btn btn-primary" onclick="paso2Siguiente()">
+          Siguiente <i class="fa-solid fa-arrow-right"></i>
+        </button>
+      </div>
+    </div>
+
+    <!-- PASO 3: Series -->
+    <div class="ob-pane" id="pane-3">
+      <div class="ob-card-title"><i class="fa-solid fa-hashtag" style="color:var(--accent);"></i> Series de comprobantes</div>
+      <div class="ob-card-desc">Usa las mismas series que tienes registradas en Nubefact → Series de Comprobantes. En modo Demo, usa las series de prueba.</div>
+
+      <div class="ob-info-box">
+        <strong>Series más comunes:</strong> Factura <code>F001</code> · Boleta <code>B001</code> · Nota Crédito <code>FC01</code>
+      </div>
+
+      <div class="form-row form-row-2">
+        <div class="form-group">
+          <label class="form-label">Serie Factura</label>
+          <input type="text" class="form-control mono" id="ob_serie_f" maxlength="4" placeholder="F001" value="F001"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Serie Boleta</label>
+          <input type="text" class="form-control mono" id="ob_serie_b" maxlength="4" placeholder="B001" value="B001"/>
+        </div>
+      </div>
+      <div class="form-row form-row-3">
+        <div class="form-group">
+          <label class="form-label">Serie Nota Crédito</label>
+          <input type="text" class="form-control mono" id="ob_serie_nc" maxlength="4" placeholder="FC01" value="FC01"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Serie Nota Débito</label>
+          <input type="text" class="form-control mono" id="ob_serie_nd" maxlength="4" placeholder="FD01" value="FD01"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Serie Liquidación</label>
+          <input type="text" class="form-control mono" id="ob_serie_lc" maxlength="4" placeholder="LC01" value="LC01"/>
+        </div>
+      </div>
+      <div class="ob-actions">
+        <button class="btn btn-outline" onclick="irPaso(2)">
+          <i class="fa-solid fa-arrow-left"></i> Atrás
+        </button>
+        <button class="btn btn-primary" onclick="paso3Guardar()">
+          <i class="fa-solid fa-floppy-disk"></i> Guardar y finalizar
+        </button>
+      </div>
+    </div>
+
+    <!-- PASO 4: Éxito -->
+    <div class="ob-pane" id="pane-4">
+      <div class="ob-success">
+        <div class="ob-success-icon"><i class="fa-solid fa-circle-check"></i></div>
+        <h2>¡Todo listo, <span id="ob_nombre_bienvenida">bienvenido</span>!</h2>
+        <p>Tu sistema VIVA CONT está configurado y listo para emitir facturas electrónicas.<br/>
+           Puedes ajustar cualquier dato desde <strong>Configuración</strong> en el menú lateral.</p>
+        <div style="margin-top:28px;display:flex;gap:12px;justify-content:center;flex-wrap:wrap;">
+          <a href="/facturador" class="btn btn-primary" style="min-width:200px;">
+            <i class="fa-solid fa-file-invoice"></i> Ir al Facturador
+          </a>
+          <a href="/" class="btn btn-outline" style="min-width:160px;">
+            <i class="fa-solid fa-house"></i> Ver Dashboard
+          </a>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- ob-card -->
+</div><!-- ob-shell -->
+
+<div class="toast-container" id="toastContainer"></div>
+
+<script src="/static/js/main.js?v={{ sv }}"></script>
+<script>
+let _currentStep = 1;
+const TOTAL_STEPS = 4;
+
+function irPaso(n) {
+  document.querySelectorAll('.ob-pane').forEach(p => p.classList.remove('active'));
+  document.getElementById(`pane-${n}`).classList.add('active');
+
+  for (let i = 1; i <= TOTAL_STEPS; i++) {
+    const ind = document.getElementById(`step-ind-${i}`);
+    ind.classList.remove('active','done');
+    if (i < n)       ind.classList.add('done');
+    else if (i === n) ind.classList.add('active');
+    if (i < TOTAL_STEPS) {
+      const conn = document.getElementById(`conn-${i}`);
+      conn.classList.toggle('done', i < n);
+    }
+    if (i < n) {
+      document.getElementById(`step-circle-${i}`).innerHTML =
+        '<i class="fa-solid fa-check" style="font-size:12px;"></i>';
+    } else if (i > 1 && i >= n) {
+      const orig = document.getElementById(`step-circle-${i}`);
+      if (!orig.querySelector('i')) orig.textContent = i;
+    }
+  }
+
+  const pct = ((n - 1) / (TOTAL_STEPS - 1)) * 100;
+  document.getElementById('obProgress').style.width = pct + '%';
+  _currentStep = n;
+}
+
+function paso1Siguiente() {
+  const ruc = document.getElementById('ob_ruc').value.trim();
+  const rs  = document.getElementById('ob_razon_social').value.trim();
+  if (!ruc || ruc.length !== 11) {
+    showToast('warning','RUC inválido','El RUC debe tener 11 dígitos'); return;
+  }
+  if (!rs) {
+    showToast('warning','Campo requerido','Ingresa la Razón Social'); return;
+  }
+  irPaso(2);
+}
+
+function saltarNubefact() { irPaso(3); }
+
+function paso2Siguiente() { irPaso(3); }
+
+async function paso3Guardar() {
+  const payload = {
+    ruc:              document.getElementById('ob_ruc').value.trim(),
+    razon_social:     document.getElementById('ob_razon_social').value.trim(),
+    nombre_comercial: document.getElementById('ob_nombre_comercial').value.trim(),
+    direccion:        document.getElementById('ob_direccion').value.trim(),
+    telefono:         document.getElementById('ob_telefono').value.trim(),
+    email:            document.getElementById('ob_email').value.trim(),
+    regimen:          document.getElementById('ob_regimen').value,
+    nubefact_token:   document.getElementById('ob_token').value.trim(),
+    nubefact_modo:    document.getElementById('ob_modo').value,
+    nubefact_ruta:    document.getElementById('ob_ruta').value.trim(),
+    serie_factura:    document.getElementById('ob_serie_f').value.trim().toUpperCase() || 'F001',
+    serie_boleta:     document.getElementById('ob_serie_b').value.trim().toUpperCase()  || 'B001',
+    serie_nc:         document.getElementById('ob_serie_nc').value.trim().toUpperCase() || 'FC01',
+    serie_nd:         document.getElementById('ob_serie_nd').value.trim().toUpperCase() || 'FD01',
+    serie_lc:         document.getElementById('ob_serie_lc').value.trim().toUpperCase() || 'LC01',
+  };
+
+  const btn = event.currentTarget;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Guardando…';
+
+  try {
+    const res = await fetch('/api/empresa', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }).then(r => r.json());
+
+    if (res && !res.error) {
+      document.getElementById('ob_nombre_bienvenida').textContent =
+        payload.nombre_comercial || payload.razon_social;
+      irPaso(4);
+    } else {
+      showToast('error','Error al guardar', res?.error || 'Inténtalo de nuevo');
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fa-solid fa-floppy-disk"></i> Guardar y finalizar';
+    }
+  } catch(e) {
+    showToast('error','Error de red', e.message);
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fa-solid fa-floppy-disk"></i> Guardar y finalizar';
+  }
+}
+
+// Inicializar paso 1
+irPaso(1);
+</script>
+</body>
+</html>

@@ -666,7 +666,20 @@ def api_delete_usuario(uid):
 @app.route("/")
 @login_required
 def dashboard():
+    # Primer login: redirigir al onboarding si la empresa no tiene RUC
+    conn = get_connection()
+    emp  = row_to_dict(conn.execute(
+        "SELECT ruc FROM empresa WHERE cliente_id=?", (cid(),)
+    ).fetchone()) or {}
+    conn.close()
+    if not (emp.get("ruc") or "").strip():
+        return redirect(url_for("onboarding"))
     return render_template("index.html")
+
+@app.route("/onboarding")
+@login_required
+def onboarding():
+    return render_template("onboarding.html")
 
 
 @app.route("/estados-cuenta")
@@ -679,6 +692,68 @@ def estados_cuenta():
 @login_required
 def facturador():
     return render_template("facturador.html")
+
+@app.route("/facturador/reporte")
+@login_required
+def facturador_reporte():
+    """Página de reporte mensual — optimizada para imprimir como PDF."""
+    from database import execute_batch
+    conn = get_connection()
+    c_id = cid()
+    try:
+        emp = row_to_dict(conn.execute(
+            "SELECT razon_social, ruc, logo_base64, direccion, email, telefono FROM empresa WHERE cliente_id=?",
+            (c_id,)
+        ).fetchone()) or {}
+
+        cur_tot, cur_men, cur_top, cur_tip = execute_batch(conn, [
+            ("""SELECT
+                COUNT(*) AS total,
+                COALESCE(SUM(CASE WHEN estado='EMITIDA' THEN 1 ELSE 0 END),0) AS emitidas,
+                COALESCE(SUM(CASE WHEN sunat_estado='ACEPTADA' THEN 1 ELSE 0 END),0) AS aceptadas,
+                COALESCE(SUM(CASE WHEN estado='EMITIDA' THEN total ELSE 0 END),0) AS monto_total,
+                COALESCE(SUM(CASE WHEN estado='EMITIDA' THEN igv ELSE 0 END),0) AS igv_total,
+                COALESCE(SUM(CASE WHEN estado='EMITIDA'
+                    AND strftime('%Y-%m',fecha_emision)=strftime('%Y-%m','now')
+                    THEN total ELSE 0 END),0) AS mes_monto,
+                COALESCE(SUM(CASE WHEN estado='EMITIDA'
+                    AND strftime('%Y-%m',fecha_emision)=strftime('%Y-%m','now')
+                    THEN 1 ELSE 0 END),0) AS mes_cantidad,
+                COALESCE(SUM(CASE WHEN estado='EMITIDA'
+                    AND strftime('%Y-%m',fecha_emision)=strftime('%Y-%m','now','-1 month')
+                    THEN total ELSE 0 END),0) AS mes_ant_monto,
+                COUNT(DISTINCT CASE WHEN estado='EMITIDA' THEN ruc_cliente ELSE NULL END) AS clientes
+               FROM facturas WHERE cliente_id=?""", (c_id,)),
+            ("""SELECT strftime('%Y-%m', fecha_emision) AS mes,
+                       COUNT(*) AS cantidad,
+                       COALESCE(SUM(total),0) AS monto
+                FROM facturas WHERE cliente_id=? AND estado='EMITIDA'
+                GROUP BY mes ORDER BY mes DESC LIMIT 12""", (c_id,)),
+            ("""SELECT razon_social_cliente AS cliente, ruc_cliente AS ruc,
+                       COUNT(*) AS facturas, COALESCE(SUM(total),0) AS monto
+                FROM facturas WHERE cliente_id=? AND estado='EMITIDA'
+                GROUP BY ruc_cliente ORDER BY monto DESC LIMIT 10""", (c_id,)),
+            ("""SELECT tipo_comprobante AS tipo, COUNT(*) AS cantidad,
+                       COALESCE(SUM(total),0) AS monto
+                FROM facturas WHERE cliente_id=? AND estado='EMITIDA'
+                GROUP BY tipo_comprobante ORDER BY monto DESC""", (c_id,)),
+        ])
+
+        totales  = row_to_dict(cur_tot.fetchone()) or {}
+        mensual  = [row_to_dict(r) for r in cur_men.fetchall()]
+        top_cli  = [row_to_dict(r) for r in cur_top.fetchall()]
+        por_tipo = [row_to_dict(r) for r in cur_tip.fetchall()]
+    finally:
+        conn.close()
+
+    from datetime import datetime
+    mes_actual = datetime.now().strftime("%B %Y").capitalize()
+    return render_template("reporte_pdf.html",
+        empresa=emp, totales=totales, mensual=mensual,
+        top_clientes=top_cli, por_tipo=por_tipo,
+        mes_actual=mes_actual,
+        generado_el=datetime.now().strftime("%d/%m/%Y %H:%M"),
+    )
 
 
 @app.route("/configuracion")
@@ -1605,6 +1680,7 @@ def _build_nubefact_payload(factura: dict, empresa: dict, items: list) -> dict:
         "table_detailed_daily":            False,
         "formato_de_pdf":                  "",
         "generado_por_contingencia":       False,
+        "logo":                            empresa.get("logo_base64") or "",
         "items":                           nf_items,
     }
 

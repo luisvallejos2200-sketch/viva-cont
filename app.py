@@ -1365,12 +1365,21 @@ def _nubefact_post(token: str, ruc: str, payload: dict) -> dict:
     )
     try:
         with urllib.request.urlopen(req, timeout=30) as r:
-            return json.loads(r.read())
+            raw = r.read()
+            if raw:
+                return json.loads(raw)
+            return {"aceptada_por_sunat": False, "errors": f"Nubefact HTTP {r.status} sin cuerpo"}
     except urllib.error.HTTPError as e:
-        try:
-            return json.loads(e.read())   # Nubefact puts error details in the body
-        except Exception:
-            raise
+        raw = e.read()
+        if raw:
+            try:
+                return json.loads(raw)
+            except Exception:
+                raise Exception(f"Nubefact HTTP {e.code} {e.reason}: {raw[:200]}")
+        raise Exception(
+            f"Nubefact HTTP {e.code} {e.reason} — "
+            f"Verifica que el token y el RUC ({ruc}) estén registrados en tu cuenta Nubefact"
+        )
 
 
 def _build_nubefact_payload(factura: dict, empresa: dict, items: list) -> dict:

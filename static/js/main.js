@@ -265,7 +265,8 @@ function setLoading(btnId, loading, text = '') {
   const _inflight = new Map();
   const NAV_PATHS = ['/', '/estados-cuenta', '/analisis-bancario',
                      '/estados-resultados', '/balance-general',
-                     '/facturador', '/configuracion', '/usuarios'];
+                     '/facturador', '/configuracion', '/usuarios',
+                     '/empresas', '/api/docs'];
 
   /* ── Progress bar ── */
   const _bar = document.createElement('div');

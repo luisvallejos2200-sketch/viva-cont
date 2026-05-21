@@ -571,6 +571,12 @@ def _do_init(conn):
     _migrate(conn, "ALTER TABLE empresa ADD COLUMN serie_nd TEXT DEFAULT 'FD01'")
     _migrate(conn, "ALTER TABLE empresa ADD COLUMN serie_lc TEXT DEFAULT 'LC01'")
 
+    # ── 2FA columns ───────────────────────────────────────
+    _migrate(conn, "ALTER TABLE usuarios ADD COLUMN totp_secret TEXT")
+    _migrate(conn, "ALTER TABLE usuarios ADD COLUMN totp_habilitado INTEGER DEFAULT 0")
+    _migrate(conn, "ALTER TABLE clientes ADD COLUMN plan TEXT DEFAULT 'basic'")
+    _migrate(conn, "ALTER TABLE clientes ADD COLUMN activo INTEGER DEFAULT 1")
+
     # ── CLIENTE RAÍZ: Viva Consulting (id=1) ──────────────
     c.execute("SELECT COUNT(*) FROM clientes WHERE id=1")
     if c.fetchone()[0] == 0:

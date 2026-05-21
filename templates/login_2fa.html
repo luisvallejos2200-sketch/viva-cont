@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Verificación 2FA — VIVA CONT</title>
+  <link rel="stylesheet" href="/static/css/style.css?v={{ sv }}"/>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
+  <style>
+    body { background:var(--bg); display:flex; align-items:center; justify-content:center; min-height:100vh; }
+    .tfa-card { background:var(--card); border-radius:18px; padding:44px 40px; width:100%; max-width:400px;
+                box-shadow:0 8px 40px rgba(0,0,0,.12); text-align:center; }
+    .tfa-icon { width:72px; height:72px; background:linear-gradient(135deg,#1a3c6e,#1a7fd8);
+                border-radius:50%; display:flex; align-items:center; justify-content:center;
+                margin:0 auto 20px; font-size:30px; color:#fff; }
+    .tfa-title { font-size:22px; font-weight:800; color:var(--primary); margin-bottom:8px; }
+    .tfa-desc  { color:var(--text-muted); font-size:13px; line-height:1.6; margin-bottom:28px; }
+    .tfa-input { text-align:center; font-size:28px; font-weight:800; letter-spacing:10px;
+                 font-family:monospace; padding:14px; border-radius:12px; }
+    .tfa-input:focus { border-color:var(--primary); box-shadow:0 0 0 3px rgba(26,60,110,.1); }
+    .tfa-btn { width:100%; margin-top:16px; padding:13px; font-size:15px; font-weight:700; }
+    .tfa-back { display:block; margin-top:16px; color:var(--text-muted); font-size:12px;
+                cursor:pointer; text-decoration:none; }
+    .tfa-back:hover { color:var(--primary); }
+    .tfa-error { background:#fdecea; color:#e03c3c; border-radius:8px; padding:10px 14px;
+                 font-size:12px; margin-top:12px; display:none; }
+  </style>
+</head>
+<body>
+<div class="tfa-card">
+  <div class="tfa-icon"><i class="fa-solid fa-shield-halved"></i></div>
+  <div class="tfa-title">Verificación en 2 pasos</div>
+  <div class="tfa-desc">
+    Ingresa el código de 6 dígitos de tu aplicación<br/>
+    <strong>Google Authenticator</strong> o <strong>Authy</strong>
+  </div>
+  <input type="text" class="form-control tfa-input" id="codigoTotp"
+         maxlength="6" inputmode="numeric" pattern="[0-9]*"
+         placeholder="000000" autocomplete="one-time-code" autofocus/>
+  <div class="tfa-error" id="tfaError"></div>
+  <button class="btn btn-primary tfa-btn" id="btnVerificar" onclick="verificar()">
+    <i class="fa-solid fa-shield-check"></i> Verificar
+  </button>
+  <a href="/logout" class="tfa-back">← Volver al inicio de sesión</a>
+</div>
+
+<div class="toast-container" id="toastContainer"></div>
+<script src="/static/js/main.js?v={{ sv }}"></script>
+<script>
+const input = document.getElementById('codigoTotp');
+const errorEl = document.getElementById('tfaError');
+const btn = document.getElementById('btnVerificar');
+
+// Auto-submit cuando se completan 6 dígitos
+input.addEventListener('input', () => {
+  input.value = input.value.replace(/\D/g, '').slice(0, 6);
+  if (input.value.length === 6) verificar();
+});
+
+input.addEventListener('keydown', e => {
+  if (e.key === 'Enter') verificar();
+});
+
+async function verificar() {
+  const codigo = input.value.trim();
+  if (codigo.length !== 6) {
+    errorEl.textContent = 'El código debe tener 6 dígitos';
+    errorEl.style.display = 'block';
+    return;
+  }
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Verificando…';
+  errorEl.style.display = 'none';
+
+  try {
+    const res = await fetch('/api/2fa/validar-login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ codigo }),
+    }).then(r => r.json());
+
+    if (res.ok) {
+      window.location.href = res.redirect || '/';
+    } else {
+      errorEl.textContent = res.error || 'Código incorrecto';
+      errorEl.style.display = 'block';
+      input.value = '';
+      input.focus();
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fa-solid fa-shield-check"></i> Verificar';
+    }
+  } catch(e) {
+    errorEl.textContent = 'Error de red. Intenta de nuevo.';
+    errorEl.style.display = 'block';
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fa-solid fa-shield-check"></i> Verificar';
+  }
+}
+</script>
+</body>
+</html>

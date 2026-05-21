@@ -1,0 +1,276 @@
+{% extends "base.html" %}
+{% block title %}API REST — VIVA CONT{% endblock %}
+{% block breadcrumb %}API REST Documentada{% endblock %}
+
+{% block head %}
+<style>
+.api-hero { background:linear-gradient(135deg,#1a3c6e,#1a7fd8); border-radius:14px;
+            padding:28px 32px; margin-bottom:24px; color:#fff; }
+.api-hero h2 { font-size:22px; font-weight:900; margin-bottom:6px; }
+.api-hero p  { opacity:.85; font-size:13px; }
+.base-url { background:rgba(255,255,255,.15); border-radius:8px; padding:8px 14px;
+            font-family:monospace; font-size:13px; display:inline-block; margin-top:10px; }
+
+.ep-card { background:var(--card); border:1px solid var(--border); border-radius:12px;
+           margin-bottom:14px; overflow:hidden; }
+.ep-header { padding:14px 18px; display:flex; align-items:center; gap:12px; cursor:pointer;
+             user-select:none; transition:background .15s; }
+.ep-header:hover { background:var(--surface2); }
+.ep-method { padding:3px 10px; border-radius:6px; font-size:11px; font-weight:800;
+             font-family:monospace; letter-spacing:.5px; flex-shrink:0; }
+.GET    { background:#dcfce7; color:#16a34a; }
+.POST   { background:#dbeafe; color:#1d4ed8; }
+.DELETE { background:#fee2e2; color:#dc2626; }
+.ep-path { font-family:monospace; font-size:13px; font-weight:700; color:var(--primary); }
+.ep-desc { font-size:12px; color:var(--text-muted); margin-left:auto; }
+.ep-body { padding:18px; border-top:1px solid var(--border); display:none; }
+.ep-body.open { display:block; }
+
+.param-table { width:100%; border-collapse:collapse; font-size:12px; margin-bottom:12px; }
+.param-table th { background:var(--surface2); padding:6px 10px; text-align:left;
+                  font-size:10px; text-transform:uppercase; letter-spacing:.4px; color:var(--text-muted); }
+.param-table td { padding:7px 10px; border-bottom:1px solid var(--border); }
+.param-table tr:last-child td { border-bottom:none; }
+.param-name { font-family:monospace; color:var(--primary); font-weight:700; }
+.required { color:#e03c3c; font-size:10px; margin-left:4px; }
+.optional { color:var(--text-muted); font-size:10px; margin-left:4px; }
+
+.code-block { background:#0f172a; color:#e2e8f0; border-radius:8px; padding:14px 16px;
+              font-family:monospace; font-size:12px; overflow-x:auto; line-height:1.6;
+              position:relative; }
+.code-copy { position:absolute; top:8px; right:10px; background:rgba(255,255,255,.1);
+             border:none; color:#94a3b8; font-size:11px; padding:3px 8px; border-radius:4px;
+             cursor:pointer; transition:background .15s; }
+.code-copy:hover { background:rgba(255,255,255,.2); }
+.kw { color:#60a5fa; } .str { color:#4ade80; } .num { color:#f59e0b; } .cm { color:#64748b; }
+
+.auth-box { background:rgba(232,160,32,.08); border:1px solid rgba(232,160,32,.3);
+            border-radius:10px; padding:14px 18px; margin-bottom:20px; font-size:12px;
+            color:var(--text-muted); line-height:1.7; }
+.auth-box strong { color:#e8a020; }
+.section-sep { font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.8px;
+               color:var(--text-muted); padding:20px 0 10px; border-bottom:1px solid var(--border);
+               margin-bottom:16px; display:flex; align-items:center; gap:8px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Hero -->
+<div class="api-hero">
+  <h2><i class="fa-solid fa-plug"></i> API REST — VIVA CONT</h2>
+  <p>Integra tu ERP, CRM o cualquier sistema externo con VIVA CONT vía REST API.<br/>
+     Autenticación por sesión · Formato JSON · Versión v1</p>
+  <div class="base-url">https://vivacont.vivaempresasglobal.com/api/v1</div>
+</div>
+
+<div class="auth-box">
+  <strong>🔐 Autenticación:</strong> La API usa autenticación por sesión. Primero haz
+  <code>POST /login</code> con tus credenciales (o usa la sesión activa del navegador).
+  Todas las rutas <code>/api/v1/*</code> requieren sesión activa.<br/>
+  <strong>Content-Type:</strong> <code>application/json</code> en todas las peticiones POST.
+</div>
+
+<!-- FACTURAS -->
+<div class="section-sep"><i class="fa-solid fa-file-invoice"></i> Facturas</div>
+
+{% set endpoints = [
+  {
+    'method': 'GET',
+    'path': '/api/v1/facturas',
+    'desc': 'Lista paginada de facturas',
+    'params': [
+      ['page', 'integer', 'Número de página (default: 1)', 'opcional'],
+      ['limit', 'integer', 'Resultados por página, máx 200 (default: 50)', 'opcional'],
+      ['estado', 'string', 'BORRADOR | EMITIDA | ANULADA', 'opcional'],
+      ['desde', 'string', 'Fecha inicio YYYY-MM-DD', 'opcional'],
+      ['hasta', 'string', 'Fecha fin YYYY-MM-DD', 'opcional'],
+    ],
+    'example_req': 'GET /api/v1/facturas?estado=EMITIDA&desde=2026-01-01&page=1',
+    'example_res': '''{
+  "ok": true,
+  "total": 142,
+  "page": 1,
+  "limit": 50,
+  "data": [
+    {
+      "id": 23,
+      "serie": "F001",
+      "correlativo": "000023",
+      "tipo_comprobante": "FACTURA",
+      "fecha_emision": "2026-05-21",
+      "razon_social_cliente": "EMPRESA CLIENTE S.A.C.",
+      "ruc_cliente": "20600731409",
+      "total": 2515.76,
+      "igv": 383.76,
+      "subtotal": 2132.00,
+      "estado": "EMITIDA",
+      "sunat_estado": "ACEPTADA",
+      "enlace_pdf": "https://vivacont.../api/facturas/23/pdf"
+    }
+  ]
+}'''
+  },
+  {
+    'method': 'GET',
+    'path': '/api/v1/facturas/{id}',
+    'desc': 'Detalle completo de una factura con sus ítems',
+    'params': [
+      ['id', 'integer', 'ID de la factura', 'requerido'],
+    ],
+    'example_req': 'GET /api/v1/facturas/23',
+    'example_res': '''{
+  "ok": true,
+  "data": {
+    "id": 23,
+    "serie": "F001",
+    "correlativo": "000023",
+    "total": 2515.76,
+    "sunat_estado": "ACEPTADA",
+    "items": [
+      {
+        "descripcion": "Consultoría estratégica",
+        "cantidad": 1,
+        "precio_unitario": 2132.00,
+        "igv_item": 383.76,
+        "precio_total": 2515.76
+      }
+    ]
+  }
+}'''
+  },
+] %}
+
+{% for ep in endpoints %}
+<div class="ep-card">
+  <div class="ep-header" onclick="toggleEp(this)">
+    <span class="ep-method {{ ep.method }}">{{ ep.method }}</span>
+    <span class="ep-path">{{ ep.path }}</span>
+    <span class="ep-desc">{{ ep.desc }}</span>
+    <i class="fa-solid fa-chevron-down" style="color:var(--text-muted);font-size:12px;margin-left:8px;transition:transform .2s;"></i>
+  </div>
+  <div class="ep-body">
+    {% if ep.params %}
+    <table class="param-table">
+      <thead><tr><th>Parámetro</th><th>Tipo</th><th>Descripción</th></tr></thead>
+      <tbody>
+        {% for p in ep.params %}
+        <tr>
+          <td><span class="param-name">{{ p[0] }}</span>
+              <span class="{{ 'required' if p[3]=='requerido' else 'optional' }}">{{ p[3] }}</span></td>
+          <td><code>{{ p[1] }}</code></td>
+          <td>{{ p[2] }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+    <div style="margin-bottom:8px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted);">Ejemplo de petición</div>
+    <div class="code-block" style="margin-bottom:12px;"><button class="code-copy" onclick="copiar(this)">Copiar</button>{{ ep.example_req }}</div>
+    <div style="margin-bottom:8px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted);">Respuesta</div>
+    <div class="code-block"><button class="code-copy" onclick="copiar(this)">Copiar</button>{{ ep.example_res }}</div>
+  </div>
+</div>
+{% endfor %}
+
+<!-- KPIs -->
+<div class="section-sep" style="margin-top:10px;"><i class="fa-solid fa-chart-line"></i> KPIs y Analytics</div>
+
+<div class="ep-card">
+  <div class="ep-header" onclick="toggleEp(this)">
+    <span class="ep-method GET">GET</span>
+    <span class="ep-path">/api/v1/kpis</span>
+    <span class="ep-desc">KPIs del mes actual en tiempo real</span>
+    <i class="fa-solid fa-chevron-down" style="color:var(--text-muted);font-size:12px;margin-left:8px;transition:transform .2s;"></i>
+  </div>
+  <div class="ep-body">
+    <div class="code-block"><button class="code-copy" onclick="copiar(this)">Copiar</button>GET /api/v1/kpis</div>
+    <div style="margin:12px 0 8px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted);">Respuesta</div>
+    <div class="code-block"><button class="code-copy" onclick="copiar(this)">Copiar</button>{
+  "ok": true,
+  "periodo": "2026-05",
+  "data": {
+    "mes_monto": 45820.50,
+    "mes_cantidad": 18,
+    "total_historico": 312450.00,
+    "clientes_unicos": 24,
+    "sunat_aceptadas": 16
+  }
+}</div>
+  </div>
+</div>
+
+<!-- EMPRESA -->
+<div class="section-sep" style="margin-top:10px;"><i class="fa-solid fa-building"></i> Empresa</div>
+
+<div class="ep-card">
+  <div class="ep-header" onclick="toggleEp(this)">
+    <span class="ep-method GET">GET</span>
+    <span class="ep-path">/api/v1/empresa</span>
+    <span class="ep-desc">Datos de la empresa configurada</span>
+    <i class="fa-solid fa-chevron-down" style="color:var(--text-muted);font-size:12px;margin-left:8px;transition:transform .2s;"></i>
+  </div>
+  <div class="ep-body">
+    <div class="code-block"><button class="code-copy" onclick="copiar(this)">Copiar</button>GET /api/v1/empresa</div>
+    <div style="margin:12px 0 8px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted);">Respuesta</div>
+    <div class="code-block"><button class="code-copy" onclick="copiar(this)">Copiar</button>{
+  "ok": true,
+  "data": {
+    "ruc": "20607308056",
+    "razon_social": "CORPORACIÓN VIVA EMPRESAS GLOBAL S.A.C.",
+    "nombre_comercial": "VIVA CONSULTING",
+    "regimen": "GENERAL",
+    "nubefact_modo": "produccion",
+    "serie_factura": "F001",
+    "serie_boleta": "B001"
+  }
+}</div>
+  </div>
+</div>
+
+<!-- Ejemplo cURL -->
+<div class="section-sep" style="margin-top:10px;"><i class="fa-solid fa-terminal"></i> Ejemplos cURL</div>
+<div class="ep-card">
+  <div class="ep-header" onclick="toggleEp(this)">
+    <span class="ep-method GET">GET</span>
+    <span class="ep-path">Ejemplo completo con cURL</span>
+    <span class="ep-desc">Autenticar y consultar facturas</span>
+    <i class="fa-solid fa-chevron-down" style="color:var(--text-muted);font-size:12px;margin-left:8px;transition:transform .2s;"></i>
+  </div>
+  <div class="ep-body">
+    <div class="code-block"><button class="code-copy" onclick="copiar(this)">Copiar</button># 1. Guardar cookies de sesión
+curl -c cookies.txt -X POST https://vivacont.vivaempresasglobal.com/login \
+  -d "username=luisvallejos&password=TuPassword" \
+  -L
+
+# 2. Consultar KPIs
+curl -b cookies.txt https://vivacont.vivaempresasglobal.com/api/v1/kpis
+
+# 3. Listar facturas del mes
+curl -b cookies.txt \
+  "https://vivacont.vivaempresasglobal.com/api/v1/facturas?desde=2026-05-01&estado=EMITIDA"
+
+# 4. Detalle de factura #23
+curl -b cookies.txt https://vivacont.vivaempresasglobal.com/api/v1/facturas/23</div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+function toggleEp(header) {
+  const body = header.nextElementSibling;
+  const icon = header.querySelector('.fa-chevron-down');
+  body.classList.toggle('open');
+  icon.style.transform = body.classList.contains('open') ? 'rotate(180deg)' : '';
+}
+
+function copiar(btn) {
+  const code = btn.parentElement.textContent.replace('Copiar', '').trim();
+  navigator.clipboard.writeText(code).then(() => {
+    btn.textContent = '✓ Copiado';
+    setTimeout(() => btn.textContent = 'Copiar', 2000);
+  });
+}
+</script>
+{% endblock %}

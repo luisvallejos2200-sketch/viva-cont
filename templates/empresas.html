@@ -1,0 +1,216 @@
+{% extends "base.html" %}
+{% block title %}Gestión de Empresas{% endblock %}
+{% block breadcrumb %}Empresas Cliente{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="page-title"><i class="fa-solid fa-building" style="color:var(--accent)"></i> Empresas</h1>
+    <p class="page-subtitle">Gestiona todas las empresas cliente del sistema</p>
+  </div>
+  <button class="btn btn-primary" onclick="abrirNuevaEmpresa()">
+    <i class="fa-solid fa-plus"></i> Nueva Empresa
+  </button>
+</div>
+
+<!-- KPIs -->
+<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:22px;">
+  <div class="card" style="padding:16px 18px;">
+    <div style="font-size:10px;color:var(--text-muted);font-weight:700;text-transform:uppercase;letter-spacing:.5px;">Total empresas</div>
+    <div style="font-size:28px;font-weight:800;color:var(--primary);" id="kpiTotal">—</div>
+  </div>
+  <div class="card" style="padding:16px 18px;">
+    <div style="font-size:10px;color:var(--text-muted);font-weight:700;text-transform:uppercase;letter-spacing:.5px;">Activas</div>
+    <div style="font-size:28px;font-weight:800;color:var(--success);" id="kpiActivas">—</div>
+  </div>
+  <div class="card" style="padding:16px 18px;">
+    <div style="font-size:10px;color:var(--text-muted);font-weight:700;text-transform:uppercase;letter-spacing:.5px;">Total usuarios</div>
+    <div style="font-size:28px;font-weight:800;color:var(--accent);" id="kpiUsuarios">—</div>
+  </div>
+  <div class="card" style="padding:16px 18px;">
+    <div style="font-size:10px;color:var(--text-muted);font-weight:700;text-transform:uppercase;letter-spacing:.5px;">Total facturas</div>
+    <div style="font-size:28px;font-weight:800;color:var(--primary);" id="kpiFacturas">—</div>
+  </div>
+</div>
+
+<!-- Tabla empresas -->
+<div class="card">
+  <div class="card-header">
+    <h3 class="card-title"><i class="fa-solid fa-building"></i> Directorio de empresas</h3>
+    <input type="text" class="form-control" id="buscarEmpresa" placeholder="Buscar empresa…"
+           style="max-width:240px;padding:6px 12px;font-size:13px;" oninput="filtrar()">
+  </div>
+  <div class="card-body" style="padding:0;overflow-x:auto;">
+    <table class="table" id="tablaEmpresas">
+      <thead>
+        <tr>
+          <th>Empresa</th>
+          <th>RUC</th>
+          <th>Plan</th>
+          <th>Usuarios</th>
+          <th>Facturas</th>
+          <th>Nubefact</th>
+          <th>Estado</th>
+          <th style="text-align:right;">Acciones</th>
+        </tr>
+      </thead>
+      <tbody id="tbodyEmpresas">
+        <tr><td colspan="8" class="text-center" style="padding:40px;"><span class="spinner"></span></td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let _empresas = [];
+
+const PLANES = {
+  basic:      { label:'Basic',      color:'#64748b' },
+  starter:    { label:'Starter',    color:'#1a7fd8' },
+  professional:{ label:'Pro',       color:'#7c3aed' },
+  enterprise: { label:'Enterprise', color:'#e8a020' },
+};
+
+async function cargarEmpresas() {
+  const data = await apiGet('/api/empresas');
+  if (!Array.isArray(data)) return;
+  _empresas = data;
+  document.getElementById('kpiTotal').textContent    = data.length;
+  document.getElementById('kpiActivas').textContent  = data.filter(e => e.activo).length;
+  document.getElementById('kpiUsuarios').textContent = data.reduce((s,e) => s + (parseInt(e.usuarios)||0), 0);
+  document.getElementById('kpiFacturas').textContent = data.reduce((s,e) => s + (parseInt(e.facturas)||0), 0);
+  renderTabla(data);
+}
+
+function renderTabla(lista) {
+  const tbody = document.getElementById('tbodyEmpresas');
+  if (!lista.length) {
+    tbody.innerHTML = '<tr><td colspan="8" class="text-center" style="padding:40px;color:var(--text-muted);">Sin empresas registradas</td></tr>';
+    return;
+  }
+  tbody.innerHTML = lista.map(e => {
+    const p = PLANES[e.plan] || PLANES.basic;
+    const nubefactBadge = e.nubefact_modo === 'produccion'
+      ? '<span class="badge badge-success">Producción</span>'
+      : '<span class="badge badge-default">Demo</span>';
+    return `<tr style="${!e.activo ? 'opacity:.5;' : ''}">
+      <td>
+        <div style="font-weight:700;font-size:13px;">${e.razon_social || '—'}</div>
+        <div style="font-size:11px;color:var(--text-muted);">${e.nombre_comercial || ''}</div>
+      </td>
+      <td class="mono" style="font-size:12px;">${e.empresa_ruc || e.ruc || '—'}</td>
+      <td><span class="badge" style="background:${p.color}22;color:${p.color};border:1px solid ${p.color}44;">${p.label}</span></td>
+      <td class="text-center">${e.usuarios || 0}</td>
+      <td class="text-center">${e.facturas || 0}</td>
+      <td>${nubefactBadge}</td>
+      <td><span class="badge ${e.activo ? 'badge-success' : 'badge-default'}">${e.activo ? 'Activa' : 'Inactiva'}</span></td>
+      <td style="text-align:right;">
+        <button class="btn btn-sm btn-primary" style="font-size:11px;padding:4px 10px;" onclick="impersonar(${e.id},'${(e.razon_social||'').replace(/'/g,"\\'")}')">
+          <i class="fa-solid fa-right-to-bracket"></i> Acceder
+        </button>
+        <button class="btn btn-ghost btn-sm btn-icon" title="${e.activo ? 'Desactivar' : 'Activar'}" onclick="toggleEmpresa(${e.id})">
+          <i class="fa-solid fa-${e.activo ? 'ban' : 'check'}"></i>
+        </button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function filtrar() {
+  const q = document.getElementById('buscarEmpresa').value.toLowerCase();
+  renderTabla(_empresas.filter(e =>
+    (e.razon_social||'').toLowerCase().includes(q) ||
+    (e.ruc||'').includes(q) || (e.empresa_ruc||'').includes(q)
+  ));
+}
+
+function abrirNuevaEmpresa() {
+  openModal('Nueva Empresa Cliente',
+    `<div class="form-row form-row-2">
+       <div class="form-group">
+         <label class="form-label">RUC</label>
+         <input type="text" class="form-control" id="ne_ruc" maxlength="11" placeholder="20600000000"/>
+       </div>
+       <div class="form-group">
+         <label class="form-label">Plan</label>
+         <select class="form-control" id="ne_plan">
+           <option value="basic">Basic</option>
+           <option value="starter">Starter</option>
+           <option value="professional">Professional</option>
+           <option value="enterprise">Enterprise</option>
+         </select>
+       </div>
+     </div>
+     <div class="form-group">
+       <label class="form-label">Razón Social <span style="color:#e03c3c">*</span></label>
+       <input type="text" class="form-control" id="ne_rs" placeholder="EMPRESA S.A.C."/>
+     </div>
+     <div class="form-row form-row-2">
+       <div class="form-group">
+         <label class="form-label">Email</label>
+         <input type="email" class="form-control" id="ne_email" placeholder="admin@empresa.com"/>
+       </div>
+       <div class="form-group">
+         <label class="form-label">Username admin</label>
+         <input type="text" class="form-control" id="ne_username" placeholder="admin_empresa"/>
+       </div>
+     </div>
+     <div class="form-group">
+       <label class="form-label">Contraseña inicial</label>
+       <input type="text" class="form-control" id="ne_pass" placeholder="Se genera automáticamente si se deja vacío"/>
+     </div>`,
+    `<button class="btn btn-outline" onclick="closeModal()">Cancelar</button>
+     <button class="btn btn-primary" onclick="crearEmpresa()"><i class="fa-solid fa-plus"></i> Crear</button>`
+  );
+}
+
+async function crearEmpresa() {
+  const rs = document.getElementById('ne_rs').value.trim();
+  if (!rs) { showToast('warning','Campo requerido','Ingresa la Razón Social'); return; }
+  const payload = {
+    razon_social:  rs,
+    ruc:           document.getElementById('ne_ruc').value.trim(),
+    email:         document.getElementById('ne_email').value.trim(),
+    username:      document.getElementById('ne_username').value.trim(),
+    password:      document.getElementById('ne_pass').value.trim(),
+    plan:          document.getElementById('ne_plan').value,
+  };
+  const res = await apiPost('/api/empresas', payload);
+  if (!res) return;
+  if (res.ok) {
+    closeModal();
+    openModal('✅ Empresa creada',
+      `<div style="background:#e8f7ee;border-radius:10px;padding:16px 20px;">
+         <p style="margin-bottom:8px;"><strong>Empresa:</strong> ${rs}</p>
+         <p style="margin-bottom:8px;"><strong>Usuario:</strong> <code>${res.username}</code></p>
+         <p><strong>Contraseña:</strong> <code>${res.password}</code></p>
+       </div>
+       <p style="font-size:12px;color:var(--text-muted);margin-top:12px;">
+         Guarda estas credenciales — la contraseña no se volverá a mostrar.
+       </p>`,
+      `<button class="btn btn-primary" onclick="closeModal();cargarEmpresas()">Entendido</button>`
+    );
+  } else {
+    showToast('error','Error', res.error || 'No se pudo crear');
+  }
+}
+
+async function impersonar(id, nombre) {
+  if (!confirm(`¿Acceder al sistema de "${nombre}"?\nVerás y podrás gestionar sus datos.`)) return;
+  const res = await apiPost(`/api/empresas/${id}/impersonar`);
+  if (res?.ok) {
+    showToast('success','Accediendo', `Entrando a ${nombre}…`);
+    setTimeout(() => window.location.href = '/', 800);
+  }
+}
+
+async function toggleEmpresa(id) {
+  const res = await fetch(`/api/empresas/${id}/toggle`, { method:'POST' }).then(r=>r.json()).catch(()=>null);
+  if (res?.ok) { showToast('success','Actualizado','Estado cambiado'); cargarEmpresas(); }
+}
+
+cargarEmpresas();
+</script>
+{% endblock %}

@@ -128,11 +128,15 @@
     {% endif %}
 
     {% if rol == 'super_admin' %}
-    <a href="/admin/clientes" class="nav-item {% if '/admin/clientes' in request.path %}active{% endif %}">
+    <a href="/empresas" class="nav-item {% if request.path == '/empresas' %}active{% endif %}">
       <span class="nav-icon"><i class="fa-solid fa-building"></i></span>
-      <span class="nav-label">Clientes</span>
+      <span class="nav-label">Empresas</span>
     </a>
     {% endif %}
+    <a href="/api/docs" class="nav-item {% if request.path == '/api/docs' %}active{% endif %}">
+      <span class="nav-icon"><i class="fa-solid fa-plug"></i></span>
+      <span class="nav-label">API Docs</span>
+    </a>
   </nav>
 
   <div class="sidebar-footer">

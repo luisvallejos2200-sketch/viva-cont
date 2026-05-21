@@ -263,13 +263,6 @@ def login():
         finally:
             conn.close()
         if user and check_password_hash(user["password_hash"], password):
-            session["user_id"]     = user["id"]
-            session["user_name"]   = user["nombre"]
-            session["user_rol"]    = user["rol"]
-            session["user_email"]  = user["email"]
-            session["username"]    = user["username"]
-            session["cliente_id"]  = user["cliente_id"]
-            session["privilegios"] = user["privilegios"] or "[]"
             conn2 = get_connection()
             try:
                 conn2.execute("UPDATE usuarios SET ultimo_acceso=? WHERE id=?",
@@ -277,6 +270,18 @@ def login():
                 conn2.commit()
             finally:
                 conn2.close()
+            # Si tiene 2FA activo → no completar sesión todavía, pedir código
+            if user.get("totp_habilitado"):
+                session["pending_2fa_uid"] = user["id"]
+                return render_template("login_2fa.html")
+            # Login normal sin 2FA
+            session["user_id"]     = user["id"]
+            session["user_name"]   = user["nombre"]
+            session["user_rol"]    = user["rol"]
+            session["user_email"]  = user["email"]
+            session["username"]    = user["username"]
+            session["cliente_id"]  = user["cliente_id"]
+            session["privilegios"] = user["privilegios"] or "[]"
             audit("LOGIN", "auth", f"Acceso desde {request.headers.get('X-Forwarded-For', ip)}")
             next_url = request.args.get("next", "")
             if next_url and (next_url.startswith("/") and not next_url.startswith("//")):
@@ -779,9 +784,9 @@ def admin_clientes():
 @app.route("/usuarios")
 @login_required
 def admin_usuarios():
-    if not is_admin_or_above():
+    if session.get("user_rol") not in ("super_admin", "admin"):
         return redirect(url_for("dashboard"))
-    return render_template("admin_usuarios.html")
+    return render_template("usuarios.html")
 
 
 # ─────────────────────────────────────────────────────────
@@ -3519,12 +3524,7 @@ def ratelimit_error(e):
 # MÓDULO: USUARIOS (multi-usuario por empresa)
 # ══════════════════════════════════════════════════════════════════════════════
 
-@app.route("/usuarios")
-@login_required
-def page_usuarios():
-    if session.get("user_rol") not in ("super_admin", "admin"):
-        return redirect(url_for("dashboard"))
-    return render_template("usuarios.html")
+# /usuarios → manejado por admin_usuarios() en línea ~779
 
 @app.route("/api/usuarios", methods=["GET"])
 @login_required
@@ -3799,6 +3799,358 @@ def _notify_sunat_result(fid: int, estado: str, desc: str, email_dest: str):
           </div>
         </div>"""
         send_email(email_dest, titulo, html)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# MÓDULO: 2FA — Autenticación de dos factores (TOTP / Google Authenticator)
+# ══════════════════════════════════════════════════════════════════════════════
+
+@app.route("/api/2fa/setup", methods=["GET"])
+@login_required
+def api_2fa_setup():
+    """Genera un secret TOTP y devuelve QR + URL para configurar en la app."""
+    try:
+        import pyotp, qrcode, base64
+        from io import BytesIO
+    except ImportError:
+        return jsonify({"error": "pyotp/qrcode no instalados"}), 500
+
+    uid = session.get("user_id")
+    conn = get_connection()
+    row = row_to_dict(conn.execute(
+        "SELECT totp_secret, totp_habilitado, email FROM usuarios WHERE id=?", (uid,)
+    ).fetchone()) or {}
+    conn.close()
+
+    # Reusar secret si ya existe (para no invalidar configuraciones previas)
+    secret = row.get("totp_secret") or pyotp.random_base32()
+    if not row.get("totp_secret"):
+        conn2 = get_connection()
+        conn2.execute("UPDATE usuarios SET totp_secret=? WHERE id=?", (secret, uid))
+        conn2.commit()
+        conn2.close()
+
+    email   = row.get("email", session.get("user_email", "usuario"))
+    issuer  = "VIVA CONT"
+    uri     = pyotp.totp.TOTP(secret).provisioning_uri(name=email, issuer_name=issuer)
+
+    # Generar QR como base64
+    img = qrcode.make(uri)
+    buf = BytesIO()
+    img.save(buf, format="PNG")
+    qr_b64 = base64.b64encode(buf.getvalue()).decode()
+
+    return jsonify({
+        "secret":     secret,
+        "qr_base64":  qr_b64,
+        "uri":        uri,
+        "habilitado": bool(row.get("totp_habilitado")),
+    })
+
+@app.route("/api/2fa/verificar", methods=["POST"])
+@login_required
+def api_2fa_verificar():
+    """Verifica el código TOTP y activa 2FA si es correcto."""
+    import pyotp
+    data   = request.get_json() or {}
+    codigo = str(data.get("codigo", "")).replace(" ", "")
+    uid    = session.get("user_id")
+
+    conn = get_connection()
+    row  = row_to_dict(conn.execute(
+        "SELECT totp_secret FROM usuarios WHERE id=?", (uid,)
+    ).fetchone()) or {}
+    secret = row.get("totp_secret", "")
+
+    if not secret:
+        conn.close()
+        return jsonify({"ok": False, "error": "Genera primero el QR de configuración"}), 400
+
+    totp = pyotp.TOTP(secret)
+    if totp.verify(codigo, valid_window=1):
+        conn.execute("UPDATE usuarios SET totp_habilitado=1 WHERE id=?", (uid,))
+        conn.commit()
+        conn.close()
+        session["totp_verified"] = True
+        audit("2FA_ACTIVADO", "seguridad", "2FA activado correctamente")
+        return jsonify({"ok": True, "message": "2FA activado correctamente"})
+    conn.close()
+    return jsonify({"ok": False, "error": "Código incorrecto. Verifica la hora de tu dispositivo."}), 400
+
+@app.route("/api/2fa/desactivar", methods=["POST"])
+@login_required
+def api_2fa_desactivar():
+    """Desactiva 2FA para el usuario actual."""
+    data   = request.get_json() or {}
+    codigo = str(data.get("codigo", "")).replace(" ", "")
+    uid    = session.get("user_id")
+
+    conn = get_connection()
+    row  = row_to_dict(conn.execute(
+        "SELECT totp_secret FROM usuarios WHERE id=?", (uid,)
+    ).fetchone()) or {}
+    secret = row.get("totp_secret", "")
+
+    import pyotp
+    if secret and not pyotp.TOTP(secret).verify(codigo, valid_window=1):
+        conn.close()
+        return jsonify({"ok": False, "error": "Código incorrecto"}), 400
+
+    conn.execute("UPDATE usuarios SET totp_habilitado=0, totp_secret=NULL WHERE id=?", (uid,))
+    conn.commit()
+    conn.close()
+    audit("2FA_DESACTIVADO", "seguridad")
+    return jsonify({"ok": True})
+
+@app.route("/api/2fa/validar-login", methods=["POST"])
+@limiter.limit("10 per minute")
+def api_2fa_validar_login():
+    """Validar TOTP durante el flujo de login (cuando session tiene pending_2fa_uid)."""
+    import pyotp
+    uid = session.get("pending_2fa_uid")
+    if not uid:
+        return jsonify({"ok": False, "error": "Sesión no válida"}), 400
+
+    data   = request.get_json() or {}
+    codigo = str(data.get("codigo", "")).replace(" ", "")
+
+    conn = get_connection()
+    row  = row_to_dict(conn.execute(
+        "SELECT * FROM usuarios WHERE id=?", (uid,)
+    ).fetchone()) or {}
+    conn.close()
+
+    secret = row.get("totp_secret", "")
+    if not secret or not pyotp.TOTP(secret).verify(codigo, valid_window=1):
+        return jsonify({"ok": False, "error": "Código 2FA incorrecto"}), 400
+
+    # Completar login
+    session.pop("pending_2fa_uid", None)
+    session["user_id"]     = row["id"]
+    session["user_name"]   = row["nombre"]
+    session["user_rol"]    = row["rol"]
+    session["user_email"]  = row["email"]
+    session["username"]    = row["username"]
+    session["cliente_id"]  = row["cliente_id"]
+    session["privilegios"] = row["privilegios"] or "[]"
+    session["totp_verified"] = True
+    audit("LOGIN_2FA_OK", "auth", "Login con 2FA exitoso")
+    return jsonify({"ok": True, "redirect": "/"})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# MÓDULO: MULTI-EMPRESA (super_admin gestiona múltiples clientes)
+# ══════════════════════════════════════════════════════════════════════════════
+
+@app.route("/empresas")
+@login_required
+def page_empresas():
+    if session.get("user_rol") != "super_admin":
+        return redirect(url_for("dashboard"))
+    return render_template("empresas.html")
+
+@app.route("/api/empresas", methods=["GET"])
+@login_required
+def api_get_empresas():
+    if session.get("user_rol") != "super_admin":
+        return jsonify({"error": "Sin permisos"}), 403
+    conn = get_connection()
+    clientes = conn.execute(
+        """SELECT c.id, c.razon_social, c.nombre_comercial, c.ruc, c.email,
+                  c.plan, c.activo, c.created_at,
+                  (SELECT COUNT(*) FROM usuarios u WHERE u.cliente_id=c.id AND u.activo=1) AS usuarios,
+                  (SELECT COUNT(*) FROM facturas f WHERE f.cliente_id=c.id) AS facturas,
+                  e.ruc AS empresa_ruc, e.nubefact_modo
+           FROM clientes c
+           LEFT JOIN empresa e ON e.cliente_id=c.id
+           ORDER BY c.id"""
+    ).fetchall()
+    conn.close()
+    return jsonify([row_to_dict(r) for r in clientes])
+
+@app.route("/api/empresas", methods=["POST"])
+@login_required
+def api_crear_empresa():
+    if session.get("user_rol") != "super_admin":
+        return jsonify({"error": "Sin permisos"}), 403
+    data = request.get_json() or {}
+    rs   = (data.get("razon_social") or "").strip()
+    ruc  = (data.get("ruc") or "").strip()
+    email= (data.get("email") or "").strip()
+    plan = data.get("plan", "basic")
+    if not rs:
+        return jsonify({"error": "Razón social requerida"}), 400
+
+    conn = get_connection()
+    # Crear cliente
+    conn.execute(
+        "INSERT INTO clientes (razon_social, nombre_comercial, ruc, email, plan, activo) VALUES (?,?,?,?,?,1)",
+        (rs, data.get("nombre_comercial", rs), ruc, email, plan)
+    )
+    new_cid = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    # Crear registro empresa
+    conn.execute(
+        "INSERT INTO empresa (cliente_id, ruc, razon_social) VALUES (?,?,?)",
+        (new_cid, ruc, rs)
+    )
+    # Crear usuario admin para esa empresa
+    pwd = data.get("password") or uuid.uuid4().hex[:12]
+    ph  = generate_password_hash(pwd, method="pbkdf2:sha256:50000")
+    username = (data.get("username") or ruc or rs[:8].lower().replace(" ","_"))
+    privs = '["estados_cuenta","analisis_bancario","estados_resultados","balance_general","facturador"]'
+    conn.execute(
+        """INSERT INTO usuarios (cliente_id, nombre, email, username, password_hash, rol, privilegios, activo)
+           VALUES (?,?,?,?,?,'admin',?,1)""",
+        (new_cid, rs, email, username, ph, privs)
+    )
+    conn.commit()
+    conn.close()
+    audit("EMPRESA_CREADA", "empresas", f"Nueva empresa: {rs} (id={new_cid})")
+    return jsonify({"ok": True, "cliente_id": int(new_cid),
+                    "username": username, "password": pwd,
+                    "message": f"Empresa '{rs}' creada. Usuario: {username} / Pass: {pwd}"})
+
+@app.route("/api/empresas/<int:eid>/impersonar", methods=["POST"])
+@login_required
+def api_impersonar(eid):
+    """Super admin cambia de contexto a otro cliente temporalmente."""
+    if session.get("user_rol") != "super_admin":
+        return jsonify({"error": "Sin permisos"}), 403
+    conn = get_connection()
+    cl = row_to_dict(conn.execute(
+        "SELECT id, razon_social FROM clientes WHERE id=? AND activo=1", (eid,)
+    ).fetchone())
+    conn.close()
+    if not cl:
+        return jsonify({"error": "Empresa no encontrada"}), 404
+    # Guardar cliente original para poder volver
+    if not session.get("original_cliente_id"):
+        session["original_cliente_id"] = session.get("cliente_id")
+        session["original_user_name"]   = session.get("user_name")
+    session["cliente_id"] = cl["id"]
+    session["user_name"]  = f"[Admin → {cl['razon_social'][:20]}]"
+    audit("IMPERSONAR", "empresas", f"Entrando a empresa id={eid}: {cl['razon_social']}")
+    return jsonify({"ok": True, "message": f"Ahora ves la empresa {cl['razon_social']}"})
+
+@app.route("/api/empresas/salir-impersonar", methods=["POST"])
+@login_required
+def api_salir_impersonar():
+    """Vuelve al contexto original del super admin."""
+    orig = session.pop("original_cliente_id", None)
+    if orig:
+        session["cliente_id"] = orig
+        session["user_name"]  = session.pop("original_user_name", "Super Admin")
+    return jsonify({"ok": True})
+
+@app.route("/api/empresas/<int:eid>/toggle", methods=["POST"])
+@login_required
+def api_toggle_empresa(eid):
+    if session.get("user_rol") != "super_admin":
+        return jsonify({"error": "Sin permisos"}), 403
+    conn = get_connection()
+    row  = row_to_dict(conn.execute("SELECT activo FROM clientes WHERE id=?", (eid,)).fetchone()) or {}
+    nuevo = 0 if row.get("activo") else 1
+    conn.execute("UPDATE clientes SET activo=? WHERE id=?", (nuevo, eid))
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True, "activo": nuevo})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# MÓDULO: API REST DOCUMENTADA
+# ══════════════════════════════════════════════════════════════════════════════
+
+@app.route("/api/docs")
+@login_required
+def api_docs():
+    return render_template("api_docs.html")
+
+@app.route("/api/v1/facturas", methods=["GET"])
+@login_required
+def api_v1_facturas():
+    """API pública documentada — Lista facturas con filtros."""
+    page    = int(request.args.get("page", 1))
+    limit   = min(int(request.args.get("limit", 50)), 200)
+    estado  = request.args.get("estado", "")
+    desde   = request.args.get("desde", "")
+    hasta   = request.args.get("hasta", "")
+    offset  = (page - 1) * limit
+
+    where  = ["cliente_id=?"]
+    params = [cid()]
+    if estado:
+        where.append("estado=?"); params.append(estado.upper())
+    if desde:
+        where.append("fecha_emision>=?"); params.append(desde)
+    if hasta:
+        where.append("fecha_emision<=?"); params.append(hasta)
+
+    sql = f"SELECT * FROM facturas WHERE {' AND '.join(where)} ORDER BY id DESC LIMIT ? OFFSET ?"
+    params += [limit, offset]
+
+    conn  = get_connection()
+    total = conn.execute(
+        f"SELECT COUNT(*) FROM facturas WHERE {' AND '.join(where[:])}",
+        params[:-2]
+    ).fetchone()[0]
+    rows  = conn.execute(sql, params).fetchall()
+    conn.close()
+
+    return jsonify({
+        "ok": True, "total": int(total or 0), "page": page, "limit": limit,
+        "data": [row_to_dict(r) for r in rows],
+    })
+
+@app.route("/api/v1/facturas/<int:fid>", methods=["GET"])
+@login_required
+def api_v1_factura_detail(fid):
+    conn = get_connection()
+    f = row_to_dict(conn.execute(
+        "SELECT * FROM facturas WHERE id=? AND cliente_id=?", (fid, cid())
+    ).fetchone())
+    if not f:
+        conn.close()
+        return jsonify({"ok": False, "error": "No encontrada"}), 404
+    f["items"] = rows_to_list(conn.execute(
+        "SELECT * FROM factura_items WHERE factura_id=?", (fid,)
+    ).fetchall())
+    conn.close()
+    return jsonify({"ok": True, "data": f})
+
+@app.route("/api/v1/empresa", methods=["GET"])
+@login_required
+def api_v1_empresa():
+    conn = get_connection()
+    emp  = row_to_dict(conn.execute(
+        """SELECT ruc, razon_social, nombre_comercial, direccion,
+                  telefono, email, regimen, nubefact_modo,
+                  serie_factura, serie_boleta FROM empresa WHERE cliente_id=?""",
+        (cid(),)
+    ).fetchone()) or {}
+    conn.close()
+    return jsonify({"ok": True, "data": emp})
+
+@app.route("/api/v1/kpis", methods=["GET"])
+@login_required
+def api_v1_kpis():
+    """KPIs principales del mes actual."""
+    conn = get_connection()
+    row  = row_to_dict(conn.execute(
+        """SELECT
+             COALESCE(SUM(CASE WHEN estado='EMITIDA'
+               AND strftime('%Y-%m',fecha_emision)=strftime('%Y-%m','now')
+               THEN total ELSE 0 END),0) AS mes_monto,
+             COALESCE(SUM(CASE WHEN estado='EMITIDA'
+               AND strftime('%Y-%m',fecha_emision)=strftime('%Y-%m','now')
+               THEN 1 ELSE 0 END),0) AS mes_cantidad,
+             COALESCE(SUM(CASE WHEN estado='EMITIDA' THEN total ELSE 0 END),0) AS total_historico,
+             COUNT(DISTINCT CASE WHEN estado='EMITIDA' THEN ruc_cliente END) AS clientes_unicos,
+             COALESCE(SUM(CASE WHEN sunat_estado='ACEPTADA' THEN 1 ELSE 0 END),0) AS sunat_aceptadas
+           FROM facturas WHERE cliente_id=?""",
+        (cid(),)
+    ).fetchone()) or {}
+    conn.close()
+    return jsonify({"ok": True, "data": row, "periodo": datetime.now().strftime("%Y-%m")})
 
 
 if __name__ == "__main__":

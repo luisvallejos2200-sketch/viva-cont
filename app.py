@@ -1356,11 +1356,11 @@ def api_anular_factura(fid):
 def _nubefact_post(token: str, ruc: str, payload: dict, ruta: str = "") -> dict:
     """POST to Nubefact OSE API. Always returns a dict or raises a descriptive Exception."""
     import urllib.error
-    # Use the exact RUTA from Nubefact API Integration page (contains UUID, not RUC)
-    base = (ruta or "").strip().rstrip("/")
-    if not base:
-        base = f"https://api.nubefact.com/api/v1/{ruc}"
-    url = base + "/comprobantes"
+    # Use the exact RUTA from Nubefact API Integration page.
+    # The RUTA IS the complete endpoint — POST directly to it, no suffix.
+    url = (ruta or "").strip().rstrip("/")
+    if not url:
+        url = f"https://api.nubefact.com/api/v1/{ruc}"
     body = json.dumps(payload).encode("utf-8")
     req  = urllib.request.Request(
         url, data=body,
@@ -1614,7 +1614,7 @@ def api_nubefact_diagnostico():
         "token_preview":   (token[:6] + "…" + token[-4:]) if len(token) > 10 else ("(vacío)" if not token else token),
         "nubefact_modo":   emp.get("nubefact_modo", ""),
         "nubefact_ruta":   ruta_guardada or "(vacío — falta pegar la RUTA)",
-        "url_que_se_usa":  (ruta_guardada.rstrip("/") + "/comprobantes") if ruta_guardada else f"https://api.nubefact.com/api/v1/{ruc}/comprobantes (fallback RUC)",
+        "url_que_se_usa":  ruta_guardada if ruta_guardada else f"https://api.nubefact.com/api/v1/{ruc} (fallback RUC)",
     }
     if not token or not ruc:
         return jsonify({"info": info, "error": "Token o RUC vacíos"})
@@ -1622,7 +1622,7 @@ def api_nubefact_diagnostico():
     ruta = (emp.get("nubefact_ruta") or "").strip().rstrip("/")
     if not ruta:
         ruta = f"https://api.nubefact.com/api/v1/{ruc}"
-    url  = ruta + "/comprobantes"
+    url  = ruta
     body = json.dumps({"operacion": "generar_comprobante"}).encode()
     req  = urllib.request.Request(url, data=body,
         headers={"Authorization": f"Token {token}", "Content-Type": "application/json"},
@@ -1654,7 +1654,7 @@ def api_nubefact_probar():
     #   400/404/422 → token OK pero datos incorrectos (eso es lo que queremos)
     #   200/201 → token OK (raro con payload mínimo pero posible)
     probe_ruc = ruc if (ruc and len(ruc) == 11) else "20000000001"
-    url  = f"https://api.nubefact.com/api/v1/{probe_ruc}/comprobantes"
+    url  = f"https://api.nubefact.com/api/v1/{probe_ruc}"
     body = json.dumps({"operacion": "generar_comprobante"}).encode()
     req  = urllib.request.Request(
         url, data=body,

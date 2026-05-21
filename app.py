@@ -1475,91 +1475,107 @@ def _build_nubefact_payload(factura: dict, empresa: dict, items: list) -> dict:
 @app.route("/api/facturas/<int:fid>/enviar-sunat", methods=["POST"])
 @login_required
 def api_enviar_sunat(fid):
-    conn = get_connection()
-    c    = conn.cursor()
+    import sys, traceback
 
-    c.execute("SELECT * FROM facturas WHERE id=? AND cliente_id=?", (fid, cid()))
-    factura = row_to_dict(c.fetchone())
-    if not factura:
-        conn.close()
-        return jsonify({"error": "Factura no encontrada"}), 404
-
-    c.execute("SELECT * FROM empresa WHERE cliente_id=?", (cid(),))
-    empresa = row_to_dict(c.fetchone()) or {}
-
-    token      = (empresa.get("nubefact_token") or "").strip()
-    ruc_emisor = (empresa.get("ruc") or "").strip()
-
-    if not token:
-        conn.close()
-        return jsonify({"error": "No hay token Nubefact configurado. Ve a Configuración → Nubefact."}), 400
-    if not ruc_emisor:
-        conn.close()
-        return jsonify({"error": "No hay RUC del emisor configurado en la empresa."}), 400
-
-    c.execute("SELECT * FROM factura_items WHERE factura_id=?", (fid,))
-    items = rows_to_list(c.fetchall())
-
+    conn = None
     try:
-        payload = _build_nubefact_payload(factura, empresa, items)
-        result  = _nubefact_post(token, ruc_emisor, payload)
-    except Exception as e:
-        import sys, traceback
-        err_msg = f"Error de conexión con Nubefact: {str(e)}"
-        traceback.print_exc(file=sys.stderr)
-        # Save error in DB so the Ver-modal banner shows it
+        conn = get_connection()
+        c    = conn.cursor()
+
+        c.execute("SELECT * FROM facturas WHERE id=? AND cliente_id=?", (fid, cid()))
+        factura = row_to_dict(c.fetchone())
+        if not factura:
+            return jsonify({"error": "Factura no encontrada"}), 404
+
+        c.execute("SELECT * FROM empresa WHERE cliente_id=?", (cid(),))
+        empresa = row_to_dict(c.fetchone()) or {}
+
+        token      = (empresa.get("nubefact_token") or "").strip()
+        ruc_emisor = (empresa.get("ruc") or "").strip()
+
+        if not token:
+            return jsonify({"error": "No hay token Nubefact configurado. Ve a Configuración → Nubefact."}), 400
+        if not ruc_emisor:
+            return jsonify({"error": "No hay RUC del emisor configurado en la empresa."}), 400
+
+        c.execute("SELECT * FROM factura_items WHERE factura_id=?", (fid,))
+        items = rows_to_list(c.fetchall())
+
+        # ── Llamada a Nubefact ─────────────────────────────
         try:
-            conn.execute(
-                "UPDATE facturas SET sunat_estado='RECHAZADA', sunat_descripcion=? WHERE id=? AND cliente_id=?",
-                (err_msg, fid, cid()))
-            conn.commit()
+            payload = _build_nubefact_payload(factura, empresa, items)
+            result  = _nubefact_post(token, ruc_emisor, payload)
+        except Exception as nf_err:
+            err_msg = f"Error conectando con Nubefact: {str(nf_err)}"
+            print(f"[NUBEFACT-ERR] {err_msg}", file=sys.stderr)
+            traceback.print_exc(file=sys.stderr)
+            try:
+                conn.execute(
+                    "UPDATE facturas SET sunat_estado='RECHAZADA', sunat_descripcion=? WHERE id=? AND cliente_id=?",
+                    (err_msg, fid, cid()))
+                conn.commit()
+            except Exception:
+                pass
+            return jsonify({"success": False, "sunat_estado": "RECHAZADA", "error": err_msg}), 502
+
+        # ── Procesar respuesta Nubefact ────────────────────
+        aceptada     = bool(result.get("aceptada_por_sunat"))
+        sunat_estado = "ACEPTADA" if aceptada else "RECHAZADA"
+        _raw         = result.get("sunat_description") or result.get("errors") or result
+        sunat_desc   = _raw if isinstance(_raw, str) else json.dumps(_raw, ensure_ascii=False)
+        enlace_pdf   = str(result.get("enlace_del_pdf")  or "")
+        enlace_xml   = str(result.get("enlace_del_xml")  or "")
+        codigo_qr    = str(result.get("codigo_qr")       or "")
+        nubefact_id  = str(result.get("numero_de_comprobante") or "")
+
+        print(f"[NUBEFACT] ruc={ruc_emisor} aceptada={aceptada} desc={sunat_desc[:200]}", file=sys.stderr)
+
+        conn.execute("""
+            UPDATE facturas
+            SET estado='EMITIDA', sunat_estado=?, sunat_descripcion=?,
+                enlace_pdf=?, enlace_xml=?, codigo_qr=?, nubefact_id=?,
+                ruc_emisor=?, razon_social_emisor=?, direccion_emisor=?
+            WHERE id=? AND cliente_id=?
+        """, (
+            sunat_estado, sunat_desc,
+            enlace_pdf, enlace_xml, codigo_qr, nubefact_id,
+            ruc_emisor,
+            str(empresa.get("razon_social") or ""),
+            str(empresa.get("direccion")    or ""),
+            fid, cid(),
+        ))
+        conn.commit()
+
+        if aceptada:
+            return jsonify({
+                "success": True, "sunat_estado": sunat_estado,
+                "sunat_descripcion": sunat_desc,
+                "enlace_pdf": enlace_pdf, "enlace_xml": enlace_xml,
+            })
+        return jsonify({
+            "success": False, "sunat_estado": sunat_estado, "error": sunat_desc,
+        }), 422
+
+    except Exception as fatal:
+        # Catch-all — always return JSON, never HTML 500
+        err = f"Error interno: {str(fatal)}"
+        print(f"[ENVIAR-SUNAT FATAL] {err}", file=sys.stderr)
+        traceback.print_exc(file=sys.stderr)
+        try:
+            if conn:
+                conn.execute(
+                    "UPDATE facturas SET sunat_estado='RECHAZADA', sunat_descripcion=? WHERE id=? AND cliente_id=?",
+                    (err, fid, cid()))
+                conn.commit()
         except Exception:
             pass
-        conn.close()
-        return jsonify({"success": False, "sunat_estado": "RECHAZADA", "error": err_msg}), 502
-
-    aceptada     = bool(result.get("aceptada_por_sunat"))
-    sunat_estado = "ACEPTADA" if aceptada else "RECHAZADA"
-    _raw_desc    = result.get("sunat_description") or result.get("errors") or result
-    sunat_desc   = _raw_desc if isinstance(_raw_desc, str) else json.dumps(_raw_desc, ensure_ascii=False)
-    enlace_pdf   = result.get("enlace_del_pdf", "") or ""
-    enlace_xml   = result.get("enlace_del_xml", "") or ""
-    codigo_qr    = result.get("codigo_qr", "") or ""
-    nubefact_id  = str(result.get("numero_de_comprobante", "") or "")
-    # Log full Nubefact response for debugging
-    import sys
-    print(f"[NUBEFACT] RUC={ruc_emisor} aceptada={aceptada} resp={json.dumps(result, ensure_ascii=False)[:500]}", file=sys.stderr)
-
-    conn.execute("""
-        UPDATE facturas
-        SET estado='EMITIDA', sunat_estado=?, sunat_descripcion=?,
-            enlace_pdf=?, enlace_xml=?, codigo_qr=?, nubefact_id=?,
-            ruc_emisor=?, razon_social_emisor=?, direccion_emisor=?
-        WHERE id=? AND cliente_id=?
-    """, (
-        sunat_estado, sunat_desc,
-        enlace_pdf, enlace_xml, codigo_qr, nubefact_id,
-        ruc_emisor,
-        empresa.get("razon_social", ""),
-        empresa.get("direccion", ""),
-        fid, cid(),
-    ))
-    conn.commit()
-    conn.close()
-
-    if aceptada:
-        return jsonify({
-            "success":          True,
-            "sunat_estado":     sunat_estado,
-            "sunat_descripcion": sunat_desc,
-            "enlace_pdf":       enlace_pdf,
-            "enlace_xml":       enlace_xml,
-        })
-    return jsonify({
-        "success":     False,
-        "sunat_estado": sunat_estado,
-        "error":       sunat_desc,
-    }), 422
+        return jsonify({"success": False, "sunat_estado": "RECHAZADA", "error": err}), 500
+    finally:
+        try:
+            if conn:
+                conn.close()
+        except Exception:
+            pass
 
 
 @app.route("/api/nubefact/probar", methods=["POST"])

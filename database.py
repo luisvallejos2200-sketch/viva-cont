@@ -154,6 +154,35 @@ _turso_ok  = None   # None=untested  True=working  False=failed
 _turso_err = ""
 
 
+def execute_batch(conn, queries: list):
+    """Run multiple (sql, params) read-queries in ONE network round-trip.
+
+    On Turso: packages all statements into a single /v2/pipeline POST.
+    On SQLite: falls back to sequential execution.
+
+    Returns a list of _TursoCursor-like objects (fetchone / fetchall).
+    """
+    if isinstance(conn, _TursoConn):
+        stmts = [{"sql": sql, "args": _to_args(list(params))}
+                 for sql, params in queries]
+        results = _turso_post(stmts)
+        out = []
+        for r in results:
+            if isinstance(r, dict) and r.get("type") == "ok":
+                cur = _TursoCursor()
+                cur._load(r)
+                out.append(cur)
+        return out
+    else:
+        # SQLite — in-process, no network, sequential is fine
+        out = []
+        for sql, params in queries:
+            cur = conn.cursor()
+            cur.execute(sql, params)
+            out.append(cur)
+        return out
+
+
 def _local_conn():
     def _row_fac(cursor, row):
         return _Row([d[0] for d in cursor.description], row)

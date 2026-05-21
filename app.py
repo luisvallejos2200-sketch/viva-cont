@@ -1711,70 +1711,153 @@ def api_nubefact_probar():
 @app.route("/api/facturas/stats", methods=["GET"])
 @login_required
 def api_facturas_stats():
-    """Dashboard analítico del facturador."""
+    """Dashboard ejecutivo — 8 queries → 2 HTTP calls via execute_batch."""
+    from database import execute_batch
     conn = get_connection()
     try:
-        c = conn.cursor()
-        # ── Totales globales ──
-        c.execute("""
+        _T = "facturas"
+        cid_ = cid()
+
+        # ══ BATCH 1: mega-query (totales + mes actual + mes anterior + YTD) ══
+        # All in ONE SQL scan → ONE HTTP round-trip to Turso
+        MEGA_SQL = f"""
             SELECT
-              COUNT(*)                                              AS total,
+              COUNT(*)  AS total,
               COALESCE(SUM(CASE WHEN estado='EMITIDA'  THEN 1 ELSE 0 END),0) AS emitidas,
               COALESCE(SUM(CASE WHEN estado='BORRADOR' THEN 1 ELSE 0 END),0) AS borradores,
               COALESCE(SUM(CASE WHEN estado='ANULADA'  THEN 1 ELSE 0 END),0) AS anuladas,
-              COALESCE(SUM(CASE WHEN sunat_estado='ACEPTADA' THEN 1 ELSE 0 END),0) AS sunat_aceptadas,
+              COALESCE(SUM(CASE WHEN sunat_estado='ACEPTADA'  THEN 1 ELSE 0 END),0) AS sunat_aceptadas,
               COALESCE(SUM(CASE WHEN sunat_estado='RECHAZADA' THEN 1 ELSE 0 END),0) AS sunat_rechazadas,
               COALESCE(SUM(CASE WHEN estado='EMITIDA' THEN total ELSE 0 END),0) AS monto_total,
-              COALESCE(AVG(CASE WHEN estado='EMITIDA' THEN total ELSE NULL END),0) AS promedio
-            FROM facturas WHERE cliente_id=?
-        """, (cid(),))
-        row = row_to_dict(c.fetchone()) or {}
+              COALESCE(AVG(CASE WHEN estado='EMITIDA' THEN total ELSE NULL END),0) AS promedio,
+              COALESCE(MAX(CASE WHEN estado='EMITIDA' THEN total ELSE 0 END),0) AS max_factura,
+              COUNT(DISTINCT CASE WHEN estado='EMITIDA' THEN ruc_cliente ELSE NULL END) AS clientes_unicos,
+              COALESCE(SUM(CASE WHEN estado='EMITIDA' AND moneda='USD' THEN total ELSE 0 END),0) AS monto_usd,
+              COALESCE(SUM(CASE WHEN estado='EMITIDA' AND moneda='PEN' THEN total ELSE 0 END),0) AS monto_pen,
+              COALESCE(SUM(CASE WHEN estado='EMITIDA'
+                AND (sunat_estado IS NULL OR sunat_estado='RECHAZADA')
+                AND tipo_comprobante IN ('FACTURA','BOLETA','NOTA_CREDITO','NOTA_DEBITO','LIQUIDACION_COMPRA')
+                THEN 1 ELSE 0 END),0) AS pendientes_sunat,
+              -- Mes actual
+              COALESCE(SUM(CASE WHEN estado='EMITIDA'
+                AND strftime('%Y-%m',fecha_emision)=strftime('%Y-%m','now')
+                THEN total ELSE 0 END),0) AS mes_act_monto,
+              COALESCE(SUM(CASE WHEN estado='EMITIDA'
+                AND strftime('%Y-%m',fecha_emision)=strftime('%Y-%m','now')
+                THEN 1 ELSE 0 END),0) AS mes_act_cantidad,
+              -- Mes anterior
+              COALESCE(SUM(CASE WHEN estado='EMITIDA'
+                AND strftime('%Y-%m',fecha_emision)=strftime('%Y-%m',date('now','-1 month'))
+                THEN total ELSE 0 END),0) AS mes_ant_monto,
+              COALESCE(SUM(CASE WHEN estado='EMITIDA'
+                AND strftime('%Y-%m',fecha_emision)=strftime('%Y-%m',date('now','-1 month'))
+                THEN 1 ELSE 0 END),0) AS mes_ant_cantidad,
+              -- YTD
+              COALESCE(SUM(CASE WHEN estado='EMITIDA'
+                AND strftime('%Y',fecha_emision)=strftime('%Y','now')
+                THEN total ELSE 0 END),0) AS ytd_monto,
+              COALESCE(SUM(CASE WHEN estado='EMITIDA'
+                AND strftime('%Y',fecha_emision)=strftime('%Y','now')
+                THEN 1 ELSE 0 END),0) AS ytd_cantidad
+            FROM {_T} WHERE cliente_id=?
+        """
 
-        # ── Facturación mensual — últimos 6 meses ──
-        c.execute("""
+        # ══ BATCH 2: four GROUP-BY queries in ONE HTTP round-trip ══
+        MENSUAL_SQL = f"""
             SELECT strftime('%Y-%m', fecha_emision) AS mes,
-                   COALESCE(SUM(total),0) AS monto,
-                   COUNT(*) AS cantidad
-            FROM facturas
-            WHERE cliente_id=? AND estado='EMITIDA'
-              AND fecha_emision >= date('now', '-6 months')
+                   COALESCE(SUM(total),0) AS monto, COUNT(*) AS cantidad
+            FROM {_T} WHERE cliente_id=? AND estado='EMITIDA'
+              AND fecha_emision >= date('now','-12 months')
             GROUP BY mes ORDER BY mes
-        """, (cid(),))
-        mensual = [{"mes": r["mes"], "monto": float(r["monto"]), "cantidad": int(r["cantidad"])}
-                   for r in (row_to_dict(x) for x in (c.fetchall() or []))]
+        """
+        TIPO_SQL = f"""
+            SELECT tipo_comprobante AS tipo,
+                   COUNT(*) AS cantidad, COALESCE(SUM(total),0) AS monto
+            FROM {_T} WHERE cliente_id=? AND estado='EMITIDA'
+            GROUP BY tipo_comprobante ORDER BY monto DESC
+        """
+        TOP_SQL = f"""
+            SELECT razon_social_cliente AS cliente, ruc_cliente AS ruc,
+                   COUNT(*) AS facturas, COALESCE(SUM(total),0) AS monto
+            FROM {_T} WHERE cliente_id=? AND estado='EMITIDA'
+            GROUP BY ruc_cliente ORDER BY monto DESC LIMIT 8
+        """
+        ULTIMAS_SQL = f"""
+            SELECT serie, correlativo, tipo_comprobante,
+                   razon_social_cliente AS cliente, total, fecha_emision, enlace_pdf
+            FROM {_T} WHERE cliente_id=? AND sunat_estado='ACEPTADA'
+            ORDER BY id DESC LIMIT 5
+        """
 
-        # ── Top 5 clientes ──
-        c.execute("""
-            SELECT razon_social_cliente AS cliente,
-                   ruc_cliente          AS ruc,
-                   COUNT(*)             AS facturas,
-                   COALESCE(SUM(total),0) AS monto
-            FROM facturas
-            WHERE cliente_id=? AND estado='EMITIDA'
-            GROUP BY ruc_cliente
-            ORDER BY monto DESC LIMIT 5
-        """, (cid(),))
-        top_clientes = [{"cliente": r["cliente"], "ruc": r["ruc"],
-                         "facturas": int(r["facturas"]), "monto": float(r["monto"])}
-                        for r in (row_to_dict(x) for x in (c.fetchall() or []))]
+        # ── Fire both batches (2 HTTP calls total) ────────────────
+        [cur_mega]                              = execute_batch(conn, [(MEGA_SQL, (cid_,))])
+        cur_men, cur_tip, cur_top, cur_ult      = execute_batch(conn, [
+            (MENSUAL_SQL, (cid_,)),
+            (TIPO_SQL,    (cid_,)),
+            (TOP_SQL,     (cid_,)),
+            (ULTIMAS_SQL, (cid_,)),
+        ])
 
-        # ── Este mes ──
-        c.execute("""
-            SELECT COALESCE(SUM(total),0) AS monto_mes, COUNT(*) AS cant_mes
-            FROM facturas
-            WHERE cliente_id=? AND estado='EMITIDA'
-              AND strftime('%Y-%m', fecha_emision) = strftime('%Y-%m', 'now')
-        """, (cid(),))
-        mes_row = row_to_dict(c.fetchone()) or {}
+        # ── Parse mega-row ────────────────────────────────────────
+        mega = row_to_dict(cur_mega.fetchone()) or {}
+        def _f(v): return float(v) if isinstance(v, (int, float)) else (float(v) if v else 0.0)
+
+        tot = {k: _f(mega.get(k, 0)) for k in (
+            "total","emitidas","borradores","anuladas",
+            "sunat_aceptadas","sunat_rechazadas","monto_total","promedio",
+            "max_factura","clientes_unicos","monto_usd","monto_pen","pendientes_sunat"
+        )}
+        tot["total"]           = int(mega.get("total", 0) or 0)
+        tot["emitidas"]        = int(mega.get("emitidas", 0) or 0)
+        tot["borradores"]      = int(mega.get("borradores", 0) or 0)
+        tot["anuladas"]        = int(mega.get("anuladas", 0) or 0)
+        tot["sunat_aceptadas"] = int(mega.get("sunat_aceptadas", 0) or 0)
+        tot["sunat_rechazadas"]= int(mega.get("sunat_rechazadas", 0) or 0)
+        tot["clientes_unicos"] = int(mega.get("clientes_unicos", 0) or 0)
+        tot["pendientes_sunat"]= int(mega.get("pendientes_sunat", 0) or 0)
+
+        m_act = float(mega.get("mes_act_monto") or 0)
+        m_ant = float(mega.get("mes_ant_monto") or 0)
+        crec  = round((m_act - m_ant) / m_ant * 100, 1) if m_ant else None
+
+        # ── Parse group-by rows ────────────────────────────────────
+        mensual = [
+            {"mes": r["mes"], "monto": float(r["monto"] or 0), "cantidad": int(r["cantidad"] or 0)}
+            for r in [row_to_dict(x) for x in (cur_men.fetchall() or [])]
+        ]
+        por_tipo = [
+            {"tipo": r["tipo"], "cantidad": int(r["cantidad"] or 0), "monto": float(r["monto"] or 0)}
+            for r in [row_to_dict(x) for x in (cur_tip.fetchall() or [])]
+        ]
+        top_clientes = [
+            {"cliente": r["cliente"], "ruc": r["ruc"],
+             "facturas": int(r["facturas"] or 0), "monto": float(r["monto"] or 0)}
+            for r in [row_to_dict(x) for x in (cur_top.fetchall() or [])]
+        ]
+        ultimas_sunat = [
+            {"serie": r["serie"],
+             "correlativo": str(r["correlativo"] or "").zfill(6),
+             "tipo": r["tipo_comprobante"],
+             "cliente": r["cliente"],
+             "total": float(r["total"] or 0),
+             "fecha": r["fecha_emision"],
+             "pdf": r["enlace_pdf"] or ""}
+            for r in [row_to_dict(x) for x in (cur_ult.fetchall() or [])]
+        ]
 
         return jsonify({
-            "totales": {k: float(v) if isinstance(v, (int, float)) else v for k, v in row.items()},
-            "mensual": mensual,
+            "totales":      tot,
+            "mes_actual":   {"monto": m_act,
+                             "cantidad": int(mega.get("mes_act_cantidad") or 0)},
+            "mes_anterior": {"monto": m_ant,
+                             "cantidad": int(mega.get("mes_ant_cantidad") or 0)},
+            "ytd":          {"monto": float(mega.get("ytd_monto") or 0),
+                             "cantidad": int(mega.get("ytd_cantidad") or 0)},
+            "crecimiento_mensual": crec,
+            "mensual":      mensual,
+            "por_tipo":     por_tipo,
             "top_clientes": top_clientes,
-            "mes_actual": {
-                "monto": float(mes_row.get("monto_mes") or 0),
-                "cantidad": int(mes_row.get("cant_mes") or 0),
-            }
+            "ultimas_sunat": ultimas_sunat,
         })
     finally:
         conn.close()

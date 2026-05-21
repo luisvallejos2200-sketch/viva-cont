@@ -21,6 +21,25 @@
 }
 .color-swatch:hover { transform:scale(1.2);border-color:#fff;box-shadow:0 0 0 2px var(--border); }
 
+/* ── Skeleton shimmer ── */
+@keyframes shimmer {
+  0%   { background-position: -400% 0; }
+  100% { background-position:  400% 0; }
+}
+.kpi-skel {
+  display:inline-block;border-radius:6px;
+  background:linear-gradient(90deg,var(--surface2) 25%,var(--border) 50%,var(--surface2) 75%);
+  background-size:400% 100%;
+  animation:shimmer 1.6s ease-in-out infinite;
+  color:transparent !important;min-width:80px;height:1em;
+}
+.card-skel {
+  background:linear-gradient(90deg,var(--surface2) 25%,var(--border) 50%,var(--surface2) 75%);
+  background-size:400% 100%;
+  animation:shimmer 1.6s ease-in-out infinite;
+  border-radius:8px;height:220px;
+}
+
 /* ── Dashboard KPI cards ── */
 .dash-kpi-grid {
   display:grid;
@@ -717,6 +736,66 @@ let _chartMensual     = null;
 let _chartTipos       = null;
 let _chartTopClientes = null;
 let _chartEstados     = null;
+let _dashStatsPrefetch = null;  // Promise — pre-fetched in bg
+
+// IDs of all 12 KPI value elements
+const _DASH_KPI_IDS = [
+  'dash-mes-monto','dash-ytd-monto','dash-clientes','dash-promedio',
+  'dash-tasa-sunat','dash-pendientes','dash-monto-hist','dash-igv-ytd',
+  'dash-total-docs','dash-borradores','dash-mejor-mes-monto','dash-tasa-anulacion'
+];
+
+function showDashSkeleton() {
+  _DASH_KPI_IDS.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.innerHTML = '<span class="kpi-skel">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span>';
+  });
+  ['chartMensual','chartTipos','chartTopClientes','chartEstados'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) { el.style.opacity = '0'; el.parentElement.style.position = 'relative'; }
+  });
+  // Chart placeholder shimmer
+  document.querySelectorAll('.card-body canvas').forEach(c => {
+    if (!c.nextElementSibling?.classList.contains('chart-skel-overlay')) {
+      const div = document.createElement('div');
+      div.className = 'chart-skel-overlay card-skel';
+      div.style.cssText = 'position:absolute;inset:12px;border-radius:8px;z-index:1;';
+      c.parentElement.style.position = 'relative';
+      c.parentElement.appendChild(div);
+    }
+  });
+}
+
+function hideDashSkeleton() {
+  ['chartMensual','chartTipos','chartTopClientes','chartEstados'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.opacity = '1';
+  });
+  document.querySelectorAll('.chart-skel-overlay').forEach(el => el.remove());
+}
+
+function showDashError() {
+  const ids = _DASH_KPI_IDS.concat(['dashUltimasSunat','dashTiposLegend','dashEstadosLegend','dashGauges']);
+  ids.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.innerHTML = '';
+  });
+  hideDashSkeleton();
+  // Retry banner
+  const tab = document.getElementById('tab-dashboard');
+  const existing = document.getElementById('dash-error-banner');
+  if (!existing && tab) {
+    const div = document.createElement('div');
+    div.id = 'dash-error-banner';
+    div.style.cssText = 'padding:40px;text-align:center;color:var(--text-muted);';
+    div.innerHTML = `<i class="fa-solid fa-triangle-exclamation" style="font-size:36px;color:#e8a020;display:block;margin-bottom:12px;"></i>
+      <strong>No se pudo cargar el dashboard</strong><br/>
+      <button class="btn btn-outline btn-sm" style="margin-top:14px;" onclick="document.getElementById('dash-error-banner')?.remove();loadDashboard();">
+        <i class="fa-solid fa-rotate-right"></i> Reintentar
+      </button>`;
+    tab.prepend(div);
+  }
+}
 
 // ── EMPRESA DATA (load once) ─────────────────────────────────
 async function loadEmpresaData() {
@@ -730,7 +809,11 @@ function switchFacTab(tabId, btn) {
   document.querySelectorAll('.fac-tab').forEach(b => b.classList.remove('active'));
   document.getElementById(tabId).style.display = 'block';
   btn.classList.add('active');
-  if (tabId === 'tab-dashboard') loadDashboard();
+  if (tabId === 'tab-dashboard') {
+    // Si el pre-fetch ya completó → render instantáneo.
+    // Si aún no → skeleton aparece y se reemplaza al completar.
+    loadDashboard();
+  }
 }
 
 // ── LOAD FACTURAS ───────────────────────────────────────────
@@ -1166,8 +1249,15 @@ function gaugeBar(label, value, max, colorFrom, colorTo, suffix='%') {
 
 // ── DASHBOARD ────────────────────────────────────────────────
 async function loadDashboard() {
-  const d = await apiGet('/api/facturas/stats');
-  if (!d) return;
+  showDashSkeleton();
+  let d;
+  try {
+    d = _dashStatsPrefetch ? await _dashStatsPrefetch : await apiGet('/api/facturas/stats');
+  } catch(e) { d = null; }
+  _dashStatsPrefetch = null;
+  hideDashSkeleton();
+  if (!d) { showDashError(); return; }
+  document.getElementById('dash-error-banner')?.remove();
   const {
     totales, mensual, top_clientes, ultimas_sunat,
     mes_actual, mes_anterior, ytd, crecimiento_mensual, por_tipo
@@ -1749,5 +1839,10 @@ async function verFactura(id) {
 
 loadFacturas(1);
 loadEmpresaData();
+// Pre-fetch dashboard stats en background — cuando el usuario
+// haga clic en la tab, los datos ya están listos (0 espera percibida)
+_dashStatsPrefetch = fetch('/api/facturas/stats')
+  .then(r => r.ok ? r.json() : null)
+  .catch(() => null);
 </script>
 {% endblock %}

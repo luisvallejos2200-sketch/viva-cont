@@ -1416,13 +1416,27 @@ def _build_nubefact_payload(factura: dict, empresa: dict, items: list) -> dict:
     igv      = float(factura.get("igv")      or 0)
     total    = float(factura.get("total")    or 0)
 
+    # Catálogo 03 SUNAT — mapeo de códigos comunes a códigos válidos
+    _UNIDAD_MAP = {
+        "UND": "NIU", "UNID": "NIU", "UNIDAD": "NIU", "UN": "NIU", "UNI": "NIU",
+        "UNE": "NIU", "U": "NIU", "PZA": "NIU", "PIEZA": "NIU", "PZ": "NIU",
+        "SRV": "ZZ",  "SERV": "ZZ", "SERVICIO": "ZZ", "HRS": "HUR", "HR": "HUR",
+        "HORA": "HUR", "KG": "KGM", "KGR": "KGM", "KILO": "KGM",
+        "LT": "LTR",  "LTS": "LTR", "LITRO": "LTR",
+        "MT": "MTR",  "MTS": "MTR", "METRO": "MTR",
+        "CJA": "NMP", "CAJA": "NMP", "DOC": "DZN",
+    }
+    def _sunat_unidad(cod: str) -> str:
+        c = (cod or "NIU").strip().upper()
+        return _UNIDAD_MAP.get(c, c)   # si ya es código válido, lo deja igual
+
     nf_items = []
     for item in items:
         pu  = float(item.get("precio_unitario") or 0)
         vv  = float(item.get("valor_venta")     or 0)
         igv_i = float(item.get("igv_item")      or 0)
         nf_items.append({
-            "unidad_de_medida": item.get("unidad", "NIU"),
+            "unidad_de_medida": _sunat_unidad(item.get("unidad", "NIU")),
             "codigo":           "",
             "descripcion":      item.get("descripcion", ""),
             "cantidad":         float(item.get("cantidad") or 1),

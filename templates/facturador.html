@@ -352,7 +352,16 @@ function addItem() {
   tr.innerHTML = `
     <td><input type="text" class="form-control" id="iDesc${id}" placeholder="Descripción del servicio..." /></td>
     <td><select class="form-control" id="iUnidad${id}">
-      <option>UND</option><option>SRV</option><option>HRS</option><option>MES</option><option>KG</option>
+      <option value="NIU">NIU – Unidad</option>
+      <option value="ZZ">ZZ – Servicio</option>
+      <option value="HUR">HUR – Hora</option>
+      <option value="DAY">DAY – Día</option>
+      <option value="MON">MON – Mes</option>
+      <option value="KGM">KGM – Kilogramo</option>
+      <option value="LTR">LTR – Litro</option>
+      <option value="MTR">MTR – Metro</option>
+      <option value="MTQ">MTQ – Metro cúbico</option>
+      <option value="GLL">GLL – Galón</option>
     </select></td>
     <td><input type="number" class="form-control text-right" id="iCant${id}" value="1" min="0.01" step="0.01" oninput="recalcItem(${id})" /></td>
     <td><input type="number" class="form-control text-right" id="iPU${id}" value="0" min="0" step="0.01" oninput="recalcItem(${id})" /></td>
@@ -411,7 +420,7 @@ async function guardarFactura(estado) {
     if (!desc) { ok = false; return; }
     items.push({
       descripcion:    desc,
-      unidad:         document.getElementById(`iUnidad${id}`)?.value || 'UND',
+      unidad:         document.getElementById(`iUnidad${id}`)?.value || 'NIU',
       cantidad:       parseFloat(document.getElementById(`iCant${id}`)?.value) || 1,
       precio_unitario: parseFloat(document.getElementById(`iPU${id}`)?.value) || 0,
       descuento:      parseFloat(document.getElementById(`iDesc${id}n`)?.value) || 0,
@@ -472,7 +481,7 @@ async function editarFactura(id) {
     addItem();
     const id2 = itemCounter;
     document.getElementById(`iDesc${id2}`).value    = item.descripcion || '';
-    document.getElementById(`iUnidad${id2}`).value  = item.unidad || 'UND';
+    document.getElementById(`iUnidad${id2}`).value  = item.unidad || 'NIU';
     document.getElementById(`iCant${id2}`).value    = item.cantidad;
     document.getElementById(`iPU${id2}`).value      = item.precio_unitario;
     document.getElementById(`iDesc${id2}n`).value   = item.descuento;
@@ -591,7 +600,7 @@ async function guardarYEnviarSunat() {
     if (!desc) { ok = false; return; }
     items.push({
       descripcion:     desc,
-      unidad:          document.getElementById(`iUnidad${id}`)?.value || 'UND',
+      unidad:          document.getElementById(`iUnidad${id}`)?.value || 'NIU',
       cantidad:        parseFloat(document.getElementById(`iCant${id}`)?.value) || 1,
       precio_unitario: parseFloat(document.getElementById(`iPU${id}`)?.value) || 0,
       descuento:       parseFloat(document.getElementById(`iDesc${id}n`)?.value) || 0,

@@ -100,50 +100,62 @@ function initTabs(containerSelector) {
 }
 
 // ── API HELPERS ───────────────────────────────────────────────
+// Fetch con timeout de 12 segundos — evita spinners colgados indefinidamente
+function _fetchWithTimeout(url, options = {}, timeoutMs = 12000) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  return fetch(url, { ...options, signal: ctrl.signal })
+    .finally(() => clearTimeout(timer));
+}
+
 async function apiGet(url) {
   try {
-    const res = await fetch(url);
+    const res = await _fetchWithTimeout(url);
     return await res.json();
   } catch (e) {
-    showToast('error', 'Error de red', e.message);
+    const msg = e.name === 'AbortError' ? 'Tiempo de espera agotado' : e.message;
+    showToast('error', 'Error de red', msg);
     return null;
   }
 }
 
 async function apiPost(url, data) {
   try {
-    const res = await fetch(url, {
+    const res = await _fetchWithTimeout(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
-    });
+    }, 20000);  // POST puede tardar más (upload, AI, etc.)
     return await res.json();
   } catch (e) {
-    showToast('error', 'Error de red', e.message);
+    const msg = e.name === 'AbortError' ? 'Tiempo de espera agotado' : e.message;
+    showToast('error', 'Error de red', msg);
     return null;
   }
 }
 
 async function apiPut(url, data) {
   try {
-    const res = await fetch(url, {
+    const res = await _fetchWithTimeout(url, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     });
     return await res.json();
   } catch (e) {
-    showToast('error', 'Error de red', e.message);
+    const msg = e.name === 'AbortError' ? 'Tiempo de espera agotado' : e.message;
+    showToast('error', 'Error de red', msg);
     return null;
   }
 }
 
 async function apiDelete(url) {
   try {
-    const res = await fetch(url, { method: 'DELETE' });
+    const res = await _fetchWithTimeout(url, { method: 'DELETE' });
     return await res.json();
   } catch (e) {
-    showToast('error', 'Error de red', e.message);
+    const msg = e.name === 'AbortError' ? 'Tiempo de espera agotado' : e.message;
+    showToast('error', 'Error de red', msg);
     return null;
   }
 }

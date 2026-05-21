@@ -369,13 +369,21 @@ async function loadTransacciones(page = 1) {
   const params = new URLSearchParams({ page, per_page:50, search, banco, mes, tipo,
     periodo_id: activePeriodoEC === 'all' ? '' : activePeriodoEC });
   const data = await apiGet('/api/estados-cuenta/transacciones?' + params);
-  if (!data) return;
+  const tbody = document.getElementById('bodyEC');
+  if (!data) {
+    tbody.innerHTML = `<tr><td colspan="18" style="text-align:center;padding:40px;color:var(--text-muted);">
+      <i class="fa-solid fa-triangle-exclamation" style="font-size:28px;color:var(--warning);display:block;margin-bottom:10px;"></i>
+      Error al cargar transacciones.
+      <a href="#" onclick="loadTransacciones(${page});return false;" style="color:var(--primary);font-weight:600;">
+        Reintentar</a></td></tr>`;
+    document.getElementById('paginationEC').innerHTML = '';
+    return;
+  }
 
   document.getElementById('totalLabel').textContent =
     `${data.total.toLocaleString()} transacciones`;
   document.getElementById('badge-ec').textContent = data.total > 0 ? data.total : '';
 
-  const tbody = document.getElementById('bodyEC');
   if (!data.data.length) {
     tbody.innerHTML = `<tr><td colspan="18" class="text-center" style="padding:40px;color:var(--text-muted);">
       <i class="fa-solid fa-inbox" style="font-size:32px;opacity:.3;display:block;margin-bottom:8px;"></i>

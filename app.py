@@ -1504,8 +1504,19 @@ def api_enviar_sunat(fid):
         payload = _build_nubefact_payload(factura, empresa, items)
         result  = _nubefact_post(token, ruc_emisor, payload)
     except Exception as e:
+        import sys, traceback
+        err_msg = f"Error de conexión con Nubefact: {str(e)}"
+        traceback.print_exc(file=sys.stderr)
+        # Save error in DB so the Ver-modal banner shows it
+        try:
+            conn.execute(
+                "UPDATE facturas SET sunat_estado='RECHAZADA', sunat_descripcion=? WHERE id=? AND cliente_id=?",
+                (err_msg, fid, cid()))
+            conn.commit()
+        except Exception:
+            pass
         conn.close()
-        return jsonify({"error": f"Error conectando con Nubefact: {str(e)}"}), 502
+        return jsonify({"success": False, "sunat_estado": "RECHAZADA", "error": err_msg}), 502
 
     aceptada     = bool(result.get("aceptada_por_sunat"))
     sunat_estado = "ACEPTADA" if aceptada else "RECHAZADA"

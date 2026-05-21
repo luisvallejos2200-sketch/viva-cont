@@ -178,6 +178,14 @@
 <!-- ═══ TAB: DASHBOARD ═══ -->
 <div id="tab-dashboard" class="fac-tab-pane" style="display:none;">
 
+  <!-- ── Header refresh ── -->
+  <div style="display:flex;justify-content:flex-end;margin-bottom:14px;">
+    <button class="btn btn-ghost btn-sm" onclick="refreshDashboard()" title="Actualizar dashboard"
+            style="font-size:12px;color:var(--text-muted);gap:6px;">
+      <i class="fa-solid fa-rotate-right"></i> Actualizar
+    </button>
+  </div>
+
   <!-- ── ROW 1: 6 KPI cards ── -->
   <div class="dash-kpi-grid">
     <!-- 1. Facturado este mes -->
@@ -812,16 +820,22 @@ async function loadEmpresaData() {
 }
 
 // ── TAB SWITCH ───────────────────────────────────────────────
+let _dashLoaded = false;
 function switchFacTab(tabId, btn) {
   document.querySelectorAll('.fac-tab-pane').forEach(p => p.style.display = 'none');
   document.querySelectorAll('.fac-tab').forEach(b => b.classList.remove('active'));
   document.getElementById(tabId).style.display = 'block';
   btn.classList.add('active');
-  if (tabId === 'tab-dashboard') {
-    // Si el pre-fetch ya completó → render instantáneo.
-    // Si aún no → skeleton aparece y se reemplaza al completar.
+  if (tabId === 'tab-dashboard' && !_dashLoaded) {
+    // Solo carga una vez — evita re-animaciones que causan vibración.
+    // El usuario puede refrescar manualmente con el botón de refresh.
     loadDashboard();
   }
+}
+function refreshDashboard() {
+  _dashLoaded = false;
+  _dashStatsPrefetch = null;
+  loadDashboard();
 }
 
 // ── LOAD FACTURAS ───────────────────────────────────────────
@@ -1656,6 +1670,7 @@ async function loadDashboard() {
           : '<span style="color:var(--text-muted);font-size:11px;">—</span>'}</td>
       </tr>`).join('');
   }
+  _dashLoaded = true;
 }
 
 // ── PERSONALIZACIÓN ──────────────────────────────────────────

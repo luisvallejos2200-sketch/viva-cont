@@ -100,21 +100,34 @@ function initTabs(containerSelector) {
 }
 
 // ── API HELPERS ───────────────────────────────────────────────
-// Fetch con timeout de 12 segundos — evita spinners colgados indefinidamente
-function _fetchWithTimeout(url, options = {}, timeoutMs = 12000) {
+// Fetch con timeout configurable — evita spinners colgados indefinidamente
+function _fetchWithTimeout(url, options = {}, timeoutMs = 20000) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   return fetch(url, { ...options, signal: ctrl.signal })
     .finally(() => clearTimeout(timer));
 }
 
+function _handleApiError(e, context = '') {
+  if (e.name === 'AbortError') {
+    showToast('warning', 'Tiempo agotado', 'La solicitud tardó demasiado. Intenta nuevamente.');
+  } else if (e.message === '401' || e.message === '302') {
+    showToast('error', 'Sesión expirada', 'Recarga la página e inicia sesión nuevamente.');
+  } else {
+    showToast('error', 'Error de conexión', e.message || 'Verifica tu conexión e intenta de nuevo.');
+  }
+}
+
 async function apiGet(url) {
   try {
-    const res = await _fetchWithTimeout(url);
+    const res = await _fetchWithTimeout(url, {}, 20000);
+    if (!res.ok && (res.status === 401 || res.redirected)) {
+      _handleApiError({ message: '401' });
+      return null;
+    }
     return await res.json();
   } catch (e) {
-    const msg = e.name === 'AbortError' ? 'Tiempo de espera agotado' : e.message;
-    showToast('error', 'Error de red', msg);
+    _handleApiError(e);
     return null;
   }
 }
@@ -125,11 +138,11 @@ async function apiPost(url, data) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
-    }, 20000);  // POST puede tardar más (upload, AI, etc.)
+    }, 25000);
+    if (!res.ok && res.status === 401) { _handleApiError({ message: '401' }); return null; }
     return await res.json();
   } catch (e) {
-    const msg = e.name === 'AbortError' ? 'Tiempo de espera agotado' : e.message;
-    showToast('error', 'Error de red', msg);
+    _handleApiError(e);
     return null;
   }
 }
@@ -140,22 +153,22 @@ async function apiPut(url, data) {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
-    });
+    }, 20000);
+    if (!res.ok && res.status === 401) { _handleApiError({ message: '401' }); return null; }
     return await res.json();
   } catch (e) {
-    const msg = e.name === 'AbortError' ? 'Tiempo de espera agotado' : e.message;
-    showToast('error', 'Error de red', msg);
+    _handleApiError(e);
     return null;
   }
 }
 
 async function apiDelete(url) {
   try {
-    const res = await _fetchWithTimeout(url, { method: 'DELETE' });
+    const res = await _fetchWithTimeout(url, { method: 'DELETE' }, 20000);
+    if (!res.ok && res.status === 401) { _handleApiError({ message: '401' }); return null; }
     return await res.json();
   } catch (e) {
-    const msg = e.name === 'AbortError' ? 'Tiempo de espera agotado' : e.message;
-    showToast('error', 'Error de red', msg);
+    _handleApiError(e);
     return null;
   }
 }
@@ -280,6 +293,9 @@ function setLoading(btnId, loading, text = '') {
                      '/facturador', '/configuracion', '/usuarios',
                      '/empresas', '/api/docs'];
 
+  // Rutas con estado client-side pesado: no cachear para evitar pérdida de datos
+  const NO_CACHE = new Set(['/analisis-bancario']);
+
   /* ── Progress bar ── */
   const _bar = document.createElement('div');
   _bar.id = 'viva-npbar';
@@ -304,20 +320,32 @@ function setLoading(btnId, loading, text = '') {
     }, 200);
   }
 
-  /* ── Fetch with dedup ── */
+  /* ── Fetch with dedup + AbortController timeout (15s) ── */
   function fetchPage(url) {
-    if (_cache.has(url)) return Promise.resolve(_cache.get(url));
+    if (!NO_CACHE.has(url) && _cache.has(url)) return Promise.resolve(_cache.get(url));
     if (_inflight.has(url)) return _inflight.get(url);
-    const p = fetch(url, { headers: { 'X-VIVA-SPA': '1' } })
-      .then(r => { if (!r.ok) throw new Error(r.status); return r.text(); })
-      .then(html => { _cache.set(url, html); _inflight.delete(url); return html; })
-      .catch(e => { _inflight.delete(url); throw e; });
+
+    const ctrl  = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 15000);
+
+    const p = fetch(url, { headers: { 'X-VIVA-SPA': '1' }, signal: ctrl.signal })
+      .then(r => {
+        clearTimeout(timer);
+        if (!r.ok) throw new Error(r.status);
+        return r.text();
+      })
+      .then(html => {
+        if (!NO_CACHE.has(url)) _cache.set(url, html);
+        _inflight.delete(url);
+        return html;
+      })
+      .catch(e => { clearTimeout(timer); _inflight.delete(url); throw e; });
     _inflight.set(url, p);
     return p;
   }
 
   function prefetch(url) {
-    if (!NAV_PATHS.includes(url) || _cache.has(url) || _inflight.has(url)) return;
+    if (!NAV_PATHS.includes(url) || NO_CACHE.has(url) || _cache.has(url) || _inflight.has(url)) return;
     fetchPage(url).catch(() => {});
   }
 

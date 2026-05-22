@@ -31,7 +31,7 @@ if _SENTRY_DSN:
     print("[SENTRY] inicializado correctamente", file=sys.stderr)
 
 sys.path.insert(0, os.path.dirname(__file__))
-from database import init_db, get_connection, row_to_dict, rows_to_list
+from database import init_db, get_connection, row_to_dict, rows_to_list, execute_batch
 import database as _db
 from pdf_processor import extract_bcp_soles, extract_from_excel, extract_from_text, extract_raw_text
 
@@ -660,80 +660,69 @@ def api_kpis():
     _cid = cid()
     importacion_id = request.args.get("importacion_id", type=int)
 
-    conn = get_connection()
-    c = conn.cursor()
-
     base = "modulo='erp' AND cliente_id=?"
     p = [_cid]
     if importacion_id:
         base += " AND importacion_id=?"
         p.append(importacion_id)
 
-    c.execute(f"SELECT COALESCE(SUM(CASE WHEN importe>0 THEN importe ELSE 0 END),0) FROM transacciones WHERE {base}", p)
-    total_ingresos = c.fetchone()[0]
+    conn = get_connection()
+    # ── 1 batch round-trip → 8 queries in ONE HTTP call to Turso ──────────────
+    cursors = execute_batch(conn, [
+        (f"SELECT COALESCE(SUM(CASE WHEN importe>0 THEN importe ELSE 0 END),0) FROM transacciones WHERE {base}", p),
+        (f"SELECT COALESCE(SUM(CASE WHEN importe<0 THEN ABS(importe) ELSE 0 END),0) FROM transacciones WHERE {base}", p),
+        (f"SELECT COUNT(*) FROM transacciones WHERE {base}", p),
+        ("SELECT COUNT(*) FROM facturas WHERE estado!='ANULADA' AND cliente_id=?", [_cid]),
+        ("SELECT COALESCE(SUM(total),0) FROM facturas WHERE estado='EMITIDA' AND cliente_id=?", [_cid]),
+        (f"""SELECT mes, MIN(fecha_operacion) as primera_fecha,
+               SUM(CASE WHEN importe>0 THEN importe ELSE 0 END) as ingresos,
+               SUM(CASE WHEN importe<0 THEN ABS(importe) ELSE 0 END) as egresos
+             FROM transacciones WHERE {base} AND mes!='' AND mes IS NOT NULL
+             GROUP BY mes LIMIT 24""", p),
+        (f"""SELECT tipo, COUNT(*) as cantidad, SUM(ABS(importe)) as monto
+             FROM transacciones WHERE {base} AND tipo!='' AND tipo IS NOT NULL
+             GROUP BY tipo""", p),
+        (f"SELECT * FROM transacciones WHERE {base} ORDER BY created_at DESC LIMIT 10", p),
+    ])
+    conn.close()
 
-    c.execute(f"SELECT COALESCE(SUM(CASE WHEN importe<0 THEN ABS(importe) ELSE 0 END),0) FROM transacciones WHERE {base}", p)
-    total_egresos = c.fetchone()[0]
-
-    c.execute(f"SELECT COUNT(*) FROM transacciones WHERE {base}", p)
-    total_transacciones = c.fetchone()[0]
-
-    c.execute("SELECT COUNT(*) FROM facturas WHERE estado!='ANULADA' AND cliente_id=?", (_cid,))
-    total_facturas = c.fetchone()[0]
-
-    c.execute("SELECT COALESCE(SUM(total),0) FROM facturas WHERE estado='EMITIDA' AND cliente_id=?", (_cid,))
-    total_facturado = c.fetchone()[0]
+    total_ingresos     = cursors[0].fetchone()[0] or 0
+    total_egresos      = cursors[1].fetchone()[0] or 0
+    total_transacciones= cursors[2].fetchone()[0] or 0
+    total_facturas     = cursors[3].fetchone()[0] or 0
+    total_facturado    = cursors[4].fetchone()[0] or 0
 
     _MES_IDX = {"Enero":1,"Febrero":2,"Marzo":3,"Abril":4,"Mayo":5,"Junio":6,
                 "Julio":7,"Agosto":8,"Septiembre":9,"Octubre":10,"Noviembre":11,"Diciembre":12}
 
     def _extract_year(fecha):
-        if not fecha: return ""
-        f = str(fecha).strip()
+        f = str(fecha or "").strip()
         if len(f) >= 10:
-            if f[2] == '/':   return f[6:10]   # DD/MM/YYYY
-            if f[4] == '-':   return f[0:4]    # YYYY-MM-DD
-            if f[2] == '-':   return f[6:10]   # DD-MM-YYYY
+            if f[2] == '/': return f[6:10]
+            if f[4] == '-': return f[0:4]
+            if f[2] == '-': return f[6:10]
         return f[-4:] if len(f) >= 4 else ""
 
-    c.execute(f"""
-        SELECT mes, MIN(fecha_operacion) as primera_fecha,
-               SUM(CASE WHEN importe>0 THEN importe ELSE 0 END) as ingresos,
-               SUM(CASE WHEN importe<0 THEN ABS(importe) ELSE 0 END) as egresos
-        FROM transacciones
-        WHERE {base} AND mes!='' AND mes IS NOT NULL
-        GROUP BY mes
-        LIMIT 24
-    """, p)
-    _fm_raw = rows_to_list(c.fetchall())
+    _fm_raw = rows_to_list(cursors[5].fetchall())
     _fm_raw.sort(key=lambda r: (
-        _extract_year(r.get("primera_fecha","")),
-        _MES_IDX.get(r.get("mes",""), 99)
+        _extract_year(r.get("primera_fecha", "")),
+        _MES_IDX.get(r.get("mes", ""), 99)
     ))
-    flujo_mensual = [{"mes": r["mes"], "ingresos": round(r["ingresos"],2),
-                      "egresos": round(r["egresos"],2)} for r in _fm_raw[:12]]
+    flujo_mensual = [{"mes": r["mes"], "ingresos": round(r["ingresos"] or 0, 2),
+                      "egresos": round(r["egresos"] or 0, 2)} for r in _fm_raw[:12]]
 
-    c.execute(f"""
-        SELECT tipo, COUNT(*) as cantidad, SUM(ABS(importe)) as monto
-        FROM transacciones
-        WHERE {base} AND tipo!='' AND tipo IS NOT NULL
-        GROUP BY tipo
-    """, p)
-    por_tipo = rows_to_list(c.fetchall())
+    por_tipo = rows_to_list(cursors[6].fetchall())
+    ultimas  = rows_to_list(cursors[7].fetchall())
 
-    c.execute(f"SELECT * FROM transacciones WHERE {base} ORDER BY created_at DESC LIMIT 10", p)
-    ultimas = rows_to_list(c.fetchall())
-
-    conn.close()
     return jsonify({
-        "total_ingresos": round(total_ingresos, 2),
-        "total_egresos": round(total_egresos, 2),
-        "balance": round(total_ingresos - total_egresos, 2),
+        "total_ingresos":      round(total_ingresos, 2),
+        "total_egresos":       round(total_egresos, 2),
+        "balance":             round(total_ingresos - total_egresos, 2),
         "total_transacciones": total_transacciones,
-        "total_facturas": total_facturas,
-        "total_facturado": round(total_facturado, 2),
-        "flujo_mensual": flujo_mensual,
-        "por_tipo": por_tipo,
+        "total_facturas":      total_facturas,
+        "total_facturado":     round(total_facturado, 2),
+        "flujo_mensual":       flujo_mensual,
+        "por_tipo":            por_tipo,
         "ultimas_transacciones": ultimas,
     })
 
@@ -1108,9 +1097,6 @@ def api_get_transacciones():
     search = request.args.get("search", "")
     offset = (page - 1) * per_page
 
-    conn = get_connection()
-    c = conn.cursor()
-
     periodo_id = request.args.get("periodo_id", "")
     conditions = ["modulo='banco'", "cliente_id=?"]
     params = [cid()]
@@ -1132,17 +1118,17 @@ def api_get_transacciones():
 
     where = f"WHERE {' AND '.join(conditions)}"
 
-    c.execute(f"SELECT COUNT(*) FROM transacciones {where}", params)
-    total = c.fetchone()[0]
-
-    c.execute(f"""
-        SELECT * FROM transacciones {where}
-        ORDER BY fecha_operacion DESC
-        LIMIT ? OFFSET ?
-    """, params + [per_page, offset])
-
-    rows = rows_to_list(c.fetchall())
+    # ── 1 batch round-trip: COUNT + SELECT en una sola llamada HTTP a Turso ──
+    conn = get_connection()
+    cursors = execute_batch(conn, [
+        (f"SELECT COUNT(*) FROM transacciones {where}", params),
+        (f"SELECT * FROM transacciones {where} ORDER BY fecha_operacion DESC LIMIT ? OFFSET ?",
+         params + [per_page, offset]),
+    ])
     conn.close()
+
+    total = cursors[0].fetchone()[0] or 0
+    rows  = rows_to_list(cursors[1].fetchall())
 
     return jsonify({"data": rows, "total": total, "page": page, "per_page": per_page})
 
@@ -3483,16 +3469,17 @@ def api_eliminar_usuario(uid):
 @app.route("/api/alertas", methods=["GET"])
 @login_required
 def api_get_alertas():
+    _cid = cid()
     conn = get_connection()
-    rows = conn.execute(
-        """SELECT id, tipo, titulo, mensaje, nivel, leida, url, created_at
-           FROM alertas WHERE cliente_id=? ORDER BY created_at DESC LIMIT 30""",
-        (cid(),)
-    ).fetchall()
-    no_leidas = conn.execute(
-        "SELECT COUNT(*) FROM alertas WHERE cliente_id=? AND leida=0", (cid(),)
-    ).fetchone()[0]
+    # ── 2 queries en 1 batch ──
+    cursors = execute_batch(conn, [
+        ("""SELECT id, tipo, titulo, mensaje, nivel, leida, url, created_at
+            FROM alertas WHERE cliente_id=? ORDER BY created_at DESC LIMIT 30""", [_cid]),
+        ("SELECT COUNT(*) FROM alertas WHERE cliente_id=? AND leida=0", [_cid]),
+    ])
     conn.close()
+    rows      = cursors[0].fetchall()
+    no_leidas = cursors[1].fetchone()[0]
     return jsonify({"alertas": [row_to_dict(r) for r in rows], "no_leidas": int(no_leidas or 0)})
 
 @app.route("/api/alertas/<int:aid>/leer", methods=["POST"])

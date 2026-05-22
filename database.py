@@ -42,7 +42,7 @@ def _turso_post(stmts: list) -> list:
                  "Content-Type": "application/json"},
         method="POST",
     )
-    with urllib.request.urlopen(req, timeout=15) as r:
+    with urllib.request.urlopen(req, timeout=12) as r:
         return json.loads(r.read())["results"]
 
 

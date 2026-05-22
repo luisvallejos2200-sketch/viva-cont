@@ -2057,52 +2057,75 @@ def api_importar_template():
 @login_required
 def api_analisis_upload():
     """Sube un PDF bancario, extrae transacciones y devuelve análisis completo."""
-    if "file" not in request.files:
-        return jsonify({"error": "No se envió archivo"}), 400
-    file = request.files["file"]
-    if not allowed_file(file.filename, ALLOWED_PDF | ALLOWED_EXCEL):
-        return jsonify({"error": "Solo se aceptan PDF o Excel"}), 400
-
-    banco = request.form.get("banco", "BCP SOLES")
-    filename = f"{uuid.uuid4()}_{file.filename}"
-    filepath = os.path.join(UPLOAD_FOLDER, filename)
-    file.save(filepath)
-
-    ext = file.filename.rsplit(".", 1)[-1].lower()
-    orig_filename = file.filename
+    from werkzeug.utils import secure_filename as _secure
+    filepath = None
     try:
+        if "file" not in request.files:
+            return jsonify({"error": "No se envió archivo"}), 400
+        file = request.files["file"]
+        orig_filename = file.filename or ""
+        if not allowed_file(orig_filename, ALLOWED_PDF | ALLOWED_EXCEL):
+            return jsonify({"error": "Solo se aceptan PDF o Excel"}), 400
+
+        banco = request.form.get("banco", "BCP SOLES")
+        safe_name = _secure(orig_filename) or "upload.pdf"
+        filename  = f"{uuid.uuid4()}_{safe_name}"
+        filepath  = os.path.join(UPLOAD_FOLDER, filename)
+        file.save(filepath)
+
+        ext = orig_filename.rsplit(".", 1)[-1].lower()
         if ext == "pdf":
             result = extract_bcp_soles(filepath, banco)
         else:
             result = extract_from_excel(filepath)
 
-        txs = result.get("transactions", [])
-        # raw_text viene embebido — evitamos segunda apertura del PDF
+        txs     = result.get("transactions", []) or []
         raw_text = result.get("raw_text", "") or ""
-    finally:
-        try:
-            os.remove(filepath)
-        except OSError:
-            pass
 
-    if not txs:
+        if not txs:
+            return jsonify({
+                "success": False,
+                "no_data": True,
+                "raw_text": raw_text,
+                "debug": result.get("debug", ""),
+                "message": result.get("error", "No se encontraron transacciones. Pega el texto del PDF manualmente."),
+            })
+
+        try:
+            analysis = _compute_analysis(txs, banco, orig_filename)
+        except Exception as _ae:
+            print(f"[ANALISIS] _compute_analysis error: {_ae}", file=sys.stderr)
+            analysis = {"banco": banco, "archivo": orig_filename,
+                        "total_transacciones": len(txs),
+                        "total_ingresos": 0, "total_egresos": 0, "balance": 0,
+                        "saldo_inicial": 0, "saldo_final": 0, "promedio_diario": 0,
+                        "flujo_diario": [], "por_tipo": [], "por_mes": [],
+                        "top_proveedores": [], "por_tipo_doc": [],
+                        "serie_acumulada": [], "categorias": {}}
+
         return jsonify({
-            "success": False,
-            "no_data": True,
+            "success": True,
+            "transactions": txs,
+            "analysis": analysis,
+            "filename": orig_filename,
             "raw_text": raw_text,
-            "debug": result.get("debug", ""),
-            "message": result.get("error", "No se encontraron transacciones. Pega el texto del PDF manualmente."),
+            "strategy": result.get("strategy", ""),
         })
 
-    analysis = _compute_analysis(txs, banco, orig_filename)
-    return jsonify({
-        "success": True,
-        "transactions": txs,
-        "analysis": analysis,
-        "filename": orig_filename,
-        "raw_text": raw_text,
-        "strategy": result.get("strategy", ""),
-    })
+    except Exception as e:
+        print(f"[UPLOAD] error inesperado: {type(e).__name__}: {e}", file=sys.stderr)
+        return jsonify({
+            "success": False,
+            "error": f"Error interno al procesar el archivo: {type(e).__name__}",
+            "message": "Ocurrió un error inesperado. Intenta nuevamente o usa la opción de pegar texto.",
+        }), 500
+
+    finally:
+        if filepath:
+            try:
+                os.remove(filepath)
+            except OSError:
+                pass
 
 
 @app.route("/api/analisis-bancario/upload-texto", methods=["POST"])
@@ -3352,9 +3375,19 @@ def not_found(e):
 
 @app.errorhandler(500)
 def server_error(e):
+    print(f"[500] {request.path} — {e}", file=sys.stderr)
     if request.path.startswith("/api/"):
-        return jsonify({"error": "Error interno del servidor"}), 500
+        return jsonify({"error": "Error interno del servidor", "success": False}), 500
     return render_template("login.html", error="Error interno. Por favor recarga la página."), 500
+
+
+@app.errorhandler(Exception)
+def unhandled_exception(e):
+    """Captura cualquier excepción no manejada para rutas /api/ — garantiza JSON."""
+    print(f"[EXCEPTION] {request.path} — {type(e).__name__}: {e}", file=sys.stderr)
+    if request.path.startswith("/api/"):
+        return jsonify({"error": f"Error inesperado: {type(e).__name__}", "success": False}), 500
+    return render_template("login.html", error="Error inesperado. Por favor recarga la página."), 500
 
 
 @app.errorhandler(413)

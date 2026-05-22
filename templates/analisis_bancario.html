@@ -544,8 +544,8 @@ async function handleFile(file) {
   try {
     const res = await _uploadFetch('/api/analisis-bancario/upload',
       { method:'POST', body:formData }, 30000);
-    // Verificar que el servidor respondió OK (no redirect de sesión expirada)
-    if (!res.ok && res.status === 302 || res.redirected) {
+    // Sesión expirada → redirect al login
+    if (res.redirected || res.status === 401) {
       hideLoading();
       showToast('error', 'Sesión expirada', 'Tu sesión venció. Recarga la página e inicia sesión nuevamente.');
       return;
@@ -553,7 +553,18 @@ async function handleFile(file) {
     const ct = res.headers.get('content-type') || '';
     if (!ct.includes('application/json')) {
       hideLoading();
-      showToast('error', 'Error del servidor', `Respuesta inesperada (${res.status}). Intenta nuevamente.`);
+      // Proxy/gunicorn error (502, 503, 504) — el servidor aún no respondió
+      if (res.status >= 502 && res.status <= 504) {
+        showToast('error', 'Servidor no disponible',
+          'El servidor tardó demasiado en responder. Espera unos segundos e intenta de nuevo.');
+      } else if (res.status === 500) {
+        showToast('error', 'Error interno del servidor',
+          'Ocurrió un error al procesar tu PDF. Intenta con otro archivo o usa la opción "Pegar texto".');
+        document.getElementById('pasteSection').style.display = 'block';
+      } else {
+        showToast('error', 'Respuesta inesperada',
+          `El servidor devolvió un error (código ${res.status}). Recarga la página e intenta nuevamente.`);
+      }
       return;
     }
     data = await res.json();

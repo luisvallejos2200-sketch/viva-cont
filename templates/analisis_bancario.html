@@ -478,6 +478,8 @@ Ejemplo:
 
 {% block scripts %}
 <script>
+/* ══ IIFE — evita conflicto de re-declaración let al navegar vía SPA ══════ */
+(function _initAB() {
 /* ══ STATE ════════════════════════════════════════════════ */
 let currentTxs      = [];
 let currentAnalysis = {};
@@ -1099,5 +1101,6 @@ function chartOpts(yPrefix, stacked) {
 
 // Inicializar tabs de períodos al cargar la página
 loadPeriodTabs();
+})(); /* fin IIFE _initAB */
 </script>
 {% endblock %}

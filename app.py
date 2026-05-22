@@ -533,13 +533,18 @@ def api_delete_cliente(cid_param):
 @login_required
 def dashboard():
     # Primer login: redirigir al onboarding si la empresa no tiene RUC
-    conn = get_connection()
-    emp  = row_to_dict(conn.execute(
-        "SELECT ruc FROM empresa WHERE cliente_id=?", (cid(),)
-    ).fetchone()) or {}
-    conn.close()
-    if not (emp.get("ruc") or "").strip():
-        return redirect(url_for("onboarding"))
+    try:
+        conn = get_connection()
+        row  = conn.execute(
+            "SELECT ruc FROM empresa WHERE cliente_id=?", (cid(),)
+        ).fetchone()
+        conn.close()
+        emp = row_to_dict(row) or {}
+        if not (emp.get("ruc") or "").strip():
+            return redirect(url_for("onboarding"))
+    except Exception as _de:
+        print(f"[DASHBOARD] DB error (mostrando index): {_de}", file=sys.stderr)
+        # Si la DB falla, mostrar dashboard de todas formas (los KPIs cargarán vacíos)
     return render_template("index.html")
 
 @app.route("/onboarding")
@@ -660,71 +665,86 @@ def api_kpis():
     _cid = cid()
     importacion_id = request.args.get("importacion_id", type=int)
 
-    base = "modulo='erp' AND cliente_id=?"
-    p = [_cid]
-    if importacion_id:
-        base += " AND importacion_id=?"
-        p.append(importacion_id)
+    _EMPTY = {
+        "total_ingresos": 0, "total_egresos": 0, "balance": 0,
+        "total_transacciones": 0, "total_facturas": 0, "total_facturado": 0,
+        "flujo_mensual": [], "por_tipo": [], "ultimas_transacciones": [],
+    }
 
-    conn = get_connection()
-    # ── 1 batch round-trip → 8 queries in ONE HTTP call to Turso ──────────────
-    cursors = execute_batch(conn, [
-        (f"SELECT COALESCE(SUM(CASE WHEN importe>0 THEN importe ELSE 0 END),0) FROM transacciones WHERE {base}", p),
-        (f"SELECT COALESCE(SUM(CASE WHEN importe<0 THEN ABS(importe) ELSE 0 END),0) FROM transacciones WHERE {base}", p),
-        (f"SELECT COUNT(*) FROM transacciones WHERE {base}", p),
-        ("SELECT COUNT(*) FROM facturas WHERE estado!='ANULADA' AND cliente_id=?", [_cid]),
-        ("SELECT COALESCE(SUM(total),0) FROM facturas WHERE estado='EMITIDA' AND cliente_id=?", [_cid]),
-        (f"""SELECT mes, MIN(fecha_operacion) as primera_fecha,
-               SUM(CASE WHEN importe>0 THEN importe ELSE 0 END) as ingresos,
-               SUM(CASE WHEN importe<0 THEN ABS(importe) ELSE 0 END) as egresos
-             FROM transacciones WHERE {base} AND mes!='' AND mes IS NOT NULL
-             GROUP BY mes LIMIT 24""", p),
-        (f"""SELECT tipo, COUNT(*) as cantidad, SUM(ABS(importe)) as monto
-             FROM transacciones WHERE {base} AND tipo!='' AND tipo IS NOT NULL
-             GROUP BY tipo""", p),
-        (f"SELECT * FROM transacciones WHERE {base} ORDER BY created_at DESC LIMIT 10", p),
-    ])
+    conn = None
+    try:
+        base = "modulo='erp' AND cliente_id=?"
+        p = [_cid]
+        if importacion_id:
+            base += " AND importacion_id=?"
+            p.append(importacion_id)
 
-    total_ingresos     = cursors[0].fetchone()[0] or 0
-    total_egresos      = cursors[1].fetchone()[0] or 0
-    total_transacciones= cursors[2].fetchone()[0] or 0
-    total_facturas     = cursors[3].fetchone()[0] or 0
-    total_facturado    = cursors[4].fetchone()[0] or 0
+        conn = get_connection()
+        cursors = execute_batch(conn, [
+            (f"SELECT COALESCE(SUM(CASE WHEN importe>0 THEN importe ELSE 0 END),0) FROM transacciones WHERE {base}", p),
+            (f"SELECT COALESCE(SUM(CASE WHEN importe<0 THEN ABS(importe) ELSE 0 END),0) FROM transacciones WHERE {base}", p),
+            (f"SELECT COUNT(*) FROM transacciones WHERE {base}", p),
+            ("SELECT COUNT(*) FROM facturas WHERE estado!='ANULADA' AND cliente_id=?", [_cid]),
+            ("SELECT COALESCE(SUM(total),0) FROM facturas WHERE estado='EMITIDA' AND cliente_id=?", [_cid]),
+            (f"""SELECT mes, MIN(fecha_operacion) as primera_fecha,
+                   SUM(CASE WHEN importe>0 THEN importe ELSE 0 END) as ingresos,
+                   SUM(CASE WHEN importe<0 THEN ABS(importe) ELSE 0 END) as egresos
+                 FROM transacciones WHERE {base} AND mes!='' AND mes IS NOT NULL
+                 GROUP BY mes LIMIT 24""", p),
+            (f"""SELECT tipo, COUNT(*) as cantidad, SUM(ABS(importe)) as monto
+                 FROM transacciones WHERE {base} AND tipo!='' AND tipo IS NOT NULL
+                 GROUP BY tipo""", p),
+            (f"SELECT * FROM transacciones WHERE {base} ORDER BY created_at DESC LIMIT 10", p),
+        ])
 
-    _MES_IDX = {"Enero":1,"Febrero":2,"Marzo":3,"Abril":4,"Mayo":5,"Junio":6,
-                "Julio":7,"Agosto":8,"Septiembre":9,"Octubre":10,"Noviembre":11,"Diciembre":12}
+        total_ingresos      = cursors[0].fetchone()[0] or 0
+        total_egresos       = cursors[1].fetchone()[0] or 0
+        total_transacciones = cursors[2].fetchone()[0] or 0
+        total_facturas      = cursors[3].fetchone()[0] or 0
+        total_facturado     = cursors[4].fetchone()[0] or 0
 
-    def _extract_year(fecha):
-        f = str(fecha or "").strip()
-        if len(f) >= 10:
-            if f[2] == '/': return f[6:10]
-            if f[4] == '-': return f[0:4]
-            if f[2] == '-': return f[6:10]
-        return f[-4:] if len(f) >= 4 else ""
+        _MES_IDX = {"Enero":1,"Febrero":2,"Marzo":3,"Abril":4,"Mayo":5,"Junio":6,
+                    "Julio":7,"Agosto":8,"Septiembre":9,"Octubre":10,"Noviembre":11,"Diciembre":12}
 
-    _fm_raw = rows_to_list(cursors[5].fetchall())
-    _fm_raw.sort(key=lambda r: (
-        _extract_year(r.get("primera_fecha", "")),
-        _MES_IDX.get(r.get("mes", ""), 99)
-    ))
-    flujo_mensual = [{"mes": r["mes"], "ingresos": round(r["ingresos"] or 0, 2),
-                      "egresos": round(r["egresos"] or 0, 2)} for r in _fm_raw[:12]]
+        def _extract_year(fecha):
+            f = str(fecha or "").strip()
+            if len(f) >= 10:
+                if f[2] == '/': return f[6:10]
+                if f[4] == '-': return f[0:4]
+                if f[2] == '-': return f[6:10]
+            return f[-4:] if len(f) >= 4 else ""
 
-    por_tipo = rows_to_list(cursors[6].fetchall())
-    ultimas  = rows_to_list(cursors[7].fetchall())
-    conn.close()
+        _fm_raw = rows_to_list(cursors[5].fetchall())
+        _fm_raw.sort(key=lambda r: (
+            _extract_year(r.get("primera_fecha", "")),
+            _MES_IDX.get(r.get("mes", ""), 99)
+        ))
+        flujo_mensual = [{"mes": r["mes"], "ingresos": round(r["ingresos"] or 0, 2),
+                          "egresos": round(r["egresos"] or 0, 2)} for r in _fm_raw[:12]]
 
-    return jsonify({
-        "total_ingresos":      round(total_ingresos, 2),
-        "total_egresos":       round(total_egresos, 2),
-        "balance":             round(total_ingresos - total_egresos, 2),
-        "total_transacciones": total_transacciones,
-        "total_facturas":      total_facturas,
-        "total_facturado":     round(total_facturado, 2),
-        "flujo_mensual":       flujo_mensual,
-        "por_tipo":            por_tipo,
-        "ultimas_transacciones": ultimas,
-    })
+        por_tipo = rows_to_list(cursors[6].fetchall())
+        ultimas  = rows_to_list(cursors[7].fetchall())
+
+        return jsonify({
+            "total_ingresos":        round(total_ingresos, 2),
+            "total_egresos":         round(total_egresos, 2),
+            "balance":               round(total_ingresos - total_egresos, 2),
+            "total_transacciones":   int(total_transacciones),
+            "total_facturas":        int(total_facturas),
+            "total_facturado":       round(total_facturado, 2),
+            "flujo_mensual":         flujo_mensual,
+            "por_tipo":              por_tipo,
+            "ultimas_transacciones": ultimas,
+        })
+
+    except Exception as _ke:
+        print(f"[KPIs] error: {_ke}", file=sys.stderr)
+        return jsonify(_EMPTY)
+
+    finally:
+        if conn:
+            try: conn.close()
+            except: pass
 
 
 # ─────────────────────────────────────────────────────────
@@ -3380,14 +3400,6 @@ def server_error(e):
         return jsonify({"error": "Error interno del servidor", "success": False}), 500
     return render_template("login.html", error="Error interno. Por favor recarga la página."), 500
 
-
-@app.errorhandler(Exception)
-def unhandled_exception(e):
-    """Captura cualquier excepción no manejada para rutas /api/ — garantiza JSON."""
-    print(f"[EXCEPTION] {request.path} — {type(e).__name__}: {e}", file=sys.stderr)
-    if request.path.startswith("/api/"):
-        return jsonify({"error": f"Error inesperado: {type(e).__name__}", "success": False}), 500
-    return render_template("login.html", error="Error inesperado. Por favor recarga la página."), 500
 
 
 @app.errorhandler(413)

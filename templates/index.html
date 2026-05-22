@@ -310,18 +310,22 @@ async function loadKPIs() {
   const url = _activeImportacionId
     ? `/api/dashboard/kpis?importacion_id=${_activeImportacionId}`
     : '/api/dashboard/kpis';
-  const data = await apiGet(url);
-  if (!data) return;
+  let data;
+  try {
+    data = await apiGet(url);
+  } catch(e) { return; }
+  // Si apiGet devolvió null o un objeto de error sin los campos esperados → salir
+  if (!data || data.error || typeof data.total_transacciones === 'undefined') return;
 
-  // KPI values
-  document.getElementById('kpi-ingresos').textContent    = fmtMoney(data.total_ingresos);
-  document.getElementById('kpi-egresos').textContent     = fmtMoney(data.total_egresos);
+  // KPI values — con fallback a 0 en cada campo para evitar crash
+  document.getElementById('kpi-ingresos').textContent    = fmtMoney(data.total_ingresos   ?? 0);
+  document.getElementById('kpi-egresos').textContent     = fmtMoney(data.total_egresos    ?? 0);
   const balEl = document.getElementById('kpi-balance');
-  balEl.textContent = fmtMoney(data.balance);
-  balEl.className = 'kpi-value ' + (data.balance >= 0 ? 'positive' : 'negative');
-  document.getElementById('kpi-tx').textContent          = data.total_transacciones.toLocaleString();
-  document.getElementById('kpi-facturado').textContent   = fmtMoney(data.total_facturado);
-  document.getElementById('kpi-facturas-count').textContent = data.total_facturas.toLocaleString();
+  balEl.textContent = fmtMoney(data.balance ?? 0);
+  balEl.className = 'kpi-value ' + ((data.balance ?? 0) >= 0 ? 'positive' : 'negative');
+  document.getElementById('kpi-tx').textContent             = (data.total_transacciones ?? 0).toLocaleString();
+  document.getElementById('kpi-facturado').textContent      = fmtMoney(data.total_facturado   ?? 0);
+  document.getElementById('kpi-facturas-count').textContent = (data.total_facturas ?? 0).toLocaleString();
 
   // Flujo Chart
   if (data.flujo_mensual?.length) {

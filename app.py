@@ -684,7 +684,6 @@ def api_kpis():
              GROUP BY tipo""", p),
         (f"SELECT * FROM transacciones WHERE {base} ORDER BY created_at DESC LIMIT 10", p),
     ])
-    conn.close()
 
     total_ingresos     = cursors[0].fetchone()[0] or 0
     total_egresos      = cursors[1].fetchone()[0] or 0
@@ -713,6 +712,7 @@ def api_kpis():
 
     por_tipo = rows_to_list(cursors[6].fetchall())
     ultimas  = rows_to_list(cursors[7].fetchall())
+    conn.close()
 
     return jsonify({
         "total_ingresos":      round(total_ingresos, 2),
@@ -1125,10 +1125,9 @@ def api_get_transacciones():
         (f"SELECT * FROM transacciones {where} ORDER BY fecha_operacion DESC LIMIT ? OFFSET ?",
          params + [per_page, offset]),
     ])
-    conn.close()
-
     total = cursors[0].fetchone()[0] or 0
     rows  = rows_to_list(cursors[1].fetchall())
+    conn.close()
 
     return jsonify({"data": rows, "total": total, "page": page, "per_page": per_page})
 
@@ -3477,9 +3476,9 @@ def api_get_alertas():
             FROM alertas WHERE cliente_id=? ORDER BY created_at DESC LIMIT 30""", [_cid]),
         ("SELECT COUNT(*) FROM alertas WHERE cliente_id=? AND leida=0", [_cid]),
     ])
-    conn.close()
     rows      = cursors[0].fetchall()
     no_leidas = cursors[1].fetchone()[0]
+    conn.close()
     return jsonify({"alertas": [row_to_dict(r) for r in rows], "no_leidas": int(no_leidas or 0)})
 
 @app.route("/api/alertas/<int:aid>/leer", methods=["POST"])

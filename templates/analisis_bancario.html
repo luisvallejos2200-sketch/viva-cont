@@ -537,7 +537,19 @@ async function handleFile(file) {
   let data;
   try {
     const res = await _uploadFetch('/api/analisis-bancario/upload',
-      { method:'POST', body:formData }, 25000);
+      { method:'POST', body:formData }, 30000);
+    // Verificar que el servidor respondió OK (no redirect de sesión expirada)
+    if (!res.ok && res.status === 302 || res.redirected) {
+      hideLoading();
+      showToast('error', 'Sesión expirada', 'Tu sesión venció. Recarga la página e inicia sesión nuevamente.');
+      return;
+    }
+    const ct = res.headers.get('content-type') || '';
+    if (!ct.includes('application/json')) {
+      hideLoading();
+      showToast('error', 'Error del servidor', `Respuesta inesperada (${res.status}). Intenta nuevamente.`);
+      return;
+    }
     data = await res.json();
   } catch(e) {
     hideLoading();
@@ -546,11 +558,16 @@ async function handleFile(file) {
       showToast('warning', 'El PDF tardó demasiado',
         'Tiempo de procesamiento agotado. Abre el PDF, copia todo el texto (Ctrl+A → Ctrl+C) y pégalo en el área de texto.');
     } else {
-      showToast('error', 'Error de red', e.message);
+      showToast('error', 'Error al subir archivo', e.message || 'Verifica tu conexión e intenta de nuevo.');
     }
     return;
   }
   hideLoading();
+
+  if (!data) {
+    showToast('error', 'Respuesta vacía', 'El servidor no devolvió datos. Intenta nuevamente.');
+    return;
+  }
 
   const rawText = (data.raw_text || '').trim();
 
@@ -561,7 +578,7 @@ async function handleFile(file) {
     document.getElementById('pasteTextAB').value = rawText;
   }
 
-  if (data.no_data) {
+  if (data.no_data || (data.success === false && !data.error)) {
     document.getElementById('pasteSection').style.display = 'block';
     if (rawText) {
       showToast('info', 'Texto extraído del PDF',
@@ -578,16 +595,21 @@ async function handleFile(file) {
     return;
   }
 
-  // Verificar si las transacciones parecen reales (al menos 3 y montos > 10)
-  const totalMonto = (data.transactions || []).reduce((s, t) => s + Math.abs(t.importe || 0), 0);
-  if (data.transactions.length < 3 || totalMonto < 10) {
+  const txs = data.transactions || [];
+  if (!txs.length) {
     document.getElementById('pasteSection').style.display = 'block';
-    showToast('warning', `Solo ${data.transactions.length} transacciones detectadas`,
-      'El formato del PDF no fue reconocido completamente. Usa el área de texto para procesar.');
+    showToast('warning', 'Sin transacciones detectadas',
+      'No se reconocieron movimientos en este PDF. Usa el área de texto para procesar.');
     return;
   }
 
-  mountDashboard(data.transactions, data.analysis, data.filename);
+  // Montar dashboard — envuelto en try para capturar errores de renderizado
+  try {
+    mountDashboard(txs, data.analysis, data.filename);
+  } catch(err) {
+    console.error('[handleFile] mountDashboard error:', err);
+    showToast('error', 'Error al mostrar el dashboard', err.message || 'Recarga la página e intenta nuevamente.');
+  }
 }
 
 function usarTextoDiag() {
@@ -617,11 +639,16 @@ async function procesarTextoAB() {
     return;
   }
   hideLoading();
-  if (!data.success) {
-    showToast('warning','Sin resultados', data.message || 'No se detectaron transacciones en el texto.');
+  if (!data || !data.success) {
+    showToast('warning','Sin resultados', (data && data.message) || 'No se detectaron transacciones en el texto.');
     return;
   }
-  mountDashboard(data.transactions, data.analysis, data.filename);
+  try {
+    mountDashboard(data.transactions, data.analysis, data.filename);
+  } catch(err) {
+    console.error('[procesarTextoAB] mountDashboard error:', err);
+    showToast('error', 'Error al mostrar resultados', err.message || 'Intenta nuevamente.');
+  }
 }
 
 async function analizarTemplate() {
@@ -638,8 +665,13 @@ async function analizarTemplate() {
     return;
   }
   hideLoading();
-  if (data.error) { showToast('error','Error', data.error); return; }
-  mountDashboard(data.transactions, data.analysis, data.filename);
+  if (!data || data.error) { showToast('error','Error', (data && data.error) || 'Error desconocido'); return; }
+  try {
+    mountDashboard(data.transactions, data.analysis, data.filename);
+  } catch(err) {
+    console.error('[analizarTemplate] mountDashboard error:', err);
+    showToast('error', 'Error al mostrar resultados', err.message || 'Intenta nuevamente.');
+  }
 }
 
 function showLoading(title, msg) {
@@ -901,7 +933,7 @@ function renderTxTable(txs) {
   const tbody = document.getElementById('txDetailBody');
   tbody.innerHTML = txs.map((tx, i) => {
     const pos = parseFloat(tx.importe || 0) >= 0;
-    return `<tr data-search="${(tx.descripcion||'') + (tx.cliente_proveedor||'')}".toLowerCase()>
+    return `<tr data-search="${((tx.descripcion||'') + (tx.cliente_proveedor||'')).toLowerCase()}">
       <td style="color:var(--text-muted);font-size:11px;">${i+1}</td>
       <td class="mono" style="white-space:nowrap;">${fmtDate(tx.fecha_operacion || tx.fecha)}</td>
       <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"

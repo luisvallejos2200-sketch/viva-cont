@@ -391,10 +391,23 @@ BCP_FULL_RE = re.compile(
 
 
 def _strategy_text_regex_on_text(full_text: str, banco: str, archivo: str) -> list:
-    """Aplica patrones regex sobre texto ya extraído (sin abrir PDF)."""
-    txs = []
+    """
+    Aplica patrones regex sobre texto ya extraído (sin abrir PDF).
+    Prueba todos los patrones y devuelve el que encuentre MÁS transacciones.
+    Orden: Scotiabank (formatos específicos) → BCP_LINE_RE (general) → BCP_FULL_RE.
+    """
 
-    # --- Scotiabank: fecha-mes-año + num_op + desc + cargo + abono + saldo ---
+    best: list = []
+
+    def _try(candidate: list) -> bool:
+        """Guarda candidate si tiene más resultados que best. Retorna True si >= 2."""
+        nonlocal best
+        if len(candidate) > len(best):
+            best = candidate
+        return len(best) >= 2
+
+    # --- Scotiabank con num_op: fecha-mes-año + num_op + desc + cargo + abono + saldo ---
+    txs = []
     for m in SCOTIABANK_RE.finditer(full_text):
         fi = _parse_date(m.group(1))
         if not fi:
@@ -411,11 +424,11 @@ def _strategy_text_regex_on_text(full_text: str, banco: str, archivo: str) -> li
         tx = _make_tx(fecha_dt, fecha_str, desc, importe, saldo, banco, archivo)
         tx["num_operacion"] = m.group(2)
         txs.append(tx)
-
-    if txs:
-        return txs
+    if _try(txs) and len(txs) >= 3:
+        return best          # Scotiabank con num_op — resultado de alta confianza
 
     # --- Scotiabank sin num_op ---
+    txs = []
     for m in SCOTIABANK_SHORT_RE.finditer(full_text):
         fi = _parse_date(m.group(1))
         if not fi:
@@ -430,11 +443,11 @@ def _strategy_text_regex_on_text(full_text: str, banco: str, archivo: str) -> li
         saldo = _parse_amount(saldo_s)
         importe = abono if abono > 0 else -cargo
         txs.append(_make_tx(fecha_dt, fecha_str, desc, importe, saldo, banco, archivo))
+    if _try(txs) and len(txs) >= 3:
+        return best
 
-    if txs:
-        return txs
-
-    # --- Fecha con mes abreviado sin num_op (DD-ENE-2026 desc monto saldo) ---
+    # --- Fecha con mes abreviado (DD-ENE-2026 desc monto saldo) — BCP/BBVA/Interbank ---
+    txs = []
     for m in ABREV_DATE_RE.finditer(full_text):
         fi = _parse_date(m.group(1))
         if not fi:
@@ -453,11 +466,35 @@ def _strategy_text_regex_on_text(full_text: str, banco: str, archivo: str) -> li
         else:
             continue
         txs.append(_make_tx(fecha_dt, fecha_str, desc, importe, saldo, banco, archivo))
+    if _try(txs) and len(txs) >= 3:
+        return best
 
-    if txs:
-        return txs
+    # --- BCP_LINE_RE: patrón general DD/MM/YYYY + desc + 2-3 montos por línea ---
+    # NOTA: Se prueba ANTES de BCP_FULL_RE porque es más robusto para el formato BCP estándar.
+    txs = []
+    for m in BCP_LINE_RE.finditer(full_text):
+        fi = _parse_date(m.group(1))
+        if not fi:
+            continue
+        fecha_dt, fecha_str = fi
+        desc = m.group(2).strip()
+        g3 = _parse_amount(m.group(3)) if m.group(3) else 0.0
+        g4 = _parse_amount(m.group(4)) if m.group(4) else None
+        g5 = _parse_amount(m.group(5)) if m.group(5) else None
+        if g5 is not None:
+            cargo, abono, saldo = g3, g4 or 0.0, g5
+            importe = abono if abono > 0 else -cargo
+        elif g4 is not None:
+            importe, saldo = g3, g4
+        else:
+            importe, saldo = g3, 0.0
+        txs.append(_make_tx(fecha_dt, fecha_str, desc, importe, saldo, banco, archivo))
+    _try(txs)
+    if len(best) >= 3:
+        return best          # BCP_LINE_RE encontró al menos 3 → confiable
 
-    # --- Intento BCP_FULL_RE (3 montos: cargo, abono, saldo) ---
+    # --- BCP_FULL_RE: fecha + num_ope + desc + cargo + abono + saldo (3 montos explícitos) ---
+    txs = []
     for m in BCP_FULL_RE.finditer(full_text):
         fi = _parse_date(m.group(1))
         if not fi:
@@ -475,30 +512,9 @@ def _strategy_text_regex_on_text(full_text: str, banco: str, archivo: str) -> li
         tx = _make_tx(fecha_dt, fecha_str, desc, importe, saldo, banco, archivo)
         tx["num_operacion"] = num_ope
         txs.append(tx)
+    _try(txs)
 
-    if txs:
-        return txs
-
-    # --- Intento BCP_LINE_RE (2-3 montos en la línea) ---
-    for m in BCP_LINE_RE.finditer(full_text):
-        fi = _parse_date(m.group(1))
-        if not fi:
-            continue
-        fecha_dt, fecha_str = fi
-        desc = m.group(2).strip()
-        g3 = _parse_amount(m.group(3)) if m.group(3) else 0.0
-        g4 = _parse_amount(m.group(4)) if m.group(4) else None
-        g5 = _parse_amount(m.group(5)) if m.group(5) else None
-        if g5 is not None:
-            cargo, abono, saldo = g3, g4, g5
-            importe = abono if abono > 0 else -cargo
-        elif g4 is not None:
-            importe, saldo = g3, g4
-        else:
-            importe, saldo = g3, 0.0
-        txs.append(_make_tx(fecha_dt, fecha_str, desc, importe, saldo, banco, archivo))
-
-    return txs
+    return best
 
 
 def _strategy_text_regex(pdf, banco, archivo):

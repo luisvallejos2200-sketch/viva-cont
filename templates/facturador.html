@@ -1372,37 +1372,43 @@ async function loadDashboard() {
 
   if (_chartMensual) _chartMensual.destroy();
   const ctxM = document.getElementById('chartMensual');
-  const grad = ctxM.getContext('2d').createLinearGradient(0, 0, 0, 260);
-  grad.addColorStop(0, 'rgba(26,127,216,.30)');
-  grad.addColorStop(1, 'rgba(26,127,216,.01)');
+  // Gradiente vertical para las barras
+  const barGrad = ctxM.getContext('2d').createLinearGradient(0, 0, 0, 280);
+  barGrad.addColorStop(0, 'rgba(26,127,216,.90)');
+  barGrad.addColorStop(1, 'rgba(26,63,110,.60)');
   _chartMensual = new Chart(ctxM, {
-    type: 'line',
+    type: 'bar',
     data: {
       labels,
       datasets: [
         {
+          type: 'bar',
           label: 'Facturado (S/)',
           data: montos,
+          backgroundColor: barGrad,
           borderColor: '#1a7fd8',
-          backgroundColor: grad,
-          borderWidth: 2.5,
-          fill: true,
-          tension: 0.42,
-          pointBackgroundColor: '#1a7fd8',
-          pointRadius: 4,
-          pointHoverRadius: 7,
+          borderWidth: 1,
+          borderRadius: 5,
+          borderSkipped: false,
           yAxisID: 'y',
+          order: 2,
         },
         {
+          type: 'line',
           label: 'Nº Comprobantes',
           data: cantidades,
           borderColor: '#e8a020',
-          backgroundColor: 'transparent',
-          borderWidth: 1.8,
-          borderDash: [5,3],
-          pointRadius: 3,
-          tension: 0.42,
+          backgroundColor: 'rgba(232,160,32,.15)',
+          borderWidth: 2,
+          fill: true,
+          tension: 0.3,
+          pointBackgroundColor: '#fff',
+          pointBorderColor: '#e8a020',
+          pointBorderWidth: 2,
+          pointRadius: labels.length === 1 ? 6 : 4,
+          pointHoverRadius: 8,
           yAxisID: 'y2',
+          order: 1,
         }
       ]
     },
@@ -1411,25 +1417,40 @@ async function loadDashboard() {
       responsive: true,
       interaction: { mode:'index', intersect:false },
       plugins: {
-        legend: { display:true, position:'top', labels:{ boxWidth:11, font:{size:11} } },
+        legend: {
+          display: true,
+          position: 'top',
+          labels: { boxWidth: 11, font: { size: 11 }, padding: 16 }
+        },
         tooltip: {
+          backgroundColor: 'rgba(15,25,50,.92)',
+          padding: 12,
+          cornerRadius: 8,
           callbacks: {
             label: ctx => ctx.datasetIndex === 0
-              ? ' S/ ' + ctx.parsed.y.toLocaleString('es-PE',{minimumFractionDigits:2})
-              : ' ' + ctx.parsed.y + ' docs'
+              ? '  S/ ' + (ctx.parsed.y||0).toLocaleString('es-PE',{minimumFractionDigits:2})
+              : '  ' + ctx.parsed.y + ' comprobantes'
           }
         }
       },
       scales: {
-        y:  {
-          beginAtZero:true,
-          grid:{ color:'rgba(0,0,0,.05)' },
-          ticks:{ callback: v => v>=1000 ? 'S/'+Math.round(v/1000)+'k' : 'S/'+v, font:{size:10} }
+        x: {
+          grid: { display: false },
+          ticks: { font: { size: 10.5 }, maxRotation: 0 }
+        },
+        y: {
+          beginAtZero: true,
+          grid: { color: 'rgba(0,0,0,.06)' },
+          ticks: {
+            callback: v => v >= 1000 ? 'S/' + Math.round(v/1000) + 'k' : 'S/' + v,
+            font: { size: 10 }
+          }
         },
         y2: {
-          beginAtZero:true, position:'right',
-          grid:{ display:false },
-          ticks:{ stepSize:1, font:{size:10} }
+          beginAtZero: true,
+          position: 'right',
+          grid: { display: false },
+          ticks: { stepSize: 1, font: { size: 10 }, color: '#e8a020' }
         }
       }
     }

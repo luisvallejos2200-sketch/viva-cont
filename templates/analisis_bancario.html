@@ -535,7 +535,7 @@ function _uploadFetch(url, options, timeoutMs = 25000) {
 }
 
 async function handleFile(file) {
-  showLoading(`Procesando "${file.name}"…`, 'Extrayendo transacciones del archivo…');
+  showLoading(`Procesando "${file.name}"…`, 'Leyendo estructura del PDF…', true);
   const formData = new FormData();
   formData.append('file', file);
   formData.append('banco', selectedBanco);
@@ -543,7 +543,7 @@ async function handleFile(file) {
   let data;
   try {
     const res = await _uploadFetch('/api/analisis-bancario/upload',
-      { method:'POST', body:formData }, 30000);
+      { method:'POST', body:formData }, 90000);
     // Sesión expirada → redirect al login
     if (res.redirected || res.status === 401) {
       hideLoading();
@@ -573,7 +573,7 @@ async function handleFile(file) {
     if (e.name === 'AbortError') {
       document.getElementById('pasteSection').style.display = 'block';
       showToast('warning', 'El PDF tardó demasiado',
-        'Tiempo de procesamiento agotado. Abre el PDF, copia todo el texto (Ctrl+A → Ctrl+C) y pégalo en el área de texto.');
+        'El archivo es muy pesado. Abre el PDF, copia todo el texto (Ctrl+A → Ctrl+C) y pégalo en el área de texto.');
     } else {
       showToast('error', 'Error al subir archivo', e.message || 'Verifica tu conexión e intenta de nuevo.');
     }
@@ -691,12 +691,30 @@ async function analizarTemplate() {
   }
 }
 
-function showLoading(title, msg) {
+var _loadingTicker = null;
+function showLoading(title, msg, animate) {
   document.getElementById('loadingTitle').textContent = title;
   document.getElementById('loadingMsg').textContent   = msg;
   document.getElementById('uploadLoading').style.display = 'block';
+  if (animate) {
+    const msgs = [
+      'Leyendo estructura del PDF…',
+      'Extrayendo texto del documento…',
+      'Detectando fechas y montos…',
+      'Analizando transacciones…',
+      'Calculando métricas financieras…',
+      'Casi listo…',
+    ];
+    let i = 0;
+    _loadingTicker = setInterval(() => {
+      i = (i + 1) % msgs.length;
+      const el = document.getElementById('loadingMsg');
+      if (el) el.textContent = msgs[i];
+    }, 3500);
+  }
 }
 function hideLoading() {
+  if (_loadingTicker) { clearInterval(_loadingTicker); _loadingTicker = null; }
   document.getElementById('uploadLoading').style.display = 'none';
 }
 

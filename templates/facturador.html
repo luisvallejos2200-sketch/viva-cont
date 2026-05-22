@@ -1271,6 +1271,7 @@ function gaugeBar(label, value, max, colorFrom, colorTo, suffix='%') {
 
 // ── DASHBOARD ────────────────────────────────────────────────
 async function loadDashboard() {
+  _dashLoaded = true;  // guard inmediato — previene llamadas paralelas por doble-clic
   showDashSkeleton();
   let d = null;
   try {

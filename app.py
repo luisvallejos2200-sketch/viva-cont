@@ -274,8 +274,7 @@ def login():
             if user.get("totp_habilitado"):
                 session["pending_2fa_uid"] = user["id"]
                 return render_template("login_2fa.html")
-            # Login normal sin 2FA — sesión permanente (12h) para que no expire al cerrar el browser
-            session.permanent      = True
+            # Sesión de browser — expira al cerrar el navegador (sin session.permanent)
             session["user_id"]     = user["id"]
             session["user_name"]   = user["nombre"]
             session["user_rol"]    = user["rol"]
@@ -3878,6 +3877,7 @@ def api_2fa_validar_login():
     # ── Completar login ───────────────────────────────────────────────────────
     session.pop("pending_2fa_uid", None)
     session.pop("2fa_attempts", None)
+    # Sin session.permanent — expira al cerrar el navegador
     session["user_id"]       = row["id"]
     session["user_name"]     = row["nombre"]
     session["user_rol"]      = row["rol"]

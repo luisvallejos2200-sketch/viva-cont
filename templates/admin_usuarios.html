@@ -43,7 +43,7 @@
 
 {% block scripts %}
 <script>
-const MODULOS = [
+var MODULOS = [
   {key:'estados_cuenta',      label:'Estados de Cuenta',    icon:'fa-building-columns'},
   {key:'analisis_bancario',   label:'Análisis Bancario',    icon:'fa-chart-bar'},
   {key:'estados_resultados',  label:'Estado de Resultados', icon:'fa-chart-line'},
@@ -51,7 +51,7 @@ const MODULOS = [
   {key:'facturador',          label:'Facturador',           icon:'fa-file-invoice-dollar'},
 ];
 
-let usuariosData = [];
+var usuariosData = [];
 
 async function cargarUsuarios() {
   const res = await fetch('/api/usuarios');

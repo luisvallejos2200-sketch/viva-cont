@@ -478,19 +478,17 @@ Ejemplo:
 
 {% block scripts %}
 <script>
-/* ══ IIFE — evita conflicto de re-declaración let al navegar vía SPA ══════ */
-(function _initAB() {
 /* ══ STATE ════════════════════════════════════════════════ */
-let currentTxs      = [];
-let currentAnalysis = {};
-let currentFilename = '';
-let selectedBanco   = 'BCP SOLES';
-let saldoViewMode   = 'saldo'; // 'saldo' | 'flujo'
+var currentTxs      = [];
+var currentAnalysis = {};
+var currentFilename = '';
+var selectedBanco   = 'BCP SOLES';
+var saldoViewMode   = 'saldo'; // 'saldo' | 'flujo'
 
 // Charts refs
-let cSaldo, cTipo, cMes, cAcum, cTipoDoc, cCat;
+var cSaldo, cTipo, cMes, cAcum, cTipoDoc, cCat;
 
-const PALETTE = [
+var PALETTE = [
   '#1a3c6e','#e8a020','#1aaa6b','#e03c3c','#2196f3',
   '#9c27b0','#ff5722','#009688','#607d8b','#795548'
 ];
@@ -995,7 +993,7 @@ async function guardarAlSistema() {
 }
 
 /* ══ TABS DE PERÍODOS ══════════════════════════════════════ */
-let activePeriodoId = null;
+var activePeriodoId = null;
 
 async function loadPeriodTabs() {
   const periodos = await apiGet('/api/periodos');
@@ -1101,6 +1099,6 @@ function chartOpts(yPrefix, stacked) {
 
 // Inicializar tabs de períodos al cargar la página
 loadPeriodTabs();
-})(); /* fin IIFE _initAB */
+
 </script>
 {% endblock %}

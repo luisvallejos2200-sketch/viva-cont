@@ -353,10 +353,10 @@ Ejemplo:
 
 {% block scripts %}
 <script>
-let currentPage    = 1;
-let pendingTxs     = [];
-let searchTimer    = null;
-let activePeriodoEC = 'all';
+var currentPage    = 1;
+var pendingTxs     = [];
+var searchTimer    = null;
+var activePeriodoEC = 'all';
 
 // ── LOAD TRANSACCIONES ──────────────────────────────────────
 async function loadTransacciones(page = 1) {
@@ -477,8 +477,8 @@ function _xhrUpload(url, formData, onProgress) {
   });
 }
 
-const _processMsgs = ['Leyendo estructura…','Extrayendo texto…','Analizando transacciones…','Detectando fechas y montos…','Casi listo…'];
-let _processTicker = null;
+var _processMsgs = ['Leyendo estructura…','Extrayendo texto…','Analizando transacciones…','Detectando fechas y montos…','Casi listo…'];
+var _processTicker = null;
 function _startProcessTicker(msgEl, barEl, pctEl) {
   let i = 0, w = 70;
   pctEl.textContent = '';

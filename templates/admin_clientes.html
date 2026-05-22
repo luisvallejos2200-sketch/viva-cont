@@ -37,8 +37,8 @@
 
 {% block scripts %}
 <script>
-const PLANES = {basic:'Basic', standard:'Standard', premium:'Premium', enterprise:'Enterprise'};
-const MODULOS = [
+var PLANES = {basic:'Basic', standard:'Standard', premium:'Premium', enterprise:'Enterprise'};
+var MODULOS = [
   {key:'estados_cuenta',     label:'Estados de Cuenta',    icon:'fa-building-columns'},
   {key:'analisis_bancario',  label:'Análisis Bancario',    icon:'fa-chart-bar'},
   {key:'estados_resultados', label:'Estado de Resultados', icon:'fa-chart-line'},
@@ -46,7 +46,7 @@ const MODULOS = [
   {key:'facturador',         label:'Facturador',           icon:'fa-file-invoice-dollar'},
 ];
 
-let clientesData = [];
+var clientesData = [];
 
 function escHtml(s) { return (s||'').replace(/&/g,'&amp;').replace(/'/g,"&#39;").replace(/"/g,'&quot;'); }
 

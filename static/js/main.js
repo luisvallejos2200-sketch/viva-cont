@@ -121,8 +121,18 @@ function _handleApiError(e, context = '') {
 async function apiGet(url) {
   try {
     const res = await _fetchWithTimeout(url, {}, 20000);
-    if (!res.ok && (res.status === 401 || res.redirected)) {
+    if (res.redirected || res.status === 401) {
       _handleApiError({ message: '401' });
+      return null;
+    }
+    if (!res.ok) {
+      const ct = res.headers.get('content-type') || '';
+      if (ct.includes('application/json')) {
+        const err = await res.json();
+        showToast('error', 'Error del servidor', err.error || err.message || 'Error inesperado');
+      } else {
+        showToast('error', 'Error del servidor', `HTTP ${res.status}`);
+      }
       return null;
     }
     return await res.json();
@@ -139,7 +149,7 @@ async function apiPost(url, data) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     }, 25000);
-    if (!res.ok && res.status === 401) { _handleApiError({ message: '401' }); return null; }
+    if (res.redirected || res.status === 401) { _handleApiError({ message: '401' }); return null; }
     return await res.json();
   } catch (e) {
     _handleApiError(e);
@@ -154,7 +164,7 @@ async function apiPut(url, data) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     }, 20000);
-    if (!res.ok && res.status === 401) { _handleApiError({ message: '401' }); return null; }
+    if (res.redirected || res.status === 401) { _handleApiError({ message: '401' }); return null; }
     return await res.json();
   } catch (e) {
     _handleApiError(e);
@@ -165,7 +175,7 @@ async function apiPut(url, data) {
 async function apiDelete(url) {
   try {
     const res = await _fetchWithTimeout(url, { method: 'DELETE' }, 20000);
-    if (!res.ok && res.status === 401) { _handleApiError({ message: '401' }); return null; }
+    if (res.redirected || res.status === 401) { _handleApiError({ message: '401' }); return null; }
     return await res.json();
   } catch (e) {
     _handleApiError(e);

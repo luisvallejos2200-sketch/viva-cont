@@ -741,18 +741,18 @@
 
 {% block scripts %}
 <script>
-let facturas         = [];
-let itemCounter      = 0;
-let editingFacturaId = null;
-let empresaData      = {};   // cached for invoice preview & personalization
-let _chartMensual     = null;
-let _chartTipos       = null;
-let _chartTopClientes = null;
-let _chartEstados     = null;
-let _dashStatsPrefetch = null;  // Promise — pre-fetched in bg
+var facturas         = [];
+var itemCounter      = 0;
+var editingFacturaId = null;
+var empresaData      = {};   // cached for invoice preview & personalization
+var _chartMensual     = null;
+var _chartTipos       = null;
+var _chartTopClientes = null;
+var _chartEstados     = null;
+var _dashStatsPrefetch = null;  // Promise — pre-fetched in bg
 
 // IDs of all 12 KPI value elements
-const _DASH_KPI_IDS = [
+var _DASH_KPI_IDS = [
   'dash-mes-monto','dash-ytd-monto','dash-clientes','dash-promedio',
   'dash-tasa-sunat','dash-pendientes','dash-monto-hist','dash-igv-ytd',
   'dash-total-docs','dash-borradores','dash-mejor-mes-monto','dash-tasa-anulacion'
@@ -820,7 +820,7 @@ async function loadEmpresaData() {
 }
 
 // ── TAB SWITCH ───────────────────────────────────────────────
-let _dashLoaded = false;
+var _dashLoaded = false;
 function switchFacTab(tabId, btn) {
   document.querySelectorAll('.fac-tab-pane').forEach(p => p.style.display = 'none');
   document.querySelectorAll('.fac-tab').forEach(b => b.classList.remove('active'));
@@ -921,7 +921,7 @@ async function loadFacturas(page = 1) {
 
 // ── NUEVA FACTURA ────────────────────────────────────────────
 // Tipos que van a SUNAT via Nubefact
-const TIPOS_SUNAT = new Set(['FACTURA','BOLETA','NOTA_CREDITO','NOTA_DEBITO','LIQUIDACION_COMPRA']);
+var TIPOS_SUNAT = new Set(['FACTURA','BOLETA','NOTA_CREDITO','NOTA_DEBITO','LIQUIDACION_COMPRA']);
 
 // Badge de tipo de documento
 function badgeDocTipo(tipo) {

@@ -367,9 +367,9 @@
 
 {% block scripts %}
 <script>
-let allPeriodos = [];
-let activePeriodo = null;
-let chartActivo = null, chartPasivo = null, chartResumen = null;
+var allPeriodos = [];
+var activePeriodo = null;
+var chartActivo = null, chartPasivo = null, chartResumen = null;
 
 function fmt(v, mono='PEN') {
   const prefix = mono === 'USD' ? '$ ' : 'S/ ';

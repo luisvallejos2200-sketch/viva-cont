@@ -323,10 +323,10 @@
 
 {% block scripts %}
 <script>
-let allPeriodos = [];
-let activePeriodo = null;
-let chartER = null;
-let chartGastos = null;
+var allPeriodos = [];
+var activePeriodo = null;
+var chartER = null;
+var chartGastos = null;
 
 function fmt(v, mono='PEN') {
   const prefix = mono === 'USD' ? '$ ' : 'S/ ';

@@ -1110,47 +1110,51 @@ def api_confirmar_transacciones():
 @app.route("/api/estados-cuenta/transacciones")
 @login_required
 def api_get_transacciones():
-    page = int(request.args.get("page", 1))
-    per_page = int(request.args.get("per_page", 50))
-    banco = request.args.get("banco", "")
-    mes = request.args.get("mes", "")
-    tipo = request.args.get("tipo", "")
-    search = request.args.get("search", "")
-    offset = (page - 1) * per_page
+    try:
+        page = int(request.args.get("page", 1))
+        per_page = int(request.args.get("per_page", 50))
+        banco = request.args.get("banco", "")
+        mes = request.args.get("mes", "")
+        tipo = request.args.get("tipo", "")
+        search = request.args.get("search", "")
+        offset = (page - 1) * per_page
 
-    periodo_id = request.args.get("periodo_id", "")
-    conditions = ["modulo='banco'", "cliente_id=?"]
-    params = [cid()]
-    if periodo_id and periodo_id != "all":
-        conditions.append("periodo_id = ?")
-        params.append(int(periodo_id))
-    if banco:
-        conditions.append("banco = ?")
-        params.append(banco)
-    if mes:
-        conditions.append("mes = ?")
-        params.append(mes)
-    if tipo:
-        conditions.append("tipo = ?")
-        params.append(tipo)
-    if search:
-        conditions.append("(descripcion LIKE ? OR cliente_proveedor LIKE ? OR ruc LIKE ?)")
-        params.extend([f"%{search}%", f"%{search}%", f"%{search}%"])
+        periodo_id = request.args.get("periodo_id", "")
+        conditions = ["modulo='banco'", "cliente_id=?"]
+        params = [cid()]
+        if periodo_id and periodo_id != "all":
+            conditions.append("periodo_id = ?")
+            params.append(int(periodo_id))
+        if banco:
+            conditions.append("banco = ?")
+            params.append(banco)
+        if mes:
+            conditions.append("mes = ?")
+            params.append(mes)
+        if tipo:
+            conditions.append("tipo = ?")
+            params.append(tipo)
+        if search:
+            conditions.append("(descripcion LIKE ? OR cliente_proveedor LIKE ? OR ruc LIKE ?)")
+            params.extend([f"%{search}%", f"%{search}%", f"%{search}%"])
 
-    where = f"WHERE {' AND '.join(conditions)}"
+        where = f"WHERE {' AND '.join(conditions)}"
 
-    # ── 1 batch round-trip: COUNT + SELECT en una sola llamada HTTP a Turso ──
-    conn = get_connection()
-    cursors = execute_batch(conn, [
-        (f"SELECT COUNT(*) FROM transacciones {where}", params),
-        (f"SELECT * FROM transacciones {where} ORDER BY fecha_operacion DESC LIMIT ? OFFSET ?",
-         params + [per_page, offset]),
-    ])
-    total = cursors[0].fetchone()[0] or 0
-    rows  = rows_to_list(cursors[1].fetchall())
-    conn.close()
+        # ── 1 batch round-trip: COUNT + SELECT en una sola llamada HTTP a Turso ──
+        conn = get_connection()
+        cursors = execute_batch(conn, [
+            (f"SELECT COUNT(*) FROM transacciones {where}", params),
+            (f"SELECT * FROM transacciones {where} ORDER BY fecha_operacion DESC LIMIT ? OFFSET ?",
+             params + [per_page, offset]),
+        ])
+        total = cursors[0].fetchone()[0] or 0
+        rows  = rows_to_list(cursors[1].fetchall())
+        conn.close()
 
-    return jsonify({"data": rows, "total": total, "page": page, "per_page": per_page})
+        return jsonify({"data": rows, "total": total, "page": page, "per_page": per_page})
+    except Exception as _e:
+        print(f"[TRANSACCIONES] error: {_e}", file=sys.stderr)
+        return jsonify({"data": [], "total": 0, "page": 1, "per_page": 50})
 
 
 @app.route("/api/estados-cuenta/transacciones/<int:tx_id>", methods=["PUT"])
@@ -1222,37 +1226,41 @@ def api_exportar_excel():
 @app.route("/api/facturas", methods=["GET"])
 @login_required
 def api_get_facturas():
-    page = int(request.args.get("page", 1))
-    per_page = int(request.args.get("per_page", 20))
-    estado = request.args.get("estado", "")
-    offset = (page - 1) * per_page
+    try:
+        page = int(request.args.get("page", 1))
+        per_page = int(request.args.get("per_page", 20))
+        estado = request.args.get("estado", "")
+        offset = (page - 1) * per_page
 
-    conn = get_connection()
-    c = conn.cursor()
+        conn = get_connection()
+        c = conn.cursor()
 
-    conditions = ["f.cliente_id=?"]
-    params = [cid()]
-    if estado:
-        conditions.append("f.estado=?")
-        params.append(estado)
-    where = "WHERE " + " AND ".join(conditions)
+        conditions = ["f.cliente_id=?"]
+        params = [cid()]
+        if estado:
+            conditions.append("f.estado=?")
+            params.append(estado)
+        where = "WHERE " + " AND ".join(conditions)
 
-    c.execute(f"SELECT COUNT(*) FROM facturas f {where}", params)
-    total = c.fetchone()[0]
+        c.execute(f"SELECT COUNT(*) FROM facturas f {where}", params)
+        total = c.fetchone()[0]
 
-    c.execute(f"""
-        SELECT f.*, GROUP_CONCAT(fi.descripcion, ' | ') as items_desc
-        FROM facturas f
-        LEFT JOIN factura_items fi ON fi.factura_id = f.id
-        {where}
-        GROUP BY f.id
-        ORDER BY f.created_at DESC
-        LIMIT ? OFFSET ?
-    """, params + [per_page, offset])
+        c.execute(f"""
+            SELECT f.*, GROUP_CONCAT(fi.descripcion, ' | ') as items_desc
+            FROM facturas f
+            LEFT JOIN factura_items fi ON fi.factura_id = f.id
+            {where}
+            GROUP BY f.id
+            ORDER BY f.created_at DESC
+            LIMIT ? OFFSET ?
+        """, params + [per_page, offset])
 
-    rows = rows_to_list(c.fetchall())
-    conn.close()
-    return jsonify({"data": rows, "total": total, "page": page})
+        rows = rows_to_list(c.fetchall())
+        conn.close()
+        return jsonify({"data": rows, "total": total, "page": page})
+    except Exception as _e:
+        print(f"[FACTURAS GET] error: {_e}", file=sys.stderr)
+        return jsonify({"data": [], "total": 0, "page": 1})
 
 
 @app.route("/api/facturas", methods=["POST"])
@@ -1986,39 +1994,47 @@ def api_facturas_stats():
 @app.route("/api/empresa", methods=["GET"])
 @login_required
 def api_get_empresa():
-    conn = get_connection()
-    c = conn.cursor()
-    c.execute("SELECT * FROM empresa WHERE cliente_id=?", (cid(),))
-    row = row_to_dict(c.fetchone())
-    conn.close()
-    return jsonify(row or {})
+    try:
+        conn = get_connection()
+        c = conn.cursor()
+        c.execute("SELECT * FROM empresa WHERE cliente_id=?", (cid(),))
+        row = row_to_dict(c.fetchone())
+        conn.close()
+        return jsonify(row or {})
+    except Exception as _e:
+        print(f"[EMPRESA GET] error: {_e}", file=sys.stderr)
+        return jsonify({})
 
 
 @app.route("/api/empresa", methods=["PUT"])
 @login_required
 def api_update_empresa():
-    data = request.get_json() or {}
-    fields = ["ruc", "razon_social", "nombre_comercial", "direccion", "telefono", "email",
-              "regimen", "nubefact_token", "nubefact_modo", "nubefact_ruta",
-              "logo_base64", "factura_color", "factura_footer",
-              "serie_factura", "serie_boleta", "serie_nc", "serie_nd", "serie_lc"]
-    # Skip empty-string updates for critical fields to avoid overwriting with blank
-    protected = {"ruc", "razon_social"}
-    sets = ", ".join(f"{f} = ?" for f in fields if f in data and not (f in protected and not data[f]))
-    vals = [data[f] for f in fields if f in data and not (f in protected and not data[f])]
-    conn = get_connection()
-    # Upsert: si no existe empresa para este cliente, la crea
-    existing = conn.execute("SELECT id FROM empresa WHERE cliente_id=?", (cid(),)).fetchone()
-    if existing:
-        conn.execute(f"UPDATE empresa SET {sets}, updated_at=CURRENT_TIMESTAMP WHERE cliente_id=?",
-                     vals + [cid()])
-    else:
-        conn.execute("INSERT INTO empresa (cliente_id) VALUES (?)", (cid(),))
-        conn.execute(f"UPDATE empresa SET {sets}, updated_at=CURRENT_TIMESTAMP WHERE cliente_id=?",
-                     vals + [cid()])
-    conn.commit()
-    conn.close()
-    return jsonify({"success": True})
+    try:
+        data = request.get_json() or {}
+        fields = ["ruc", "razon_social", "nombre_comercial", "direccion", "telefono", "email",
+                  "regimen", "nubefact_token", "nubefact_modo", "nubefact_ruta",
+                  "logo_base64", "factura_color", "factura_footer",
+                  "serie_factura", "serie_boleta", "serie_nc", "serie_nd", "serie_lc"]
+        # Skip empty-string updates for critical fields to avoid overwriting with blank
+        protected = {"ruc", "razon_social"}
+        sets = ", ".join(f"{f} = ?" for f in fields if f in data and not (f in protected and not data[f]))
+        vals = [data[f] for f in fields if f in data and not (f in protected and not data[f])]
+        conn = get_connection()
+        # Upsert: si no existe empresa para este cliente, la crea
+        existing = conn.execute("SELECT id FROM empresa WHERE cliente_id=?", (cid(),)).fetchone()
+        if existing:
+            conn.execute(f"UPDATE empresa SET {sets}, updated_at=CURRENT_TIMESTAMP WHERE cliente_id=?",
+                         vals + [cid()])
+        else:
+            conn.execute("INSERT INTO empresa (cliente_id) VALUES (?)", (cid(),))
+            conn.execute(f"UPDATE empresa SET {sets}, updated_at=CURRENT_TIMESTAMP WHERE cliente_id=?",
+                         vals + [cid()])
+        conn.commit()
+        conn.close()
+        return jsonify({"success": True})
+    except Exception as _e:
+        print(f"[EMPRESA PUT] error: {_e}", file=sys.stderr)
+        return jsonify({"success": False, "error": str(_e)}), 500
 
 
 # ─────────────────────────────────────────────────────────
@@ -2191,56 +2207,68 @@ def api_analisis_excel():
 @login_required
 def api_get_periodos():
     """Lista todos los períodos cargados."""
-    conn = get_connection()
-    rows = rows_to_list(conn.execute(
-        "SELECT * FROM periodos_cargados WHERE cliente_id=? ORDER BY anio DESC, created_at DESC",
-        (cid(),)
-    ).fetchall())
-    conn.close()
-    return jsonify(rows)
+    try:
+        conn = get_connection()
+        rows = rows_to_list(conn.execute(
+            "SELECT * FROM periodos_cargados WHERE cliente_id=? ORDER BY anio DESC, created_at DESC",
+            (cid(),)
+        ).fetchall())
+        conn.close()
+        return jsonify(rows)
+    except Exception as _e:
+        print(f"[PERIODOS] error: {_e}", file=sys.stderr)
+        return jsonify([])
 
 
 @app.route("/api/periodos/<int:pid>/analysis", methods=["GET"])
 @login_required
 def api_periodo_analysis(pid):
     """Devuelve el análisis guardado de un período específico."""
-    conn = get_connection()
-    row = row_to_dict(conn.execute(
-        "SELECT * FROM periodos_cargados WHERE id=? AND cliente_id=?", (pid, cid())
-    ).fetchone())
-    conn.close()
-    if not row:
-        return jsonify({"error": "Período no encontrado"}), 404
-    analysis = json.loads(row["analysis_json"]) if row.get("analysis_json") else {}
-    conn2 = get_connection()
-    txs = rows_to_list(conn2.execute(
-        "SELECT * FROM transacciones WHERE periodo_id=? AND cliente_id=? ORDER BY fecha_operacion",
-        (pid, cid())
-    ).fetchall())
-    conn2.close()
-    return jsonify({"periodo": row, "analysis": analysis, "transactions": txs})
+    try:
+        conn = get_connection()
+        row = row_to_dict(conn.execute(
+            "SELECT * FROM periodos_cargados WHERE id=? AND cliente_id=?", (pid, cid())
+        ).fetchone())
+        conn.close()
+        if not row:
+            return jsonify({"error": "Período no encontrado"}), 404
+        analysis = json.loads(row["analysis_json"]) if row.get("analysis_json") else {}
+        conn2 = get_connection()
+        txs = rows_to_list(conn2.execute(
+            "SELECT * FROM transacciones WHERE periodo_id=? AND cliente_id=? ORDER BY fecha_operacion",
+            (pid, cid())
+        ).fetchall())
+        conn2.close()
+        return jsonify({"periodo": row, "analysis": analysis, "transactions": txs})
+    except Exception as _e:
+        print(f"[PERIODO ANALYSIS] error: {_e}", file=sys.stderr)
+        return jsonify({"error": "Error al cargar análisis", "periodo": {}, "analysis": {}, "transactions": []}), 500
 
 
 @app.route("/api/periodos/consolidado", methods=["GET"])
 @login_required
 def api_periodo_consolidado():
     """Devuelve análisis consolidado de todos los períodos bancarios."""
-    conn = get_connection()
-    txs = rows_to_list(conn.execute(
-        "SELECT * FROM transacciones WHERE modulo='banco' AND cliente_id=? ORDER BY fecha_operacion",
-        (cid(),)
-    ).fetchall())
-    periodos = rows_to_list(conn.execute(
-        "SELECT * FROM periodos_cargados WHERE cliente_id=? ORDER BY anio, created_at",
-        (cid(),)
-    ).fetchall())
-    conn.close()
-    if not txs:
+    try:
+        conn = get_connection()
+        txs = rows_to_list(conn.execute(
+            "SELECT * FROM transacciones WHERE modulo='banco' AND cliente_id=? ORDER BY fecha_operacion",
+            (cid(),)
+        ).fetchall())
+        periodos = rows_to_list(conn.execute(
+            "SELECT * FROM periodos_cargados WHERE cliente_id=? ORDER BY anio, created_at",
+            (cid(),)
+        ).fetchall())
+        conn.close()
+        if not txs:
+            return jsonify({"transactions": [], "analysis": {}, "periodos": []})
+        banco = periodos[0]["banco"] if periodos else "Consolidado"
+        analysis = _compute_analysis(txs, banco, "Consolidado")
+        analysis["banco"] = "Consolidado"
+        return jsonify({"transactions": txs, "analysis": analysis, "periodos": periodos})
+    except Exception as _e:
+        print(f"[CONSOLIDADO] error: {_e}", file=sys.stderr)
         return jsonify({"transactions": [], "analysis": {}, "periodos": []})
-    banco = periodos[0]["banco"] if periodos else "Consolidado"
-    analysis = _compute_analysis(txs, banco, "Consolidado")
-    analysis["banco"] = "Consolidado"
-    return jsonify({"transactions": txs, "analysis": analysis, "periodos": periodos})
 
 
 @app.route("/api/periodos/<int:pid>", methods=["DELETE"])
@@ -3423,14 +3451,18 @@ def ratelimit_error(e):
 def api_get_usuarios():
     if session.get("user_rol") not in ("super_admin", "admin"):
         return jsonify({"error": "Sin permisos"}), 403
-    conn = get_connection()
-    rows = conn.execute(
-        """SELECT id, nombre, email, username, rol, activo, ultimo_acceso, created_at
-           FROM usuarios WHERE cliente_id=? ORDER BY created_at DESC""",
-        (cid(),)
-    ).fetchall()
-    conn.close()
-    return jsonify([row_to_dict(r) for r in rows])
+    try:
+        conn = get_connection()
+        rows = conn.execute(
+            """SELECT id, nombre, email, username, rol, activo, ultimo_acceso, created_at
+               FROM usuarios WHERE cliente_id=? ORDER BY created_at DESC""",
+            (cid(),)
+        ).fetchall()
+        conn.close()
+        return jsonify([row_to_dict(r) for r in rows])
+    except Exception as _e:
+        print(f"[USUARIOS GET] error: {_e}", file=sys.stderr)
+        return jsonify([])
 
 @app.route("/api/usuarios", methods=["POST"])
 @login_required

@@ -119,10 +119,10 @@
 
 {% block scripts %}
 <script>
-let _usuarios = [];
-let _auditPage = 1;
+var _usuarios = [];
+var _auditPage = 1;
 
-const ROLES = {
+var ROLES = {
   super_admin: { label: 'Super Admin', color: '#7c3aed' },
   admin:       { label: 'Admin',       color: '#e8a020' },
   contador:    { label: 'Contador',    color: '#1a7fd8' },
@@ -326,7 +326,7 @@ async function desactivarUsuario(uid, nombre) {
 }
 
 // ── Audit Log ─────────────────────────────────────────────────────────────
-const ACCION_COLORS = {
+var ACCION_COLORS = {
   LOGIN:              '#1aaa6b',
   LOGIN_FAILED:       '#e03c3c',
   LOGOUT:             '#64748b',

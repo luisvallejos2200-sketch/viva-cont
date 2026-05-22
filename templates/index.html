@@ -250,8 +250,8 @@
 
 {% block scripts %}
 <script>
-let chartFlujo = null, chartTipo = null;
-let _activeImportacionId = null;
+var chartFlujo = null, chartTipo = null;
+var _activeImportacionId = null;
 
 async function loadPeriodTabsERP() {
   const rows = await apiGet('/api/importaciones');
@@ -424,11 +424,11 @@ function switchImportTab(btn, tabId) {
 }
 
 // ── Client-side Excel parsing (SheetJS) — no upload, no server round-trip ──
-let _erpPendingTxs = [];
-let _erpPendingFile = '';
+var _erpPendingTxs = [];
+var _erpPendingFile = '';
 
-const _INVALIDS_XLS = new Set(['', '0', 'nan', 'None', 'NaT', '00:00:00']);
-const _TIPO_MAP_XLS = {
+var _INVALIDS_XLS = new Set(['', '0', 'nan', 'None', 'NaT', '00:00:00']);
+var _TIPO_MAP_XLS = {
   'TRAN':'TRANSFERENCIA','TRANSF':'TRANSFERENCIA','TRANSFER':'TRANSFERENCIA',
   'ITF':'COBRO','MANT':'COBRO','MANTENIM':'COBRO','COM.':'COBRO',
   'COMISION':'COBRO','ENVIO':'COBRO','INTERES':'COBRO','PORTE':'COBRO',

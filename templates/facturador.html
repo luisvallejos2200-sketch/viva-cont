@@ -1301,8 +1301,8 @@ async function loadDashboard() {
   const fmtS  = (n, sym='S/ ') => sym + (parseFloat(n)||0).toLocaleString('es-PE',{minimumFractionDigits:2,maximumFractionDigits:2});
   const fmtN  = n => (parseFloat(n)||0).toLocaleString('es-PE',{minimumFractionDigits:2,maximumFractionDigits:2});
 
-  // ── KPI 1: Este mes + crecimiento (ANIMADO) ────────────────
-  countUp('dash-mes-monto', parseFloat(mes_actual.monto)||0);
+  // ── KPIs (sin animación — valores instantáneos, sin vibración) ─
+  document.getElementById('dash-mes-monto').textContent = fmtS(mes_actual.monto);
   const crecEl = document.getElementById('dash-crec-badge');
   if (crecimiento_mensual !== null && crecimiento_mensual !== undefined) {
     const pos   = crecimiento_mensual >= 0;
@@ -1314,48 +1314,37 @@ async function loadDashboard() {
     crecEl.innerHTML = '<span style="color:var(--text-muted);">Sin período anterior</span>';
   }
 
-  // ── KPI 2: YTD (ANIMADO) ──────────────────────────────────
-  countUp('dash-ytd-monto', parseFloat(ytd.monto)||0);
-  document.getElementById('dash-ytd-cant').textContent = (ytd.cantidad||0) + ' facturas en el año';
+  document.getElementById('dash-ytd-monto').textContent = fmtS(ytd.monto);
+  document.getElementById('dash-ytd-cant').textContent  = (ytd.cantidad||0) + ' facturas en el año';
 
-  // ── KPI 3: Clientes únicos (ANIMADO) ──────────────────────
-  countUpInt('dash-clientes', parseInt(totales.clientes_unicos)||0);
+  document.getElementById('dash-clientes').textContent = (parseInt(totales.clientes_unicos)||0).toLocaleString('es-PE');
 
-  // ── KPI 4: Ticket promedio + máximo (ANIMADO) ──────────────
-  countUp('dash-promedio', parseFloat(totales.promedio)||0);
+  document.getElementById('dash-promedio').textContent = fmtS(totales.promedio);
   document.getElementById('dash-max-fact').textContent = 'Máx: ' + fmtS(totales.max_factura);
 
-  // ── KPI 5: Tasa SUNAT ──────────────────────────────────────
   const ac   = parseInt(totales.sunat_aceptadas)  || 0;
   const re   = parseInt(totales.sunat_rechazadas) || 0;
   const tasaVal = (ac + re) > 0 ? (ac / (ac + re)) * 100 : 100;
-  document.getElementById('dash-tasa-sunat').textContent  = tasaVal.toFixed(1) + '%';
+  document.getElementById('dash-tasa-sunat').textContent   = tasaVal.toFixed(1) + '%';
   document.getElementById('dash-sunat-detail').textContent = `${ac} aceptadas · ${re} rechazadas`;
 
-  // ── KPI 6: Pendientes SUNAT (ANIMADO) ─────────────────────
   const pend = parseInt(totales.pendientes_sunat) || 0;
-  countUpInt('dash-pendientes', pend, { duration: 900 });
+  document.getElementById('dash-pendientes').textContent = pend.toLocaleString('es-PE');
   if (pend > 0) {
     document.getElementById('dash-pendientes-card').style.outline = '2px solid rgba(224,60,60,.35)';
   }
 
-  // ── KPI 7: Monto Total Histórico (ANIMADO) ─────────────────
-  countUp('dash-monto-hist', parseFloat(totales.monto_total)||0);
+  document.getElementById('dash-monto-hist').textContent = fmtS(totales.monto_total);
 
-  // ── KPI 8: IGV Estimado YTD (ANIMADO) ─────────────────────
   const igvYtd = (parseFloat(ytd.monto)||0) * 18 / 118;
-  countUp('dash-igv-ytd', igvYtd);
+  document.getElementById('dash-igv-ytd').textContent = fmtS(igvYtd);
 
-  // ── KPI 9: Total Comprobantes (ANIMADO) ────────────────────
-  countUpInt('dash-total-docs', parseInt(totales.total)||0);
+  document.getElementById('dash-total-docs').textContent = (parseInt(totales.total)||0).toLocaleString('es-PE');
+  document.getElementById('dash-borradores').textContent = (parseInt(totales.borradores)||0).toLocaleString('es-PE');
 
-  // ── KPI 10: Borradores (ANIMADO) ──────────────────────────
-  countUpInt('dash-borradores', parseInt(totales.borradores)||0, { duration:800 });
-
-  // ── KPI 11: Mejor Mes 12m ──────────────────────────────────
   if (mensual.length) {
     const best = mensual.reduce((a,b) => b.monto > a.monto ? b : a, mensual[0]);
-    countUp('dash-mejor-mes-monto', best.monto);
+    document.getElementById('dash-mejor-mes-monto').textContent = fmtS(best.monto);
     const [by, bm] = best.mes.split('-');
     document.getElementById('dash-mejor-mes-label').textContent = MESES[parseInt(bm)-1] + " '" + by.slice(2);
   } else {
@@ -1363,7 +1352,6 @@ async function loadDashboard() {
     document.getElementById('dash-mejor-mes-label').textContent = 'Sin datos';
   }
 
-  // ── KPI 12: Tasa Anulación ─────────────────────────────────
   const anuladas  = parseInt(totales.anuladas) || 0;
   const totalDocs = parseInt(totales.total)    || 1;
   const tasaAn    = (anuladas / totalDocs) * 100;
@@ -1419,6 +1407,7 @@ async function loadDashboard() {
       ]
     },
     options: {
+      animation: false,
       responsive: true,
       interaction: { mode:'index', intersect:false },
       plugins: {
@@ -1478,6 +1467,7 @@ async function loadDashboard() {
         }]
       },
       options: {
+        animation: false,
         responsive: true, cutout: '62%',
         plugins: {
           legend: { display: false },
@@ -1534,6 +1524,7 @@ async function loadDashboard() {
         }]
       },
       options: {
+        animation: false,
         indexAxis: 'y',
         responsive: true,
         plugins: {
@@ -1579,7 +1570,7 @@ async function loadDashboard() {
         legend: { display: false },
         tooltip: { callbacks: { label: ctx => ` ${ctx.label}: ${ctx.parsed}` } }
       },
-      animation: { animateRotate: true, duration: 1200 }
+      animation: false
     }
   });
   const totalEst = emitidas2 + borradores2 + anuladas2 || 1;
@@ -1606,13 +1597,9 @@ async function loadDashboard() {
     gaugeBar('Docs emitidos vs total',  (emitidas2/totalEst)*100, 100, '#6a4fcf', '#9b72f5', '%') +
     gaugeBar('Tasa anulación inversa',  100 - tasaAn, 100, '#e8a020', '#c47b00', '%');
 
-  // Animación de las barras gauge (trigger width transition)
-  requestAnimationFrame(() => {
-    requestAnimationFrame(() => {
-      document.querySelectorAll('#dashGauges [data-w]').forEach(bar => {
-        bar.style.width = bar.getAttribute('data-w') + '%';
-      });
-    });
+  // Barras gauge — valores directos (sin animación de transición)
+  document.querySelectorAll('#dashGauges [data-w]').forEach(bar => {
+    bar.style.width = bar.getAttribute('data-w') + '%';
   });
 
   // ── Comparativo mensual ────────────────────────────────────

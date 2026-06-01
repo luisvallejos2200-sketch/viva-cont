@@ -875,6 +875,222 @@ def _strategy_scotiabank(full_text: str, banco: str, archivo: str) -> list:
 
 
 # ══════════════════════════════════════════════════════════════
+# ESTRATEGIA BBVA CONTINENTAL PERÚ
+# Formato: DD-MM DD-MM [DESC] N°OPER CARGO/ABONO [ITF] SALDO
+# Cargo indicado con guión final (2,000.00-), abono sin guión.
+# Año extraído del footer DD-MM-YYYY (ej: 30-01-2026).
+# ══════════════════════════════════════════════════════════════
+
+_BBVA_YEAR_RE = re.compile(r"\b\d{2}-\d{2}-(\d{4})\b")
+
+# Formato pdfplumber/pypdf: todo en una línea por transacción
+_BBVA_LINE_RE = re.compile(
+    r"^(\d{2}-\d{2})\s+"           # fecha oper DD-MM
+    r"\d{2}-\d{2}\s+"              # fecha valor DD-MM (ignorar)
+    r"(.*?)\s*"                     # descripción inline (puede ser vacía)
+    r"(\d{3,6})\s+"                # N°OPER (3-6 dígitos)
+    r"([\d,]+\.\d{2}-?)"           # importe: cargo termina en -, abono no
+    r"(?:\s+\d+\.\d{2})?"          # ITF pequeño (opcional, ignorar)
+    r"\s+([\d,]+\.\d{2})"          # saldo
+    r"\s*$",
+    re.MULTILINE,
+)
+
+# Helpers para el parser multilinea (fitz)
+_BBVA_DDMM_RE  = re.compile(r"^\d{2}-\d{2}$")
+_BBVA_NOPER_RE = re.compile(r"^\d{3,6}$")
+_BBVA_AMT_RE   = re.compile(r"^[\d,]+\.\d{2}-?$")
+_BBVA_SALDO_RE = re.compile(r"^[\d,]+\.\d{2}$")
+
+
+def _strategy_bbva(full_text: str, banco: str, archivo: str) -> list:
+    """
+    Parser BBVA Continental Perú — formato pdfplumber/pypdf (una línea por tx).
+    Línea: DD-MM DD-MM [DESC] N°OPER CARGO/ABONO [ITF] SALDO
+    """
+    ym = _BBVA_YEAR_RE.search(full_text)
+    year = int(ym.group(1)) if ym else datetime.now().year
+
+    txs  = []
+    seen = set()
+
+    for m in _BBVA_LINE_RE.finditer(full_text):
+        fecha_short = m.group(1)
+        desc_raw    = m.group(2).strip()
+        n_oper      = m.group(3)
+        amt_str     = m.group(4)
+        saldo_str   = m.group(5)
+
+        try:
+            dd, mm_num = map(int, fecha_short.split("-"))
+            fecha_dt  = datetime(year, mm_num, dd)
+            fecha_iso = fecha_dt.strftime("%Y-%m-%d")
+        except (ValueError, TypeError):
+            continue
+
+        is_cargo  = amt_str.endswith("-")
+        amt       = _parse_amount(amt_str.rstrip("-"))
+        saldo     = _parse_amount(saldo_str)
+        importe   = -amt if is_cargo else amt
+
+        desc = re.sub(r"\s+", " ", desc_raw)[:120]
+
+        key = (fecha_iso, round(importe, 2), round(saldo, 2))
+        if key in seen:
+            continue
+        seen.add(key)
+
+        tx = _make_tx(fecha_dt, fecha_iso, desc, importe, saldo, banco, archivo)
+        tx["num_operacion"] = n_oper
+        txs.append(tx)
+
+    return txs
+
+
+def _strategy_bbva_multiline(full_text: str, banco: str, archivo: str) -> list:
+    """
+    Parser BBVA Continental Perú — formato PyMuPDF/fitz (un campo por línea).
+    Estructura por tx: DD-MM / DD-MM / [desc...] / N°OPER / AMOUNT[-] / [ITF] / SALDO
+    Usa búsqueda inversa desde el importe para evitar confundir años con N°OPER.
+    """
+    ym = _BBVA_YEAR_RE.search(full_text)
+    year = int(ym.group(1)) if ym else datetime.now().year
+
+    lines = [l.strip() for l in full_text.split("\n")]
+    txs  = []
+    seen = set()
+
+    for i, ln in enumerate(lines):
+        # Buscar líneas de importe (amount con opcional guión)
+        if not _BBVA_AMT_RE.match(ln):
+            continue
+
+        # Línea anterior debe ser N°OPER (número puro, no un monto con decimales)
+        if i < 1 or not _BBVA_NOPER_RE.match(lines[i - 1]):
+            continue
+        n_oper = lines[i - 1]
+        n_oper_idx = i - 1
+
+        amt_str = ln
+
+        # Siguiente línea: ITF pequeño (< 10) o saldo directamente
+        saldo_str = ""
+        if i + 1 < len(lines) and _BBVA_SALDO_RE.match(lines[i + 1]):
+            cand = _parse_amount(lines[i + 1])
+            if cand < 10:                   # es ITF → saltar
+                if i + 2 < len(lines) and _BBVA_SALDO_RE.match(lines[i + 2]):
+                    saldo_str = lines[i + 2]
+            else:
+                saldo_str = lines[i + 1]
+        if not saldo_str:
+            continue
+
+        # Buscar hacia atrás el par DD-MM / DD-MM más cercano al N°OPER
+        fecha_oper     = ""
+        fecha_oper_idx = -1
+        for k in range(n_oper_idx - 1, max(n_oper_idx - 12, -1), -1):
+            if _BBVA_DDMM_RE.match(lines[k]):
+                # El par es lines[k-1]=fecha_oper, lines[k]=fecha_valor
+                if k > 0 and _BBVA_DDMM_RE.match(lines[k - 1]):
+                    fecha_oper     = lines[k - 1]
+                    fecha_oper_idx = k - 1
+                    break
+        if not fecha_oper:
+            continue
+
+        # Descripción: líneas entre fecha_valor (idx+1) y N°OPER (excluido)
+        desc_parts = [
+            lines[d] for d in range(fecha_oper_idx + 2, n_oper_idx)
+            if lines[d]
+        ]
+
+        try:
+            dd, mm_num = map(int, fecha_oper.split("-"))
+            fecha_dt  = datetime(year, mm_num, dd)
+            fecha_iso = fecha_dt.strftime("%Y-%m-%d")
+        except (ValueError, TypeError):
+            continue
+
+        is_cargo = amt_str.endswith("-")
+        amt      = _parse_amount(amt_str.rstrip("-"))
+        saldo    = _parse_amount(saldo_str)
+        importe  = -amt if is_cargo else amt
+        desc     = " ".join(desc_parts)[:120]
+
+        key = (fecha_iso, round(importe, 2), round(saldo, 2))
+        if key not in seen:
+            seen.add(key)
+            tx = _make_tx(fecha_dt, fecha_iso, desc, importe, saldo, banco, archivo)
+            tx["num_operacion"] = n_oper
+            txs.append(tx)
+
+    # Ordenar por fecha (el escaneo de importes puede romper el orden)
+    txs.sort(key=lambda t: t["fecha_operacion"])
+    return txs
+
+
+# ══════════════════════════════════════════════════════════════
+# ESTRATEGIA INTERBANK PERÚ
+# Formato: DD/MM DD/MM DESCRIPCION CARGO/ABONO SALDO
+# Cargo negativo (-500.00), abono positivo (61,486.47).
+# Año extraído del encabezado 'Mes: Diciembre 2025'.
+# ══════════════════════════════════════════════════════════════
+
+_IBK_YEAR_RE = re.compile(r"Mes:\s+\w+\s+(\d{4})", re.IGNORECASE)
+
+_IBK_LINE_RE = re.compile(
+    r"^(\d{2}/\d{2})\s+"           # fecha oper DD/MM
+    r"\d{2}/\d{2}\s+"              # fecha valor DD/MM (ignorar)
+    r"(.+?)\s+"                     # descripción (no greedy)
+    r"(-?[\d,]+\.\d{2})\s+"        # importe (negativo=cargo, positivo=abono)
+    r"([\d,]+\.\d{2})\s*$",        # saldo
+    re.MULTILINE,
+)
+
+
+def _strategy_interbank(full_text: str, banco: str, archivo: str) -> list:
+    """
+    Parser Interbank Perú.
+    Línea: DD/MM DD/MM DESCRIPCION CARGO/ABONO SALDO
+    Cargo con signo negativo (-500.00), abono positivo (61,486.47).
+    """
+    ym = _IBK_YEAR_RE.search(full_text)
+    year = int(ym.group(1)) if ym else datetime.now().year
+
+    txs  = []
+    seen = set()
+
+    for m in _IBK_LINE_RE.finditer(full_text):
+        fecha_short = m.group(1)
+        desc_raw    = m.group(2).strip()
+        amt_str     = m.group(3)
+        saldo_str   = m.group(4)
+
+        try:
+            dd, mm_num = map(int, fecha_short.split("/"))
+            fecha_dt  = datetime(year, mm_num, dd)
+            fecha_iso = fecha_dt.strftime("%Y-%m-%d")
+        except (ValueError, TypeError):
+            continue
+
+        is_negative = amt_str.startswith("-")
+        amt     = _parse_amount(amt_str.lstrip("-"))
+        saldo   = _parse_amount(saldo_str)
+        importe = -amt if is_negative else amt
+
+        desc = re.sub(r"\s+", " ", desc_raw)[:120]
+
+        key = (fecha_iso, round(importe, 2), round(saldo, 2))
+        if key in seen:
+            continue
+        seen.add(key)
+
+        txs.append(_make_tx(fecha_dt, fecha_iso, desc, importe, saldo, banco, archivo))
+
+    return txs
+
+
+# ══════════════════════════════════════════════════════════════
 # ESTRATEGIA 5: Extracción por coordenadas (X/Y) con pdfplumber
 # Funciona con PDFs donde el texto no está en líneas continuas.
 # Lee cada palabra con su posición, agrupa por fila (Y) y columna (X).
@@ -1062,6 +1278,8 @@ def _extract_bcp_soles_inner(pdf_path: str, banco: str = "BCP SOLES") -> dict:
             debug_info.append(f"fitz: {len(_fitz_text)} chars")
             for strategy_fn, label in [
                 (_strategy_scotiabank,         "fitz+scotiabank"),
+                (_strategy_bbva_multiline,     "fitz+bbva"),
+                (_strategy_interbank,          "fitz+interbank"),
                 (_strategy_text_regex_on_text, "fitz+text_regex"),
                 (_strategy_bcp_ddmm,           "fitz+bcp_ddmm"),
             ]:
@@ -1109,6 +1327,22 @@ def _extract_bcp_soles_inner(pdf_path: str, banco: str = "BCP SOLES") -> dict:
                             "strategy": "pypdf+bcp_ddmm", "raw_text": _pypdf_text}
             except Exception as _e:
                 debug_info.append(f"pypdf+bcp_ddmm falló: {_e}")
+            try:
+                txs = _strategy_bbva(_pypdf_text, banco, archivo)
+                debug_info.append(f"pypdf+bbva: {len(txs)}")
+                if len(txs) >= 2:
+                    return {"transactions": txs, "total": len(txs),
+                            "strategy": "pypdf+bbva", "raw_text": _pypdf_text}
+            except Exception as _e:
+                debug_info.append(f"pypdf+bbva falló: {_e}")
+            try:
+                txs = _strategy_interbank(_pypdf_text, banco, archivo)
+                debug_info.append(f"pypdf+interbank: {len(txs)}")
+                if len(txs) >= 2:
+                    return {"transactions": txs, "total": len(txs),
+                            "strategy": "pypdf+interbank", "raw_text": _pypdf_text}
+            except Exception as _e:
+                debug_info.append(f"pypdf+interbank falló: {_e}")
     except Exception as _e:
         debug_info.append(f"pypdf falló: {_e}")
 
@@ -1149,6 +1383,26 @@ def _extract_bcp_soles_inner(pdf_path: str, banco: str = "BCP SOLES") -> dict:
                             "strategy": "bcp_ddmm", "raw_text": full_txt}
             except Exception as e:
                 debug_info.append(f"BCP_DDMM falló: {e}")
+
+            # ── BBVA Continental ──
+            try:
+                txs = _strategy_bbva(full_txt, banco, archivo)
+                debug_info.append(f"BBVA: {len(txs)}")
+                if len(txs) >= 2:
+                    return {"transactions": txs, "total": len(txs),
+                            "strategy": "bbva", "raw_text": full_txt}
+            except Exception as e:
+                debug_info.append(f"BBVA falló: {e}")
+
+            # ── Interbank ──
+            try:
+                txs = _strategy_interbank(full_txt, banco, archivo)
+                debug_info.append(f"Interbank: {len(txs)}")
+                if len(txs) >= 2:
+                    return {"transactions": txs, "total": len(txs),
+                            "strategy": "interbank", "raw_text": full_txt}
+            except Exception as e:
+                debug_info.append(f"Interbank falló: {e}")
 
             # Crear objeto pdf limitado con pages_to_use para las estrategias
             # que reciben el objeto pdf completo

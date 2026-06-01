@@ -1160,17 +1160,82 @@ def api_get_transacciones():
 @login_required
 def api_update_transaccion(tx_id):
     data = request.get_json() or {}
-    fields = [
-        "tipo_doc", "ruc", "cliente_proveedor", "num_documento",
-        "doc_cont", "comprobante", "tipo", "detalle", "descripcion"
+    _MESES_ES = {1:"Enero",2:"Febrero",3:"Marzo",4:"Abril",5:"Mayo",6:"Junio",
+                 7:"Julio",8:"Agosto",9:"Septiembre",10:"Octubre",11:"Noviembre",12:"Diciembre"}
+    # Recalcular mes y periodo si cambia la fecha
+    if "fecha_operacion" in data:
+        try:
+            from datetime import datetime as _dt
+            fd = _dt.strptime(data["fecha_operacion"], "%Y-%m-%d")
+            data["mes"]     = _MESES_ES.get(fd.month, "")
+            data["periodo"] = data["fecha_operacion"][:7]
+            data["fecha"]   = data["fecha_operacion"]
+        except Exception:
+            pass
+    editable = [
+        "fecha_operacion", "fecha", "periodo", "mes",
+        "referencia", "descripcion", "moneda",
+        "importe", "num_operacion", "banco", "saldo",
+        "tipo", "detalle", "tipo_doc", "ruc",
+        "cliente_proveedor", "num_documento", "doc_cont", "comprobante",
     ]
-    sets = ", ".join(f"{f} = ?" for f in fields if f in data)
-    vals = [data[f] for f in fields if f in data]
+    sets = ", ".join(f"{f} = ?" for f in editable if f in data)
+    vals = [data[f] for f in editable if f in data]
     if not sets:
         return jsonify({"error": "Nada que actualizar"}), 400
-
     conn = get_connection()
     conn.execute(f"UPDATE transacciones SET {sets} WHERE id=? AND cliente_id=?", vals + [tx_id, cid()])
+    conn.commit()
+    conn.close()
+    return jsonify({"success": True})
+
+
+@app.route("/api/estados-cuenta/transacciones", methods=["POST"])
+@login_required
+def api_create_transaccion():
+    data = request.get_json() or {}
+    _MESES_ES = {1:"Enero",2:"Febrero",3:"Marzo",4:"Abril",5:"Mayo",6:"Junio",
+                 7:"Julio",8:"Agosto",9:"Septiembre",10:"Octubre",11:"Noviembre",12:"Diciembre"}
+    fecha_raw = data.get("fecha_operacion", "")
+    try:
+        from datetime import datetime as _dt
+        fd      = _dt.strptime(fecha_raw, "%Y-%m-%d")
+        mes     = _MESES_ES.get(fd.month, "")
+        periodo = fecha_raw[:7]
+    except Exception:
+        mes     = ""
+        periodo = ""
+    conn = get_connection()
+    conn.execute("""
+        INSERT INTO transacciones
+          (cliente_id, modulo, fecha_operacion, fecha, periodo, mes,
+           referencia, descripcion, moneda, importe, num_operacion,
+           banco, saldo, tipo, detalle, tipo_doc, ruc,
+           cliente_proveedor, num_documento, doc_cont, comprobante, periodo_id)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+    """, (
+        cid(), "banco",
+        fecha_raw, fecha_raw, periodo, mes,
+        data.get("referencia",""), data.get("descripcion",""),
+        data.get("moneda","PEN"), data.get("importe", 0),
+        data.get("num_operacion",""), data.get("banco",""),
+        data.get("saldo", 0), data.get("tipo","OTRO"),
+        data.get("detalle",""), data.get("tipo_doc",""),
+        data.get("ruc",""), data.get("cliente_proveedor",""),
+        data.get("num_documento",""), data.get("doc_cont",""),
+        data.get("comprobante",""), data.get("periodo_id") or None,
+    ))
+    conn.commit()
+    new_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.close()
+    return jsonify({"success": True, "id": new_id})
+
+
+@app.route("/api/estados-cuenta/transacciones/<int:tx_id>", methods=["DELETE"])
+@login_required
+def api_delete_transaccion(tx_id):
+    conn = get_connection()
+    conn.execute("DELETE FROM transacciones WHERE id=? AND cliente_id=?", (tx_id, cid()))
     conn.commit()
     conn.close()
     return jsonify({"success": True})
@@ -1182,9 +1247,21 @@ def api_exportar_excel():
     import pandas as pd
     import io
 
+    periodo_id = request.args.get("periodo_id", "")
+    label      = request.args.get("label", "")
+
     conn = get_connection()
     c = conn.cursor()
-    c.execute("SELECT * FROM transacciones WHERE cliente_id=? ORDER BY fecha_operacion", (cid(),))
+    if periodo_id:
+        c.execute(
+            "SELECT * FROM transacciones WHERE cliente_id=? AND periodo_id=? ORDER BY fecha_operacion",
+            (cid(), periodo_id),
+        )
+    else:
+        c.execute(
+            "SELECT * FROM transacciones WHERE cliente_id=? ORDER BY fecha_operacion",
+            (cid(),),
+        )
     rows = rows_to_list(c.fetchall())
     conn.close()
 
@@ -1202,19 +1279,22 @@ def api_exportar_excel():
         "saldo": "SALDO", "doc_cont": "DOC CONT", "comprobante": "COMPROBANTE",
     }
     df = df.rename(columns=rename)
-    cols = [c for c in rename.values() if c in df.columns]
+    cols = [col for col in rename.values() if col in df.columns]
     df = df[cols]
 
+    sheet_name = (label or "EC")[:31]  # Excel limit: 31 chars
+    safe_label = re.sub(r"[^\w\-]", "_", label or "Consolidado")
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine="openpyxl") as writer:
-        df.to_excel(writer, sheet_name="EC SOLES 064", index=False)
+        df.to_excel(writer, sheet_name=sheet_name, index=False)
     output.seek(0)
 
+    fname = f"VIVA_CONT_{safe_label}_{datetime.now().strftime('%Y%m%d')}.xlsx"
     return send_file(
         output,
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         as_attachment=True,
-        download_name=f"VIVA_CONT_Estados_Cuenta_{datetime.now().strftime('%Y%m%d')}.xlsx",
+        download_name=fname,
     )
 
 

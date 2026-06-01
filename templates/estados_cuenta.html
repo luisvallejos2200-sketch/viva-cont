@@ -12,6 +12,9 @@
     <button class="btn btn-outline btn-sm" onclick="exportarExcel()">
       <i class="fa-solid fa-file-excel"></i> Exportar Excel
     </button>
+    <button class="btn btn-ghost btn-sm" onclick="openNewModal()">
+      <i class="fa-solid fa-plus"></i> Nueva Transacción
+    </button>
     <button class="btn btn-primary btn-sm" onclick="openUploadModal()">
       <i class="fa-solid fa-upload"></i> Subir PDF Bancario
     </button>
@@ -268,15 +271,72 @@ Ejemplo:
   </div>
 </div>
 
-<!-- MODAL EDITAR TRANSACCIÓN -->
+<!-- MODAL EDITAR / NUEVA TRANSACCIÓN -->
 <div class="modal-overlay" id="editModal" style="display:none;">
-  <div class="modal-box">
+  <div class="modal-box modal-lg">
     <div class="modal-header">
-      <h3 class="modal-title"><i class="fa-solid fa-pen-to-square"></i> Editar Transacción</h3>
+      <h3 class="modal-title" id="editModalTitle"><i class="fa-solid fa-pen-to-square"></i> Editar Transacción</h3>
       <button class="modal-close" onclick="closeEditModal()"><i class="fa-solid fa-xmark"></i></button>
     </div>
     <div class="modal-body">
       <input type="hidden" id="editId" />
+      <input type="hidden" id="editMode" value="edit" />
+
+      <!-- Fila 1: Datos financieros principales -->
+      <div class="form-row form-row-3">
+        <div class="form-group">
+          <label class="form-label">Fecha Operación <span style="color:var(--danger)">*</span></label>
+          <input type="date" class="form-control" id="editFecha" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Importe <span style="color:var(--danger)">*</span></label>
+          <input type="number" class="form-control mono" id="editImporte" step="0.01" placeholder="-1500.00" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Saldo</label>
+          <input type="number" class="form-control mono" id="editSaldo" step="0.01" placeholder="5000.00" />
+        </div>
+      </div>
+
+      <!-- Fila 2: Banco, moneda, num operación -->
+      <div class="form-row form-row-3">
+        <div class="form-group">
+          <label class="form-label">Banco</label>
+          <select class="form-control" id="editBanco">
+            <option value="">— Seleccionar —</option>
+            <option>BCP SOLES</option><option>BCP DOLARES</option>
+            <option>BBVA</option><option>INTERBANK</option>
+            <option>SCOTIABANK</option><option>OTRO</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Moneda</label>
+          <select class="form-control" id="editMoneda">
+            <option value="PEN">PEN (Soles)</option>
+            <option value="USD">USD (Dólares)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Num. Operación</label>
+          <input type="text" class="form-control mono" id="editNumOper" placeholder="2281" />
+        </div>
+      </div>
+
+      <!-- Fila 3: Descripción y referencia -->
+      <div class="form-row form-row-2">
+        <div class="form-group">
+          <label class="form-label">Descripción</label>
+          <input type="text" class="form-control" id="editDescripcion" placeholder="TRANSFER. CTAS. TERCEROS" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Referencia</label>
+          <input type="text" class="form-control" id="editReferencia" placeholder="REF-0001" />
+        </div>
+      </div>
+
+      <hr style="border:none;border-top:1px solid var(--border);margin:12px 0;">
+
+      <!-- Fila 4: Clasificación contable -->
       <div class="form-row form-row-2">
         <div class="form-group">
           <label class="form-label">Tipo</label>
@@ -297,7 +357,7 @@ Ejemplo:
       <div class="form-row form-row-2">
         <div class="form-group">
           <label class="form-label">RUC</label>
-          <input type="text" class="form-control" id="editRuc" maxlength="11" placeholder="20xxxxxxxxx" />
+          <input type="text" class="form-control mono" id="editRuc" maxlength="11" placeholder="20xxxxxxxxx" />
         </div>
         <div class="form-group">
           <label class="form-label">N° Documento</label>
@@ -315,7 +375,7 @@ Ejemplo:
       <div class="form-row form-row-2">
         <div class="form-group">
           <label class="form-label">Doc Contable</label>
-          <input type="text" class="form-control" id="editDocCont" placeholder="22-110001" />
+          <input type="text" class="form-control mono" id="editDocCont" placeholder="22-110001" />
         </div>
         <div class="form-group">
           <label class="form-label">Comprobante (Drive link)</label>
@@ -325,7 +385,7 @@ Ejemplo:
     </div>
     <div class="modal-footer">
       <button class="btn btn-outline" onclick="closeEditModal()">Cancelar</button>
-      <button class="btn btn-primary" onclick="guardarEdicion()">
+      <button class="btn btn-primary" id="btnGuardarEdicion" onclick="guardarEdicion()">
         <i class="fa-solid fa-floppy-disk"></i> Guardar cambios
       </button>
     </div>
@@ -335,19 +395,19 @@ Ejemplo:
 
 {% block head %}
 <style>
-.period-tab-del {
+.period-tab-del, .period-tab-xls {
   display: inline-flex; align-items: center; justify-content: center;
   width: 16px; height: 16px; border-radius: 50%;
-  font-size: 13px; font-weight: 700; line-height: 1;
-  margin-left: 4px; color: currentColor; opacity: 0.5;
+  font-size: 12px; font-weight: 700; line-height: 1;
+  margin-left: 3px; color: currentColor; opacity: 0.5;
   transition: opacity .15s, background .15s;
 }
-.period-tab-del:hover {
-  opacity: 1; background: rgba(255,255,255,.25);
-}
-.period-tab.active .period-tab-del:hover {
-  background: rgba(255,255,255,.3);
-}
+.period-tab-del:hover { opacity: 1; background: rgba(255,255,255,.25); }
+.period-tab-xls:hover { opacity: 1; color: #1a6b3c; background: rgba(255,255,255,.3); }
+.period-tab.active .period-tab-del:hover,
+.period-tab.active .period-tab-xls:hover { background: rgba(255,255,255,.3); }
+.form-row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+@media (max-width: 700px) { .form-row-3 { grid-template-columns: 1fr; } }
 </style>
 {% endblock %}
 
@@ -416,9 +476,12 @@ async function loadTransacciones(page = 1) {
       <td class="text-right mono">${fmtMoney(tx.saldo,tx.moneda)}</td>
       <td class="mono" style="font-size:11px">${tx.doc_cont || '—'}</td>
       <td>${comp}</td>
-      <td>
+      <td style="white-space:nowrap;">
         <button class="btn btn-ghost btn-sm btn-icon" onclick="openEditModal(${JSON.stringify(tx).replace(/"/g,'&quot;')})" title="Editar">
           <i class="fa-solid fa-pen-to-square"></i>
+        </button>
+        <button class="btn btn-ghost btn-sm btn-icon" style="color:var(--danger)" onclick="eliminarTx(${tx.id})" title="Eliminar">
+          <i class="fa-solid fa-trash-can"></i>
         </button>
       </td>
     </tr>`;
@@ -657,25 +720,62 @@ async function confirmarTransacciones() {
 }
 
 // ── EDITAR ───────────────────────────────────────────────────
+function _fillEditFields(tx) {
+  document.getElementById('editId').value          = tx.id || '';
+  document.getElementById('editFecha').value       = tx.fecha_operacion || '';
+  document.getElementById('editImporte').value     = tx.importe !== undefined ? tx.importe : '';
+  document.getElementById('editSaldo').value       = tx.saldo !== undefined ? tx.saldo : '';
+  document.getElementById('editBanco').value       = tx.banco || '';
+  document.getElementById('editMoneda').value      = tx.moneda || 'PEN';
+  document.getElementById('editNumOper').value     = tx.num_operacion || '';
+  document.getElementById('editDescripcion').value = tx.descripcion || '';
+  document.getElementById('editReferencia').value  = tx.referencia || '';
+  document.getElementById('editTipo').value        = tx.tipo || 'OTRO';
+  document.getElementById('editTipoDoc').value     = tx.tipo_doc || '';
+  document.getElementById('editRuc').value         = tx.ruc || '';
+  document.getElementById('editNumDoc').value      = tx.num_documento || '';
+  document.getElementById('editClienteProv').value = tx.cliente_proveedor || '';
+  document.getElementById('editDetalle').value     = tx.detalle || '';
+  document.getElementById('editDocCont').value     = tx.doc_cont || '';
+  document.getElementById('editComprobante').value = tx.comprobante || '';
+}
+
 function openEditModal(tx) {
-  document.getElementById('editId').value            = tx.id;
-  document.getElementById('editTipo').value          = tx.tipo || 'OTRO';
-  document.getElementById('editTipoDoc').value       = tx.tipo_doc || '';
-  document.getElementById('editRuc').value           = tx.ruc || '';
-  document.getElementById('editNumDoc').value        = tx.num_documento || '';
-  document.getElementById('editClienteProv').value   = tx.cliente_proveedor || '';
-  document.getElementById('editDetalle').value       = tx.detalle || '';
-  document.getElementById('editDocCont').value       = tx.doc_cont || '';
-  document.getElementById('editComprobante').value   = tx.comprobante || '';
+  document.getElementById('editMode').value = 'edit';
+  document.getElementById('editModalTitle').innerHTML =
+    '<i class="fa-solid fa-pen-to-square"></i> Editar Transacción';
+  document.getElementById('btnGuardarEdicion').innerHTML =
+    '<i class="fa-solid fa-floppy-disk"></i> Guardar cambios';
+  _fillEditFields(tx);
   document.getElementById('editModal').style.display = 'flex';
 }
+
+function openNewModal() {
+  document.getElementById('editMode').value = 'new';
+  document.getElementById('editModalTitle').innerHTML =
+    '<i class="fa-solid fa-plus"></i> Nueva Transacción';
+  document.getElementById('btnGuardarEdicion').innerHTML =
+    '<i class="fa-solid fa-plus"></i> Crear transacción';
+  // Limpiar todos los campos
+  const today = new Date().toISOString().slice(0,10);
+  _fillEditFields({ fecha_operacion: today, moneda: 'PEN', tipo: 'OTRO' });
+  document.getElementById('editModal').style.display = 'flex';
+}
+
 function closeEditModal() {
   document.getElementById('editModal').style.display = 'none';
 }
 
-async function guardarEdicion() {
-  const id = document.getElementById('editId').value;
-  const payload = {
+function _editPayload() {
+  return {
+    fecha_operacion:   document.getElementById('editFecha').value,
+    importe:           parseFloat(document.getElementById('editImporte').value) || 0,
+    saldo:             parseFloat(document.getElementById('editSaldo').value) || 0,
+    banco:             document.getElementById('editBanco').value,
+    moneda:            document.getElementById('editMoneda').value,
+    num_operacion:     document.getElementById('editNumOper').value,
+    descripcion:       document.getElementById('editDescripcion').value,
+    referencia:        document.getElementById('editReferencia').value,
     tipo:              document.getElementById('editTipo').value,
     tipo_doc:          document.getElementById('editTipoDoc').value,
     ruc:               document.getElementById('editRuc').value,
@@ -685,16 +785,53 @@ async function guardarEdicion() {
     doc_cont:          document.getElementById('editDocCont').value,
     comprobante:       document.getElementById('editComprobante').value,
   };
-  const res = await apiPut(`/api/estados-cuenta/transacciones/${id}`, payload);
+}
+
+async function guardarEdicion() {
+  const mode = document.getElementById('editMode').value;
+  const id   = document.getElementById('editId').value;
+  const payload = _editPayload();
+
+  if (!payload.fecha_operacion) {
+    showToast('warning', 'Campo requerido', 'Ingresa la fecha de operación'); return;
+  }
+
+  setLoading('btnGuardarEdicion', true, 'Guardando…');
+  let res;
+  if (mode === 'new') {
+    if (activePeriodoEC !== 'all') payload.periodo_id = activePeriodoEC;
+    res = await apiPost('/api/estados-cuenta/transacciones', payload);
+  } else {
+    res = await apiPut(`/api/estados-cuenta/transacciones/${id}`, payload);
+  }
+  setLoading('btnGuardarEdicion', false);
   if (!res) return;
-  if (res.error) { showToast('error','Error', res.error); return; }
-  showToast('success','Guardado', 'Transacción actualizada correctamente');
+  if (res.error) { showToast('error', 'Error', res.error); return; }
+
+  const msg = mode === 'new' ? 'Transacción creada correctamente' : 'Transacción actualizada correctamente';
+  showToast('success', 'Guardado', msg);
   closeEditModal();
   loadTransacciones(currentPage);
 }
 
-async function exportarExcel() {
-  window.location.href = '/api/estados-cuenta/exportar';
+async function eliminarTx(id) {
+  if (!confirm('¿Eliminar esta transacción? Esta acción no se puede deshacer.')) return;
+  const res = await apiDelete(`/api/estados-cuenta/transacciones/${id}`);
+  if (!res) return;
+  if (res.error) { showToast('error', 'Error', res.error); return; }
+  showToast('success', 'Eliminada', 'Transacción eliminada correctamente');
+  loadTransacciones(currentPage);
+}
+
+function exportarExcel(periodoId, label) {
+  const params = new URLSearchParams();
+  if (periodoId && periodoId !== 'all') {
+    params.set('periodo_id', periodoId);
+    params.set('label', label || 'Periodo');
+  } else {
+    params.set('label', 'Consolidado');
+  }
+  window.location.href = '/api/estados-cuenta/exportar?' + params.toString();
 }
 
 /* ══ TABS DE PERÍODOS ═══════════════════════════════════════ */
@@ -711,15 +848,22 @@ async function loadPeriodTabsEC() {
     <button class="period-tab active" onclick="selectPeriodoEC('all', this)">
       <i class="fa-solid fa-layer-group"></i> Consolidado
       <span style="font-size:10px;opacity:.7;">(todos)</span>
+      <span class="period-tab-xls" onclick="event.stopPropagation();exportarExcel('all','Consolidado')" title="Exportar Excel">
+        <i class="fa-solid fa-file-excel"></i>
+      </span>
     </button>
-    ${periodos.map(p => `
+    ${periodos.map(p => {
+      const lbl = p.label.replace(/'/g,"\\'").replace(/"/g,'&quot;');
+      return `
       <button class="period-tab" onclick="selectPeriodoEC(${p.id}, this)">
         <i class="fa-solid fa-calendar-days"></i>
         ${p.label}
         <span style="font-size:10px;opacity:.7;">${p.total_transacciones} txs</span>
-        <span class="period-tab-del" onclick="event.stopPropagation();eliminarPeriodoEC(${p.id},'${p.label.replace(/'/g,"\\'")}')">×</span>
-      </button>
-    `).join('')}
+        <span class="period-tab-xls" onclick="event.stopPropagation();exportarExcel(${p.id},'${lbl}')" title="Exportar Excel">
+          <i class="fa-solid fa-file-excel"></i>
+        </span>
+        <span class="period-tab-del" onclick="event.stopPropagation();eliminarPeriodoEC(${p.id},'${lbl}')">×</span>
+      </button>`; }).join('')}
   `;
 }
 

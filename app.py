@@ -1282,14 +1282,14 @@ def api_exportar_excel():
     cols = [col for col in rename.values() if col in df.columns]
     df = df[cols]
 
-    sheet_name = (label or "EC")[:31]  # Excel limit: 31 chars
-    safe_label = re.sub(r"[^\w\-]", "_", label or "Consolidado")
+    clean = (label or "Consolidado").replace(" ", "_").replace("/", "-").replace("·", "").replace(":", "").strip("_")
+    sheet_name = (label or "EC")[:31]  # Excel limit 31 chars
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine="openpyxl") as writer:
         df.to_excel(writer, sheet_name=sheet_name, index=False)
     output.seek(0)
 
-    fname = f"VIVA_CONT_{safe_label}_{datetime.now().strftime('%Y%m%d')}.xlsx"
+    fname = f"VIVA_CONT_{clean}_{datetime.now().strftime('%Y%m%d')}.xlsx"
     return send_file(
         output,
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

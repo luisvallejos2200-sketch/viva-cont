@@ -23,7 +23,13 @@
 
 <!-- TABS DE PERÍODOS -->
 <div id="periodTabsEC" style="display:none;margin-bottom:16px;">
-  <div id="periodTabsListEC" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+  <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+    <div id="periodTabsListEC" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;"></div>
+    <button id="btnExportPeriodo" class="btn btn-outline btn-sm"
+      style="white-space:nowrap;border-color:#1a6b3c;color:#1a6b3c;"
+      onclick="exportarPeriodoActivo()">
+      <i class="fa-solid fa-file-excel"></i> Exportar período
+    </button>
   </div>
 </div>
 
@@ -823,14 +829,20 @@ async function eliminarTx(id) {
   loadTransacciones(currentPage);
 }
 
-function exportarExcel(periodoId, label) {
+// label del período activo para exportar
+var activePeriodoLabel = 'Consolidado';
+
+function exportarExcel() {
+  // Exportar todo (botón del header, sin filtro de período)
+  window.location.href = '/api/estados-cuenta/exportar?label=Consolidado';
+}
+
+function exportarPeriodoActivo() {
   const params = new URLSearchParams();
-  if (periodoId && periodoId !== 'all') {
-    params.set('periodo_id', periodoId);
-    params.set('label', label || 'Periodo');
-  } else {
-    params.set('label', 'Consolidado');
+  if (activePeriodoEC !== 'all') {
+    params.set('periodo_id', activePeriodoEC);
   }
+  params.set('label', activePeriodoLabel);
   window.location.href = '/api/estados-cuenta/exportar?' + params.toString();
 }
 
@@ -845,26 +857,28 @@ async function loadPeriodTabsEC() {
   document.getElementById('periodTabsEC').style.display = 'block';
   const list = document.getElementById('periodTabsListEC');
   list.innerHTML = `
-    <button class="period-tab active" onclick="selectPeriodoEC('all', this)">
+    <button class="period-tab active" onclick="selectPeriodoEC('all','Consolidado',this)">
       <i class="fa-solid fa-layer-group"></i> Consolidado
       <span style="font-size:10px;opacity:.7;">(todos)</span>
-      <span class="period-tab-xls" onclick="event.stopPropagation();exportarExcel('all','Consolidado')" title="Exportar Excel">
-        <i class="fa-solid fa-file-excel"></i>
-      </span>
     </button>
     ${periodos.map(p => {
-      const lbl = p.label.replace(/'/g,"\\'").replace(/"/g,'&quot;');
+      const lbl = p.label.replace(/"/g,'&quot;');
       return `
-      <button class="period-tab" onclick="selectPeriodoEC(${p.id}, this)">
+      <button class="period-tab" onclick="selectPeriodoEC(${p.id},${JSON.stringify(p.label)},this)">
         <i class="fa-solid fa-calendar-days"></i>
         ${p.label}
         <span style="font-size:10px;opacity:.7;">${p.total_transacciones} txs</span>
-        <span class="period-tab-xls" onclick="event.stopPropagation();exportarExcel(${p.id},'${lbl}')" title="Exportar Excel">
-          <i class="fa-solid fa-file-excel"></i>
-        </span>
         <span class="period-tab-del" onclick="event.stopPropagation();eliminarPeriodoEC(${p.id},'${lbl}')">×</span>
       </button>`; }).join('')}
   `;
+  _updateExportBtn();
+}
+
+function _updateExportBtn() {
+  const btn = document.getElementById('btnExportPeriodo');
+  if (!btn) return;
+  const isAll = activePeriodoEC === 'all';
+  btn.innerHTML = `<i class="fa-solid fa-file-excel"></i> ${isAll ? 'Exportar consolidado' : 'Exportar ' + activePeriodoLabel}`;
 }
 
 async function eliminarPeriodoEC(pid, label) {
@@ -874,14 +888,17 @@ async function eliminarPeriodoEC(pid, label) {
   if (res.error) { showToast('error', 'Error', res.error); return; }
   showToast('success', 'Período eliminado', label);
   activePeriodoEC = 'all';
+  activePeriodoLabel = 'Consolidado';
   loadPeriodTabsEC();
   loadTransacciones(1);
 }
 
-function selectPeriodoEC(id, btn) {
-  activePeriodoEC = id === 'all' ? 'all' : String(id);
+function selectPeriodoEC(id, label, btn) {
+  activePeriodoEC    = id === 'all' ? 'all' : String(id);
+  activePeriodoLabel = label || 'Consolidado';
   document.querySelectorAll('#periodTabsListEC .period-tab').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
+  _updateExportBtn();
   loadTransacciones(1);
 }
 

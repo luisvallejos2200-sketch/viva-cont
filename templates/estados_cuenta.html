@@ -848,29 +848,54 @@ async function loadPeriodTabsEC() {
 
   document.getElementById('periodTabsEC').style.display = 'block';
   const list = document.getElementById('periodTabsListEC');
-  list.innerHTML = `
+
+  // Build tabs using data attributes to avoid quote-escaping issues in onclick
+  let html = `
     <div style="display:inline-flex;align-items:center;">
-      <button class="period-tab active" onclick="selectPeriodoEC('all','Consolidado',this)">
+      <button class="period-tab active" data-pid="all" data-label="Consolidado">
         <i class="fa-solid fa-layer-group"></i> Consolidado
         <span style="font-size:10px;opacity:.7;">(todos)</span>
       </button>
-      <button class="period-tab-xls-btn" onclick="exportarPeriodo(null,'Consolidado')" title="Exportar Consolidado a Excel">
+      <button class="period-tab-xls-btn" data-xls-pid="" data-xls-label="Consolidado" title="Exportar Consolidado a Excel">
         <i class="fa-solid fa-file-excel"></i>
       </button>
-    </div>
-    ${periodos.map(p => `
+    </div>`;
+
+  periodos.forEach(p => {
+    html += `
     <div style="display:inline-flex;align-items:center;">
-      <button class="period-tab" onclick="selectPeriodoEC(${p.id},${JSON.stringify(p.label)},this)">
+      <button class="period-tab" data-pid="${p.id}" data-label="${p.label.replace(/"/g,'&quot;')}">
         <i class="fa-solid fa-calendar-days"></i>
         ${p.label}
         <span style="font-size:10px;opacity:.7;">${p.total_transacciones} txs</span>
-        <span class="period-tab-del" onclick="event.stopPropagation();eliminarPeriodoEC(${p.id},${JSON.stringify(p.label)})">×</span>
+        <span class="period-tab-del" data-del-pid="${p.id}" data-del-label="${p.label.replace(/"/g,'&quot;')}" title="Eliminar período">×</span>
       </button>
-      <button class="period-tab-xls-btn" onclick="exportarPeriodo(${p.id},${JSON.stringify(p.label)})" title="Exportar ${p.label} a Excel">
+      <button class="period-tab-xls-btn" data-xls-pid="${p.id}" data-xls-label="${p.label.replace(/"/g,'&quot;')}" title="Exportar a Excel">
         <i class="fa-solid fa-file-excel"></i>
       </button>
-    </div>`).join('')}
-  `;
+    </div>`;
+  });
+
+  list.innerHTML = html;
+
+  // Bind events after rendering (avoids all inline-onclick escaping issues)
+  list.querySelectorAll('.period-tab[data-pid]').forEach(btn => {
+    btn.addEventListener('click', function(e) {
+      if (e.target.closest('.period-tab-del')) return; // ignore delete click
+      selectPeriodoEC(this.dataset.pid, this.dataset.label, this);
+    });
+  });
+  list.querySelectorAll('.period-tab-del[data-del-pid]').forEach(btn => {
+    btn.addEventListener('click', function(e) {
+      e.stopPropagation();
+      eliminarPeriodoEC(this.dataset.delPid, this.dataset.delLabel);
+    });
+  });
+  list.querySelectorAll('.period-tab-xls-btn[data-xls-label]').forEach(btn => {
+    btn.addEventListener('click', function() {
+      exportarPeriodo(this.dataset.xlsPid || null, this.dataset.xlsLabel);
+    });
+  });
 }
 
 async function eliminarPeriodoEC(pid, label) {
@@ -880,13 +905,12 @@ async function eliminarPeriodoEC(pid, label) {
   if (res.error) { showToast('error', 'Error', res.error); return; }
   showToast('success', 'Período eliminado', label);
   activePeriodoEC = 'all';
-  activePeriodoLabel = 'Consolidado';
   loadPeriodTabsEC();
   loadTransacciones(1);
 }
 
 function selectPeriodoEC(id, label, btn) {
-  activePeriodoEC = id === 'all' ? 'all' : String(id);
+  activePeriodoEC = (id === 'all') ? 'all' : String(id);
   document.querySelectorAll('#periodTabsListEC .period-tab').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
   loadTransacciones(1);

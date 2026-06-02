@@ -1,0 +1,242 @@
+{% extends "base.html" %}
+{% block title %}Flujo de Caja{% endblock %}
+{% block breadcrumb %}Flujo de Caja{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="page-title"><i class="fa-solid fa-water" style="color:var(--accent)"></i> Flujo de Caja</h1>
+    <p class="page-subtitle">Actividades de Operación, Inversión y Financiamiento</p>
+  </div>
+  <div class="page-actions">
+    <a href="/api/flujo-caja/template" class="btn btn-outline btn-sm">
+      <i class="fa-solid fa-download"></i> Descargar Plantilla
+    </a>
+    <button class="btn btn-outline btn-sm" onclick="exportarFC()">
+      <i class="fa-solid fa-file-excel"></i> Exportar Excel
+    </button>
+    <button class="btn btn-primary btn-sm" onclick="openUpload()">
+      <i class="fa-solid fa-upload"></i> Importar Excel
+    </button>
+  </div>
+</div>
+
+<!-- KPI RESUMEN -->
+<div class="kpi-grid" id="fcKpis" style="margin-bottom:20px;">
+  <div class="kpi-card" style="--kpi-color:#1aaa6b;--kpi-bg:rgba(26,170,107,.08)">
+    <div class="kpi-header"><span class="kpi-label">Flujo Operacional</span>
+      <span class="kpi-icon"><i class="fa-solid fa-gear"></i></span></div>
+    <div class="kpi-value" id="kfc-operacion">S/ —</div>
+    <div class="kpi-footer">Actividades de operación</div>
+  </div>
+  <div class="kpi-card" style="--kpi-color:#2196f3;--kpi-bg:rgba(33,150,243,.08)">
+    <div class="kpi-header"><span class="kpi-label">Flujo de Inversión</span>
+      <span class="kpi-icon"><i class="fa-solid fa-chart-line"></i></span></div>
+    <div class="kpi-value" id="kfc-inversion">S/ —</div>
+    <div class="kpi-footer">Actividades de inversión</div>
+  </div>
+  <div class="kpi-card" style="--kpi-color:#7b1fa2;--kpi-bg:rgba(123,31,162,.08)">
+    <div class="kpi-header"><span class="kpi-label">Flujo de Financiamiento</span>
+      <span class="kpi-icon"><i class="fa-solid fa-landmark"></i></span></div>
+    <div class="kpi-value" id="kfc-financiamiento">S/ —</div>
+    <div class="kpi-footer">Actividades de financiamiento</div>
+  </div>
+  <div class="kpi-card" style="--kpi-color:#e8a020;--kpi-bg:rgba(232,160,32,.08)">
+    <div class="kpi-header"><span class="kpi-label">Saldo Final</span>
+      <span class="kpi-icon"><i class="fa-solid fa-wallet"></i></span></div>
+    <div class="kpi-value" id="kfc-saldo">S/ —</div>
+    <div class="kpi-footer">Efectivo al cierre del período</div>
+  </div>
+</div>
+
+<!-- TABLA PRINCIPAL -->
+<div class="card">
+  <div class="card-header">
+    <h3 class="card-title"><i class="fa-solid fa-table"></i> Períodos Cargados</h3>
+    <span id="fcCount" style="font-size:12px;color:var(--text-muted)"></span>
+  </div>
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Período</th>
+          <th>Año</th>
+          <th>Mes</th>
+          <th class="text-right">F. Operación</th>
+          <th class="text-right">F. Inversión</th>
+          <th class="text-right">F. Financiamiento</th>
+          <th class="text-right">Saldo Inicial</th>
+          <th class="text-right">Saldo Final</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="fcBody">
+        <tr class="loading-row"><td colspan="9"><span class="spinner"></span> Cargando…</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- MODAL: DETALLE PERÍODO -->
+<div class="modal-overlay" id="fcDetailModal" style="display:none;">
+  <div class="modal" style="max-width:700px;width:95%;">
+    <div class="modal-header">
+      <h3 class="modal-title"><i class="fa-solid fa-water"></i> Detalle — <span id="fcDetailTitle"></span></h3>
+      <button class="modal-close" onclick="closeFcDetail()"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div class="modal-body" style="padding:0;">
+      <table class="data-table" id="fcDetailTable">
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: UPLOAD -->
+<div class="modal-overlay" id="fcUploadModal" style="display:none;">
+  <div class="modal" style="max-width:520px;width:95%;">
+    <div class="modal-header">
+      <h3 class="modal-title"><i class="fa-solid fa-upload"></i> Importar Flujo de Caja</h3>
+      <button class="modal-close" onclick="closeUpload()"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div class="modal-body">
+      <div class="upload-zone" id="fcZone">
+        <div class="upload-icon"><i class="fa-solid fa-file-excel"></i></div>
+        <h4>Arrastra el archivo Excel</h4>
+        <p>Usa la plantilla descargable · .xlsx .xls</p>
+      </div>
+      <input type="file" id="fcFileInput" accept=".xlsx,.xls" style="display:none">
+      <div id="fcUploadStatus" style="margin-top:12px;display:none;">
+        <div style="padding:12px;background:var(--surface2);border-radius:var(--radius-xs);display:flex;align-items:center;gap:10px;">
+          <span class="spinner"></span>
+          <span id="fcUploadMsg" style="font-size:13px;color:var(--text-muted)">Procesando…</span>
+        </div>
+      </div>
+      <p style="font-size:11px;color:var(--text-muted);margin-top:10px;">
+        <i class="fa-solid fa-circle-info" style="color:var(--info)"></i>
+        Descarga primero la plantilla para ver el formato requerido.
+      </p>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function loadFC() {
+  const rows = await apiGet('/api/flujo-caja');
+  if (!rows) return;
+  document.getElementById('fcCount').textContent = rows.length + ' período(s)';
+  const tbody = document.getElementById('fcBody');
+  if (!rows.length) {
+    tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:32px;color:var(--text-muted)">
+      Sin datos · Descarga la plantilla, complétala y sube el archivo
+    </td></tr>`;
+    return;
+  }
+  // KPI totales
+  const tot = rows.reduce((a,r) => ({
+    op: a.op + (r.flujo_operacion||0),
+    inv: a.inv + (r.flujo_inversion||0),
+    fin: a.fin + (r.flujo_financiamiento||0),
+    sf: r.saldo_final || a.sf,
+  }), {op:0,inv:0,fin:0,sf:0});
+  const kv = (id, v) => {
+    const el = document.getElementById(id);
+    el.textContent = fmtMoney(v);
+    el.className = 'kpi-value ' + (v >= 0 ? 'positive' : 'negative');
+  };
+  kv('kfc-operacion', tot.op);
+  kv('kfc-inversion', tot.inv);
+  kv('kfc-financiamiento', tot.fin);
+  document.getElementById('kfc-saldo').textContent = fmtMoney(tot.sf);
+  document.getElementById('kfc-saldo').className = 'kpi-value ' + (tot.sf >= 0 ? 'positive' : 'negative');
+
+  tbody.innerHTML = rows.map(r => `<tr style="cursor:pointer" onclick="openFcDetail(${JSON.stringify(r).replace(/"/g,'&quot;')})">
+    <td style="font-weight:600">${r.periodo_label||'—'}</td>
+    <td>${r.anio||'—'}</td>
+    <td>${r.mes||'—'}</td>
+    <td class="text-right mono ${(r.flujo_operacion||0)>=0?'amount-pos':'amount-neg'}">${fmtMoney(r.flujo_operacion)}</td>
+    <td class="text-right mono ${(r.flujo_inversion||0)>=0?'amount-pos':'amount-neg'}">${fmtMoney(r.flujo_inversion)}</td>
+    <td class="text-right mono ${(r.flujo_financiamiento||0)>=0?'amount-pos':'amount-neg'}">${fmtMoney(r.flujo_financiamiento)}</td>
+    <td class="text-right mono">${fmtMoney(r.saldo_inicial)}</td>
+    <td class="text-right mono" style="font-weight:700;color:${(r.saldo_final||0)>=0?'#1aaa6b':'#e03c3c'}">${fmtMoney(r.saldo_final)}</td>
+    <td>
+      <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();deleteFC(${r.id},'${(r.periodo_label||'').replace(/'/g,"\\'")}')">
+        <i class="fa-solid fa-trash" style="color:var(--danger)"></i>
+      </button>
+    </td>
+  </tr>`).join('');
+}
+
+function openFcDetail(r) {
+  document.getElementById('fcDetailTitle').textContent = r.periodo_label || '—';
+  const rows = [
+    ['─── ACTIVIDADES DE OPERACIÓN ───','','section'],
+    ['Cobros a Clientes', r.cobros_clientes, 'pos'],
+    ['Otros Cobros de Operación', r.otros_cobros_operacion, 'pos'],
+    ['Pagos a Proveedores', r.pagos_proveedores, 'neg'],
+    ['Pagos al Personal', r.pagos_empleados, 'neg'],
+    ['Pagos de Tributos', r.pagos_tributos, 'neg'],
+    ['Otros Pagos de Operación', r.otros_pagos_operacion, 'neg'],
+    ['FLUJO NETO OPERACIÓN', r.flujo_operacion, 'total'],
+    ['─── ACTIVIDADES DE INVERSIÓN ───','','section'],
+    ['Adquisición de Activos', r.adquisicion_activos, 'neg'],
+    ['Venta de Activos', r.venta_activos, 'pos'],
+    ['Inversiones Financieras', r.inversiones_financieras, ''],
+    ['Otros de Inversión', r.otros_inversion, ''],
+    ['FLUJO NETO INVERSIÓN', r.flujo_inversion, 'total'],
+    ['─── ACTIVIDADES DE FINANCIAMIENTO ───','','section'],
+    ['Préstamos Recibidos', r.prestamos_recibidos, 'pos'],
+    ['Pago de Préstamos', r.pagos_prestamos, 'neg'],
+    ['Dividendos Pagados', r.dividendos_pagados, 'neg'],
+    ['Aportes de Capital', r.aportes_capital, 'pos'],
+    ['Otros de Financiamiento', r.otros_financiamiento, ''],
+    ['FLUJO NETO FINANCIAMIENTO', r.flujo_financiamiento, 'total'],
+    ['─── POSICIÓN FINAL ───','','section'],
+    ['Saldo Inicial', r.saldo_inicial, ''],
+    ['Variación Neta', r.variacion_neta, r.variacion_neta>=0?'pos':'neg'],
+    ['SALDO FINAL', r.saldo_final, 'total'],
+  ];
+  const tbody = document.getElementById('fcDetailTable').querySelector('tbody');
+  tbody.innerHTML = rows.map(([label, val, type]) => {
+    if (type === 'section') return `<tr style="background:var(--surface2)"><td colspan="2" style="font-size:11px;font-weight:700;color:var(--text-muted);padding:8px 14px;letter-spacing:.8px">${label}</td></tr>`;
+    if (type === 'total') return `<tr style="border-top:2px solid var(--border);font-weight:800">
+      <td style="padding:10px 14px;font-size:13px">${label}</td>
+      <td class="text-right mono" style="padding:10px 14px;font-size:14px;color:${(val||0)>=0?'#1aaa6b':'#e03c3c'}">${fmtMoney(val)}</td></tr>`;
+    return `<tr><td style="padding:7px 14px;color:var(--text-muted);font-size:12px">${label}</td>
+      <td class="text-right mono" style="padding:7px 14px;font-size:12px">${fmtMoney(val)}</td></tr>`;
+  }).join('');
+  document.getElementById('fcDetailModal').style.display = 'flex';
+}
+function closeFcDetail() { document.getElementById('fcDetailModal').style.display = 'none'; }
+
+async function deleteFC(id, label) {
+  if (!confirm(`¿Eliminar el período "${label}"?`)) return;
+  const res = await apiDelete(`/api/flujo-caja/${id}`);
+  if (res?.success) { showToast('success','Eliminado', label); loadFC(); }
+}
+
+function exportarFC() { window.location.href = '/api/flujo-caja/exportar'; }
+
+function openUpload() { document.getElementById('fcUploadModal').style.display = 'flex'; }
+function closeUpload() { document.getElementById('fcUploadModal').style.display = 'none'; }
+
+initUploadZone('fcZone','fcFileInput', async(file) => {
+  const st = document.getElementById('fcUploadStatus');
+  const msg = document.getElementById('fcUploadMsg');
+  st.style.display = 'block'; msg.textContent = `Importando "${file.name}"…`;
+  const fd = new FormData(); fd.append('file', file);
+  try {
+    const res = await fetch('/api/flujo-caja', { method:'POST', body:fd });
+    const data = await res.json();
+    st.style.display = 'none';
+    if (!res.ok || data.error) { showToast('error','Error', data.error); return; }
+    showToast('success','Importado', `${data.saved} período(s) guardados`);
+    closeUpload(); loadFC();
+  } catch(e) { st.style.display='none'; showToast('error','Error',e.message); }
+});
+
+loadFC();
+</script>
+{% endblock %}

@@ -4502,5 +4502,711 @@ def api_v1_kpis():
     return jsonify({"ok": True, "data": row, "periodo": datetime.now().strftime("%Y-%m")})
 
 
+# ═══════════════════════════════════════════════════════════════
+# MÓDULO: FLUJO DE CAJA
+# ═══════════════════════════════════════════════════════════════
+
+@app.route("/flujo-caja")
+@login_required
+def page_flujo_caja():
+    return render_template("flujo_caja.html")
+
+
+@app.route("/api/flujo-caja", methods=["GET"])
+@login_required
+def api_fc_list():
+    conn = get_connection()
+    rows = rows_to_list(conn.execute(
+        "SELECT * FROM flujo_caja WHERE cliente_id=? ORDER BY anio DESC, created_at DESC",
+        (cid(),)
+    ).fetchall())
+    conn.close()
+    return jsonify(rows)
+
+
+@app.route("/api/flujo-caja", methods=["POST"])
+@login_required
+def api_fc_importar():
+    import pandas as pd, io as _io
+    if "file" not in request.files:
+        return jsonify({"error": "No se envió archivo"}), 400
+    file = request.files["file"]
+    try:
+        df = pd.read_excel(file, sheet_name=0, header=1)
+        df.columns = [str(c).strip() for c in df.columns]
+        df = df.dropna(how="all")
+        _COL = {
+            "PERÍODO / LABEL": "periodo_label", "AÑO": "anio", "MES": "mes", "MONEDA": "moneda",
+            "Cobros a Clientes": "cobros_clientes",
+            "Otros Cobros de Operación": "otros_cobros_operacion",
+            "Pagos a Proveedores": "pagos_proveedores",
+            "Pagos al Personal": "pagos_empleados",
+            "Pagos de Tributos": "pagos_tributos",
+            "Otros Pagos de Operación": "otros_pagos_operacion",
+            "FLUJO ACTIVIDADES OPERACIÓN": "flujo_operacion",
+            "Adquisición de Activos": "adquisicion_activos",
+            "Venta de Activos": "venta_activos",
+            "Inversiones Financieras": "inversiones_financieras",
+            "Otros de Inversión": "otros_inversion",
+            "FLUJO ACTIVIDADES INVERSIÓN": "flujo_inversion",
+            "Préstamos Recibidos": "prestamos_recibidos",
+            "Pago de Préstamos": "pagos_prestamos",
+            "Dividendos Pagados": "dividendos_pagados",
+            "Aportes de Capital": "aportes_capital",
+            "Otros de Financiamiento": "otros_financiamiento",
+            "FLUJO ACTIVIDADES FINANCIAMIENTO": "flujo_financiamiento",
+            "Saldo Inicial": "saldo_inicial",
+            "Variación Neta": "variacion_neta",
+            "Saldo Final": "saldo_final",
+        }
+        conn = get_connection()
+        saved = 0
+        for _, row in df.iterrows():
+            vals = {v: 0 for v in _COL.values()}
+            for xls_col, db_col in _COL.items():
+                if xls_col in df.columns:
+                    raw = row.get(xls_col, None)
+                    if raw is not None and str(raw).strip() not in ("", "nan", "NaT"):
+                        try:
+                            vals[db_col] = float(str(raw).replace(",", "")) if db_col not in ("periodo_label","mes","moneda") else str(raw).strip()
+                        except:
+                            vals[db_col] = str(raw).strip()
+            if not vals.get("periodo_label"): continue
+            conn.execute("""
+                INSERT INTO flujo_caja
+                (cliente_id, periodo_label, anio, mes, moneda,
+                 cobros_clientes, otros_cobros_operacion, pagos_proveedores,
+                 pagos_empleados, pagos_tributos, otros_pagos_operacion, flujo_operacion,
+                 adquisicion_activos, venta_activos, inversiones_financieras, otros_inversion, flujo_inversion,
+                 prestamos_recibidos, pagos_prestamos, dividendos_pagados, aportes_capital, otros_financiamiento, flujo_financiamiento,
+                 saldo_inicial, variacion_neta, saldo_final, archivo_origen)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            """, (cid(),
+                vals["periodo_label"], vals.get("anio") or 0, vals.get("mes",""), vals.get("moneda","PEN"),
+                vals["cobros_clientes"], vals["otros_cobros_operacion"], vals["pagos_proveedores"],
+                vals["pagos_empleados"], vals["pagos_tributos"], vals["otros_pagos_operacion"], vals["flujo_operacion"],
+                vals["adquisicion_activos"], vals["venta_activos"], vals["inversiones_financieras"], vals["otros_inversion"], vals["flujo_inversion"],
+                vals["prestamos_recibidos"], vals["pagos_prestamos"], vals["dividendos_pagados"], vals["aportes_capital"], vals["otros_financiamiento"], vals["flujo_financiamiento"],
+                vals["saldo_inicial"], vals["variacion_neta"], vals["saldo_final"],
+                file.filename))
+            saved += 1
+        conn.commit()
+        conn.close()
+        return jsonify({"success": True, "saved": saved})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/flujo-caja/<int:fid>", methods=["DELETE"])
+@login_required
+def api_fc_delete(fid):
+    conn = get_connection()
+    conn.execute("DELETE FROM flujo_caja WHERE id=? AND cliente_id=?", (fid, cid()))
+    conn.commit(); conn.close()
+    return jsonify({"success": True})
+
+
+@app.route("/api/flujo-caja/exportar")
+@login_required
+def api_fc_exportar():
+    import pandas as pd, io as _io
+    conn = get_connection()
+    rows = rows_to_list(conn.execute(
+        "SELECT * FROM flujo_caja WHERE cliente_id=? ORDER BY anio, mes", (cid(),)
+    ).fetchall())
+    conn.close()
+    if not rows: return jsonify({"error": "Sin datos"}), 404
+    df = pd.DataFrame(rows)
+    out = _io.BytesIO()
+    with pd.ExcelWriter(out, engine="openpyxl") as w:
+        df.to_excel(w, sheet_name="Flujo de Caja", index=False)
+    out.seek(0)
+    fname = f"VIVA_FlujoCaja_{datetime.now().strftime('%Y%m%d')}.xlsx"
+    return send_file(out, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                     as_attachment=True, download_name=fname)
+
+
+@app.route("/api/flujo-caja/template")
+@login_required
+def api_fc_template():
+    import io as _io
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Flujo de Caja"
+    hdr_fill = PatternFill("solid", fgColor="1A3C6E")
+    sub_fill  = PatternFill("solid", fgColor="2E5FA3")
+    grp_fill  = PatternFill("solid", fgColor="E8F0FB")
+    hdr_font  = Font(bold=True, color="FFFFFF", size=11)
+    sub_font  = Font(bold=True, color="FFFFFF", size=10)
+    grp_font  = Font(bold=True, color="1A3C6E", size=10)
+    thin = Border(
+        left=Side(style="thin"), right=Side(style="thin"),
+        top=Side(style="thin"), bottom=Side(style="thin"))
+
+    headers = [
+        "PERÍODO / LABEL", "AÑO", "MES", "MONEDA",
+        "Cobros a Clientes", "Otros Cobros de Operación",
+        "Pagos a Proveedores", "Pagos al Personal", "Pagos de Tributos", "Otros Pagos de Operación",
+        "FLUJO ACTIVIDADES OPERACIÓN",
+        "Adquisición de Activos", "Venta de Activos", "Inversiones Financieras", "Otros de Inversión",
+        "FLUJO ACTIVIDADES INVERSIÓN",
+        "Préstamos Recibidos", "Pago de Préstamos", "Dividendos Pagados", "Aportes de Capital", "Otros de Financiamiento",
+        "FLUJO ACTIVIDADES FINANCIAMIENTO",
+        "Saldo Inicial", "Variación Neta", "Saldo Final",
+    ]
+    # Row 1: title
+    ws.merge_cells("A1:Y1")
+    ws["A1"] = "PLANTILLA FLUJO DE CAJA — VIVA CONSULTING EMPRESAS"
+    ws["A1"].font = Font(bold=True, color="FFFFFF", size=13)
+    ws["A1"].fill = PatternFill("solid", fgColor="1A3C6E")
+    ws["A1"].alignment = Alignment(horizontal="center", vertical="center")
+    ws.row_dimensions[1].height = 28
+
+    # Row 2: headers
+    group_cols = {10: grp_fill, 15: grp_fill, 21: grp_fill}
+    for ci, h in enumerate(headers, 1):
+        cell = ws.cell(row=2, column=ci, value=h)
+        is_total = h.startswith("FLUJO") or h in ("Saldo Inicial","Variación Neta","Saldo Final")
+        cell.fill = grp_fill if is_total else sub_fill
+        cell.font = grp_font if is_total else sub_font
+        cell.alignment = Alignment(horizontal="center", wrap_text=True)
+        cell.border = thin
+    ws.row_dimensions[2].height = 40
+
+    # Row 3: sample
+    sample = ["Enero 2026", 2026, "Enero", "PEN",
+              150000, 5000, -80000, -30000, -10000, -5000, 30000,
+              -20000, 0, 0, 0, -20000,
+              50000, -15000, 0, 0, 0, 35000,
+              100000, 45000, 145000]
+    for ci, v in enumerate(sample, 1):
+        cell = ws.cell(row=3, column=ci, value=v)
+        cell.border = thin
+        cell.alignment = Alignment(horizontal="right" if isinstance(v,(int,float)) else "left")
+
+    # Column widths
+    widths = [20,8,10,8] + [20]*21
+    for ci, w in enumerate(widths, 1):
+        ws.column_dimensions[ws.cell(row=2,column=ci).column_letter].width = w
+
+    # Instructions sheet
+    ws2 = wb.create_sheet("Instrucciones")
+    instructions = [
+        ("INSTRUCCIONES DE USO — FLUJO DE CAJA", True),
+        ("", False),
+        ("1. Complete cada fila con los datos de un período (mes/trimestre/año)", False),
+        ("2. PERÍODO / LABEL: Nombre descriptivo del período (ej: Enero 2026, Q1 2026)", False),
+        ("3. Valores de egresos/pagos deben ser NEGATIVOS", False),
+        ("4. FLUJO ACTIVIDADES = suma automática de las operaciones del grupo", False),
+        ("5. Saldo Final = Saldo Inicial + Variación Neta", False),
+        ("6. Puede agregar múltiples filas para múltiples períodos", False),
+        ("7. No modifique los encabezados de la fila 2", False),
+        ("8. Moneda: PEN (Soles) o USD (Dólares)", False),
+    ]
+    for ri, (txt, bold) in enumerate(instructions, 1):
+        cell = ws2.cell(row=ri, column=1, value=txt)
+        if bold: cell.font = Font(bold=True, size=12, color="1A3C6E")
+    ws2.column_dimensions["A"].width = 70
+
+    out = _io.BytesIO()
+    wb.save(out); out.seek(0)
+    return send_file(out, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                     as_attachment=True, download_name="PLANTILLA_FlujoCaja_VIVA.xlsx")
+
+
+# ═══════════════════════════════════════════════════════════════
+# MÓDULO: PLAN CONTABLE
+# ═══════════════════════════════════════════════════════════════
+
+@app.route("/plan-contable")
+@login_required
+def page_plan_contable():
+    return render_template("plan_contable.html")
+
+
+@app.route("/api/plan-contable", methods=["GET"])
+@login_required
+def api_pc_list():
+    q = request.args.get("q", "")
+    tipo = request.args.get("tipo", "")
+    conn = get_connection()
+    sql = "SELECT * FROM plan_contable WHERE cliente_id=?"
+    params = [cid()]
+    if q:
+        sql += " AND (codigo LIKE ? OR nombre LIKE ?)"
+        params += [f"%{q}%", f"%{q}%"]
+    if tipo:
+        sql += " AND tipo=?"
+        params.append(tipo)
+    sql += " ORDER BY codigo"
+    rows = rows_to_list(conn.execute(sql, params).fetchall())
+    conn.close()
+    return jsonify(rows)
+
+
+@app.route("/api/plan-contable", methods=["POST"])
+@login_required
+def api_pc_importar():
+    import pandas as pd
+    if "file" not in request.files:
+        return jsonify({"error": "No se envió archivo"}), 400
+    file = request.files["file"]
+    try:
+        df = pd.read_excel(file, sheet_name=0, header=1)
+        df.columns = [str(c).strip() for c in df.columns]
+        df = df.dropna(subset=["CÓDIGO"])
+        conn = get_connection()
+        saved = 0
+        for _, row in df.iterrows():
+            codigo = str(row.get("CÓDIGO","")).strip()
+            nombre = str(row.get("NOMBRE DE LA CUENTA","")).strip()
+            if not codigo or not nombre or codigo in ("nan",""):
+                continue
+            tipo = str(row.get("TIPO","")).strip()
+            nivel = int(float(str(row.get("NIVEL",len(codigo))).replace("nan","0") or len(codigo)))
+            naturaleza = str(row.get("NATURALEZA","DEUDORA")).strip()
+            descripcion = str(row.get("DESCRIPCIÓN","")).strip()
+            # Upsert by codigo
+            existing = conn.execute(
+                "SELECT id FROM plan_contable WHERE cliente_id=? AND codigo=?", (cid(), codigo)
+            ).fetchone()
+            if existing:
+                conn.execute(
+                    "UPDATE plan_contable SET nombre=?,tipo=?,nivel=?,naturaleza=?,descripcion=? WHERE id=?",
+                    (nombre, tipo, nivel, naturaleza, descripcion, existing[0])
+                )
+            else:
+                conn.execute(
+                    "INSERT INTO plan_contable (cliente_id,codigo,nombre,tipo,nivel,naturaleza,descripcion) VALUES (?,?,?,?,?,?,?)",
+                    (cid(), codigo, nombre, tipo, nivel, naturaleza, descripcion)
+                )
+            saved += 1
+        conn.commit(); conn.close()
+        return jsonify({"success": True, "saved": saved})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/plan-contable/<int:pid>", methods=["PUT"])
+@login_required
+def api_pc_update(pid):
+    data = request.get_json()
+    conn = get_connection()
+    conn.execute("""UPDATE plan_contable SET codigo=?,nombre=?,tipo=?,nivel=?,naturaleza=?,descripcion=?,activo=?
+                    WHERE id=? AND cliente_id=?""",
+        (data.get("codigo"), data.get("nombre"), data.get("tipo"), data.get("nivel",1),
+         data.get("naturaleza","DEUDORA"), data.get("descripcion",""), data.get("activo",1),
+         pid, cid()))
+    conn.commit(); conn.close()
+    return jsonify({"success": True})
+
+
+@app.route("/api/plan-contable/<int:pid>", methods=["DELETE"])
+@login_required
+def api_pc_delete(pid):
+    conn = get_connection()
+    conn.execute("DELETE FROM plan_contable WHERE id=? AND cliente_id=?", (pid, cid()))
+    conn.commit(); conn.close()
+    return jsonify({"success": True})
+
+
+@app.route("/api/plan-contable/exportar")
+@login_required
+def api_pc_exportar():
+    import pandas as pd, io as _io
+    conn = get_connection()
+    rows = rows_to_list(conn.execute(
+        "SELECT codigo,nombre,tipo,nivel,naturaleza,descripcion,activo FROM plan_contable WHERE cliente_id=? ORDER BY codigo",
+        (cid(),)
+    ).fetchall())
+    conn.close()
+    if not rows: return jsonify({"error": "Sin datos"}), 404
+    df = pd.DataFrame(rows)
+    df.columns = ["CÓDIGO","NOMBRE DE LA CUENTA","TIPO","NIVEL","NATURALEZA","DESCRIPCIÓN","ACTIVO"]
+    out = _io.BytesIO()
+    with pd.ExcelWriter(out, engine="openpyxl") as w:
+        df.to_excel(w, sheet_name="Plan Contable", index=False)
+    out.seek(0)
+    return send_file(out, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                     as_attachment=True, download_name=f"VIVA_PlanContable_{datetime.now().strftime('%Y%m%d')}.xlsx")
+
+
+@app.route("/api/plan-contable/template")
+@login_required
+def api_pc_template():
+    import io as _io
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    wb = Workbook()
+    ws = wb.active; ws.title = "Plan Contable"
+    hdr_fill = PatternFill("solid", fgColor="1A3C6E")
+    hdr_font = Font(bold=True, color="FFFFFF", size=11)
+    thin = Border(left=Side(style="thin"),right=Side(style="thin"),
+                  top=Side(style="thin"),bottom=Side(style="thin"))
+    # Title row
+    ws.merge_cells("A1:G1")
+    ws["A1"] = "PLANTILLA PLAN CONTABLE — VIVA CONSULTING EMPRESAS (PCGE)"
+    ws["A1"].font = Font(bold=True, color="FFFFFF", size=13)
+    ws["A1"].fill = hdr_fill
+    ws["A1"].alignment = Alignment(horizontal="center", vertical="center")
+    ws.row_dimensions[1].height = 28
+    # Headers
+    headers = ["CÓDIGO","NOMBRE DE LA CUENTA","TIPO","NIVEL","NATURALEZA","DESCRIPCIÓN","ACTIVO"]
+    for ci, h in enumerate(headers, 1):
+        cell = ws.cell(row=2, column=ci, value=h)
+        cell.fill = hdr_fill; cell.font = hdr_font
+        cell.alignment = Alignment(horizontal="center"); cell.border = thin
+    ws.row_dimensions[2].height = 22
+    # PCGE sample accounts (2-digit level)
+    pcge = [
+        ("10","Efectivo y Equivalentes de Efectivo","ACTIVO",2,"DEUDORA","Incluye caja y bancos"),
+        ("12","Cuentas por Cobrar Comerciales - Terceros","ACTIVO",2,"DEUDORA","CxC clientes"),
+        ("16","Cuentas por Cobrar Diversas - Terceros","ACTIVO",2,"DEUDORA",""),
+        ("20","Mercaderías","ACTIVO",2,"DEUDORA","Stock de mercaderías"),
+        ("33","Inmuebles Maquinaria y Equipo","ACTIVO",2,"DEUDORA","Activo fijo"),
+        ("39","Depreciación y Amortización Acumuladas","ACTIVO",2,"ACREEDORA","Cuenta correctora"),
+        ("40","Tributos Contraprestaciones y Aportes al SP","PASIVO",2,"ACREEDORA","IGV, IR, AFP"),
+        ("41","Remuneraciones y Participaciones por Pagar","PASIVO",2,"ACREEDORA","Planilla"),
+        ("42","Cuentas por Pagar Comerciales - Terceros","PASIVO",2,"ACREEDORA","CxP proveedores"),
+        ("45","Obligaciones Financieras","PASIVO",2,"ACREEDORA","Préstamos bancarios"),
+        ("50","Capital","PATRIMONIO",2,"ACREEDORA","Capital social"),
+        ("59","Resultados Acumulados","PATRIMONIO",2,"ACREEDORA","Utilidades/pérdidas acumuladas"),
+        ("60","Compras","GASTOS",2,"DEUDORA","Compras de mercaderías e insumos"),
+        ("62","Gastos de Personal","GASTOS",2,"DEUDORA","Sueldos y beneficios"),
+        ("63","Gastos de Servicios Prestados por Terceros","GASTOS",2,"DEUDORA","Servicios externos"),
+        ("64","Gastos por Tributos","GASTOS",2,"DEUDORA","ITF, impuesto predial, etc."),
+        ("65","Otros Gastos de Gestión","GASTOS",2,"DEUDORA",""),
+        ("67","Gastos Financieros","GASTOS",2,"DEUDORA","Intereses y comisiones"),
+        ("69","Costo de Ventas","GASTOS",2,"DEUDORA","Costo de los bienes vendidos"),
+        ("70","Ventas","INGRESOS",2,"ACREEDORA","Ventas de bienes y servicios"),
+        ("75","Otros Ingresos de Gestión","INGRESOS",2,"ACREEDORA",""),
+        ("77","Ingresos Financieros","INGRESOS",2,"ACREEDORA","Intereses ganados"),
+        ("94","Gastos Administrativos","COSTOS",2,"DEUDORA","Centro de costo"),
+        ("95","Gastos de Ventas","COSTOS",2,"DEUDORA","Centro de costo"),
+    ]
+    type_fill = {
+        "ACTIVO": "E3F2FD", "PASIVO": "FCE4EC", "PATRIMONIO": "F3E5F5",
+        "GASTOS": "FFF3E0", "INGRESOS": "E8F5E9", "COSTOS": "FFF9C4",
+    }
+    for ri, row in enumerate(pcge, 3):
+        for ci, val in enumerate(row, 1):
+            cell = ws.cell(row=ri, column=ci, value=val)
+            cell.fill = PatternFill("solid", fgColor=type_fill.get(row[2],"FFFFFF"))
+            cell.alignment = Alignment(horizontal="center" if ci in (1,3,4,5,7) else "left")
+            cell.border = thin
+        ws.cell(row=ri, column=7, value=1)
+    # Widths
+    for col, w in zip("ABCDEFG", [12,45,12,8,12,40,8]):
+        ws.column_dimensions[col].width = w
+    # Instructions
+    ws2 = wb.create_sheet("Instrucciones")
+    instrs = [
+        "PLAN CONTABLE — INSTRUCCIONES",
+        "",
+        "CÓDIGO: Número de cuenta según PCGE (ej: 10, 101, 1011)",
+        "NOMBRE DE LA CUENTA: Descripción oficial",
+        "TIPO: ACTIVO / PASIVO / PATRIMONIO / INGRESOS / GASTOS / COSTOS",
+        "NIVEL: 1=Elemento, 2=Cuenta, 3=Subcuenta, 4=Divisionaria",
+        "NATURALEZA: DEUDORA (activos/gastos) o ACREEDORA (pasivos/ingresos)",
+        "ACTIVO: 1=Activo, 0=Inactivo",
+        "",
+        "Puede editar directamente en el sistema o importar este archivo con sus cuentas.",
+        "Las cuentas existentes se actualizarán por código (upsert).",
+    ]
+    for ri, txt in enumerate(instrs, 1):
+        cell = ws2.cell(row=ri, column=1, value=txt)
+        if ri == 1: cell.font = Font(bold=True, size=12, color="1A3C6E")
+    ws2.column_dimensions["A"].width = 70
+    out = _io.BytesIO(); wb.save(out); out.seek(0)
+    return send_file(out, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                     as_attachment=True, download_name="PLANTILLA_PlanContable_PCGE_VIVA.xlsx")
+
+
+# ═══════════════════════════════════════════════════════════════
+# MÓDULO: SIRE — SUNAT
+# ═══════════════════════════════════════════════════════════════
+
+@app.route("/sire")
+@login_required
+def page_sire():
+    return render_template("sire.html")
+
+
+def _parse_sire_df(file, tipo):
+    """Parsea un Excel de SIRE (SUNAT) — ventas o compras."""
+    import pandas as pd
+    # SIRE tiene metadatos en las primeras filas — buscar la fila de encabezados
+    raw = pd.read_excel(file, header=None, dtype=str)
+    raw = raw.fillna("")
+    # Buscar fila con "Período" o "Periodo"
+    header_row = 0
+    for i, row in raw.iterrows():
+        if any("periodo" in str(v).lower() or "fecha" in str(v).lower() for v in row):
+            header_row = i
+            break
+    df = pd.read_excel(file, header=header_row, dtype=str)
+    df = df.fillna("").apply(lambda col: col.str.strip() if col.dtype == "object" else col)
+    df.columns = [str(c).strip().upper() for c in df.columns]
+    return df
+
+
+@app.route("/api/sire/ventas", methods=["GET"])
+@login_required
+def api_sire_ventas_list():
+    periodo = request.args.get("periodo","")
+    conn = get_connection()
+    sql = "SELECT * FROM sire_ventas WHERE cliente_id=?"
+    params = [cid()]
+    if periodo:
+        sql += " AND periodo=?"; params.append(periodo)
+    sql += " ORDER BY periodo DESC, fecha_emision DESC LIMIT 500"
+    rows = rows_to_list(conn.execute(sql, params).fetchall())
+    conn.close()
+    return jsonify(rows)
+
+
+@app.route("/api/sire/compras", methods=["GET"])
+@login_required
+def api_sire_compras_list():
+    periodo = request.args.get("periodo","")
+    conn = get_connection()
+    sql = "SELECT * FROM sire_compras WHERE cliente_id=?"
+    params = [cid()]
+    if periodo:
+        sql += " AND periodo=?"; params.append(periodo)
+    sql += " ORDER BY periodo DESC, fecha_emision DESC LIMIT 500"
+    rows = rows_to_list(conn.execute(sql, params).fetchall())
+    conn.close()
+    return jsonify(rows)
+
+
+@app.route("/api/sire/periodos")
+@login_required
+def api_sire_periodos():
+    conn = get_connection()
+    v = rows_to_list(conn.execute(
+        "SELECT DISTINCT periodo, periodo_label FROM sire_ventas WHERE cliente_id=? ORDER BY periodo DESC", (cid(),)
+    ).fetchall())
+    c_ = rows_to_list(conn.execute(
+        "SELECT DISTINCT periodo, periodo_label FROM sire_compras WHERE cliente_id=? ORDER BY periodo DESC", (cid(),)
+    ).fetchall())
+    conn.close()
+    return jsonify({"ventas": v, "compras": c_})
+
+
+@app.route("/api/sire/importar", methods=["POST"])
+@login_required
+def api_sire_importar():
+    tipo = request.form.get("tipo","ventas")  # "ventas" o "compras"
+    periodo_label = request.form.get("periodo_label","").strip()
+    if "file" not in request.files:
+        return jsonify({"error": "No se envió archivo"}), 400
+    file = request.files["file"]
+    try:
+        df = _parse_sire_df(file, tipo)
+        conn = get_connection()
+        saved = 0
+        # Detectar periodo del archivo
+        def _s(row, *keys):
+            for k in keys:
+                for col in df.columns:
+                    if k.upper() in col:
+                        v = str(row.get(col,"")).strip()
+                        if v and v != "nan": return v
+            return ""
+        def _f(row, *keys):
+            v = _s(row, *keys)
+            try: return float(v.replace(",","")) if v else 0.0
+            except: return 0.0
+
+        for _, row in df.iterrows():
+            periodo = _s(row, "PERÍODO","PERIODO")
+            if not periodo or periodo.lower() in ("nan",""):
+                continue
+            pl = periodo_label or periodo
+            if tipo == "ventas":
+                conn.execute("""INSERT INTO sire_ventas
+                    (cliente_id,periodo,periodo_label,fecha_emision,fecha_vencimiento,
+                     tipo_comprobante,serie,numero,tipo_doc_cliente,ruc_cliente,razon_social,
+                     base_imponible,igv,importe_total,moneda,tipo_cambio,estado,archivo_origen)
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    (cid(), periodo, pl,
+                     _s(row,"FECHA EMISION","FECHA DE EMISION","FECHA_EMISION"),
+                     _s(row,"FECHA VENCIMIENTO","FECHA DE VENCIMIENTO"),
+                     _s(row,"TIPO COMP","TIPO DE COMP"),
+                     _s(row,"SERIE"), _s(row,"NÚMERO","NUMERO","CORRELATIVO"),
+                     _s(row,"TIPO DOC","TIPO DE DOC"),
+                     _s(row,"RUC","DOC IDENTIDAD"),
+                     _s(row,"RAZÓN SOCIAL","RAZON SOCIAL","DENOMINACIÓN","DENOMINACION"),
+                     _f(row,"BASE IMPONIBLE","BASE IMP","VALOR FACTURADO"),
+                     _f(row,"IGV","IGV/IPM"),
+                     _f(row,"IMPORTE TOTAL","TOTAL"),
+                     _s(row,"MONEDA") or "PEN",
+                     _f(row,"TIPO CAMBIO") or 1.0,
+                     _s(row,"ESTADO") or "1",
+                     file.filename))
+            else:
+                conn.execute("""INSERT INTO sire_compras
+                    (cliente_id,periodo,periodo_label,fecha_emision,tipo_comprobante,
+                     serie,numero,ruc_proveedor,razon_social,
+                     base_imponible,igv,importe_total,credito_fiscal,
+                     moneda,tipo_cambio,estado,archivo_origen)
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    (cid(), periodo, pl,
+                     _s(row,"FECHA EMISION","FECHA DE EMISION"),
+                     _s(row,"TIPO COMP","TIPO DE COMP"),
+                     _s(row,"SERIE"), _s(row,"NÚMERO","NUMERO","CORRELATIVO"),
+                     _s(row,"RUC PROVEEDOR","RUC","DOC IDENTIDAD"),
+                     _s(row,"RAZÓN SOCIAL","RAZON SOCIAL","DENOMINACIÓN","DENOMINACION"),
+                     _f(row,"BASE IMPONIBLE","BASE IMP"),
+                     _f(row,"IGV","IGV/IPM"),
+                     _f(row,"IMPORTE TOTAL","TOTAL"),
+                     _f(row,"CRÉDITO FISCAL","CREDITO FISCAL"),
+                     _s(row,"MONEDA") or "PEN",
+                     _f(row,"TIPO CAMBIO") or 1.0,
+                     _s(row,"ESTADO") or "1",
+                     file.filename))
+            saved += 1
+        conn.commit(); conn.close()
+        return jsonify({"success": True, "saved": saved, "tipo": tipo})
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/sire/exportar")
+@login_required
+def api_sire_exportar():
+    import pandas as pd, io as _io
+    tipo = request.args.get("tipo","ventas")
+    periodo = request.args.get("periodo","")
+    conn = get_connection()
+    table = "sire_ventas" if tipo == "ventas" else "sire_compras"
+    sql = f"SELECT * FROM {table} WHERE cliente_id=?"
+    params = [cid()]
+    if periodo:
+        sql += " AND periodo=?"; params.append(periodo)
+    sql += " ORDER BY periodo, fecha_emision"
+    rows = rows_to_list(conn.execute(sql, params).fetchall())
+    conn.close()
+    if not rows: return jsonify({"error": "Sin datos"}), 404
+    df = pd.DataFrame(rows)
+    out = _io.BytesIO()
+    label = f"SIRE_{tipo.upper()}_{periodo or 'TODOS'}"
+    with pd.ExcelWriter(out, engine="openpyxl") as w:
+        df.to_excel(w, sheet_name=label[:31], index=False)
+    out.seek(0)
+    return send_file(out, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                     as_attachment=True, download_name=f"VIVA_{label}_{datetime.now().strftime('%Y%m%d')}.xlsx")
+
+
+@app.route("/api/sire/template")
+@login_required
+def api_sire_template():
+    import io as _io
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    tipo = request.args.get("tipo","ventas")
+    wb = Workbook()
+    ws = wb.active
+    hdr_fill = PatternFill("solid", fgColor="1A3C6E")
+    hdr_font = Font(bold=True, color="FFFFFF", size=10)
+    thin = Border(left=Side(style="thin"),right=Side(style="thin"),
+                  top=Side(style="thin"),bottom=Side(style="thin"))
+    if tipo == "ventas":
+        ws.title = "RVIE - Registro Ventas"
+        headers = ["PERÍODO","PERÍODO LABEL","FECHA EMISION","FECHA VENCIMIENTO",
+                   "TIPO COMPROBANTE","SERIE","NÚMERO","TIPO DOC CLIENTE",
+                   "RUC CLIENTE","RAZÓN SOCIAL","BASE IMPONIBLE","IGV",
+                   "IMPORTE TOTAL","MONEDA","TIPO CAMBIO","ESTADO"]
+        sample = ["202601","Enero 2026","01/01/2026","31/01/2026",
+                  "01","F001","00000001","6",
+                  "20123456789","EMPRESA CLIENTE SAC",1000.00,180.00,
+                  1180.00,"PEN",1.0,"1"]
+        ws.merge_cells(f"A1:P1")
+    else:
+        ws.title = "RCE - Registro Compras"
+        headers = ["PERÍODO","PERÍODO LABEL","FECHA EMISION",
+                   "TIPO COMPROBANTE","SERIE","NÚMERO",
+                   "RUC PROVEEDOR","RAZÓN SOCIAL","BASE IMPONIBLE","IGV",
+                   "IMPORTE TOTAL","CRÉDITO FISCAL","MONEDA","TIPO CAMBIO","ESTADO"]
+        sample = ["202601","Enero 2026","01/01/2026",
+                  "01","F001","00000001",
+                  "20123456789","PROVEEDOR SAC",500.00,90.00,
+                  590.00,90.00,"PEN",1.0,"1"]
+        ws.merge_cells(f"A1:O1")
+
+    ws["A1"] = f"PLANTILLA SIRE {'VENTAS (RVIE)' if tipo=='ventas' else 'COMPRAS (RCE)'} — VIVA CONSULTING"
+    ws["A1"].font = Font(bold=True, color="FFFFFF", size=12)
+    ws["A1"].fill = hdr_fill
+    ws["A1"].alignment = Alignment(horizontal="center", vertical="center")
+    ws.row_dimensions[1].height = 26
+
+    for ci, h in enumerate(headers, 1):
+        cell = ws.cell(row=2, column=ci, value=h)
+        cell.fill = hdr_fill; cell.font = hdr_font
+        cell.alignment = Alignment(horizontal="center", wrap_text=True)
+        cell.border = thin
+    ws.row_dimensions[2].height = 36
+
+    for ci, v in enumerate(sample, 1):
+        cell = ws.cell(row=3, column=ci, value=v)
+        cell.border = thin
+        cell.alignment = Alignment(horizontal="right" if isinstance(v,(int,float)) else "left")
+
+    for ci in range(1, len(headers)+1):
+        ws.column_dimensions[ws.cell(row=2,column=ci).column_letter].width = 16
+
+    # Instrucciones
+    ws2 = wb.create_sheet("Instrucciones")
+    instrs = [
+        f"SIRE {'VENTAS' if tipo=='ventas' else 'COMPRAS'} — INSTRUCCIONES",
+        "",
+        "PERÍODO: Formato YYYYMM (ej: 202601 para Enero 2026)",
+        "PERÍODO LABEL: Nombre legible (ej: Enero 2026)",
+        "TIPO COMPROBANTE: 01=Factura, 03=Boleta, 07=Nota Crédito, 08=Nota Débito",
+        "ESTADO: 1=Informado, 6=Baja",
+        "BASE IMPONIBLE: Monto sin IGV",
+        "IGV: 18% sobre la base imponible",
+        "IMPORTE TOTAL: Base + IGV",
+        "",
+        "También puede importar directamente el Excel descargado de SUNAT SIRE.",
+        "El sistema detecta automáticamente las columnas del formato SUNAT.",
+    ]
+    for ri, txt in enumerate(instrs, 1):
+        cell = ws2.cell(row=ri, column=1, value=txt)
+        if ri == 1: cell.font = Font(bold=True, size=12, color="1A3C6E")
+    ws2.column_dimensions["A"].width = 70
+
+    out = _io.BytesIO(); wb.save(out); out.seek(0)
+    fname = f"PLANTILLA_SIRE_{'VENTAS' if tipo=='ventas' else 'COMPRAS'}_VIVA.xlsx"
+    return send_file(out, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                     as_attachment=True, download_name=fname)
+
+
+@app.route("/api/sire/eliminar/<tipo>/<int:sid>", methods=["DELETE"])
+@login_required
+def api_sire_eliminar(tipo, sid):
+    table = "sire_ventas" if tipo == "ventas" else "sire_compras"
+    conn = get_connection()
+    conn.execute(f"DELETE FROM {table} WHERE id=? AND cliente_id=?", (sid, cid()))
+    conn.commit(); conn.close()
+    return jsonify({"success": True})
+
+
+@app.route("/api/sire/eliminar-periodo/<tipo>", methods=["DELETE"])
+@login_required
+def api_sire_eliminar_periodo(tipo):
+    periodo = request.args.get("periodo","")
+    if not periodo: return jsonify({"error": "Período requerido"}), 400
+    table = "sire_ventas" if tipo == "ventas" else "sire_compras"
+    conn = get_connection()
+    conn.execute(f"DELETE FROM {table} WHERE periodo=? AND cliente_id=?", (periodo, cid()))
+    conn.commit(); conn.close()
+    return jsonify({"success": True})
+
+
 if __name__ == "__main__":
     app.run(debug=True, port=5050, host="0.0.0.0")

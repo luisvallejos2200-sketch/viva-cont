@@ -479,6 +479,108 @@ def _do_init(conn):
         )
     """)
 
+    # ── FLUJO DE CAJA ─────────────────────────────────────────
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS flujo_caja (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            cliente_id INTEGER,
+            periodo_label TEXT,
+            anio INTEGER,
+            mes TEXT,
+            moneda TEXT DEFAULT 'PEN',
+            cobros_clientes REAL DEFAULT 0,
+            otros_cobros_operacion REAL DEFAULT 0,
+            pagos_proveedores REAL DEFAULT 0,
+            pagos_empleados REAL DEFAULT 0,
+            pagos_tributos REAL DEFAULT 0,
+            otros_pagos_operacion REAL DEFAULT 0,
+            flujo_operacion REAL DEFAULT 0,
+            adquisicion_activos REAL DEFAULT 0,
+            venta_activos REAL DEFAULT 0,
+            inversiones_financieras REAL DEFAULT 0,
+            otros_inversion REAL DEFAULT 0,
+            flujo_inversion REAL DEFAULT 0,
+            prestamos_recibidos REAL DEFAULT 0,
+            pagos_prestamos REAL DEFAULT 0,
+            dividendos_pagados REAL DEFAULT 0,
+            aportes_capital REAL DEFAULT 0,
+            otros_financiamiento REAL DEFAULT 0,
+            flujo_financiamiento REAL DEFAULT 0,
+            saldo_inicial REAL DEFAULT 0,
+            variacion_neta REAL DEFAULT 0,
+            saldo_final REAL DEFAULT 0,
+            archivo_origen TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    # ── PLAN CONTABLE ─────────────────────────────────────────
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS plan_contable (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            cliente_id INTEGER,
+            codigo TEXT NOT NULL,
+            nombre TEXT NOT NULL,
+            tipo TEXT,
+            nivel INTEGER DEFAULT 1,
+            naturaleza TEXT DEFAULT 'DEUDORA',
+            descripcion TEXT,
+            activo INTEGER DEFAULT 1,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    # ── SIRE VENTAS (RVIE) ────────────────────────────────────
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS sire_ventas (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            cliente_id INTEGER,
+            periodo TEXT,
+            periodo_label TEXT,
+            fecha_emision TEXT,
+            fecha_vencimiento TEXT,
+            tipo_comprobante TEXT,
+            serie TEXT,
+            numero TEXT,
+            tipo_doc_cliente TEXT,
+            ruc_cliente TEXT,
+            razon_social TEXT,
+            base_imponible REAL DEFAULT 0,
+            igv REAL DEFAULT 0,
+            importe_total REAL DEFAULT 0,
+            moneda TEXT DEFAULT 'PEN',
+            tipo_cambio REAL DEFAULT 1,
+            estado TEXT DEFAULT '1',
+            archivo_origen TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    # ── SIRE COMPRAS (RCE) ────────────────────────────────────
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS sire_compras (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            cliente_id INTEGER,
+            periodo TEXT,
+            periodo_label TEXT,
+            fecha_emision TEXT,
+            tipo_comprobante TEXT,
+            serie TEXT,
+            numero TEXT,
+            ruc_proveedor TEXT,
+            razon_social TEXT,
+            base_imponible REAL DEFAULT 0,
+            igv REAL DEFAULT 0,
+            importe_total REAL DEFAULT 0,
+            credito_fiscal REAL DEFAULT 0,
+            moneda TEXT DEFAULT 'PEN',
+            tipo_cambio REAL DEFAULT 1,
+            estado TEXT DEFAULT '1',
+            archivo_origen TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
     # ── AUDIT LOG ─────────────────────────────────────────────
     c.execute("""
         CREATE TABLE IF NOT EXISTS audit_log (

@@ -1,0 +1,402 @@
+{% extends "base.html" %}
+{% block title %}SIRE — SUNAT{% endblock %}
+{% block breadcrumb %}SIRE — SUNAT{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="page-title"><i class="fa-solid fa-file-waveform" style="color:var(--accent)"></i> SIRE — SUNAT</h1>
+    <p class="page-subtitle">Registro de Ventas (RVIE) y Registro de Compras Electrónico (RCE)</p>
+  </div>
+  <div class="page-actions" id="sirePageActions">
+    <!-- se actualiza según tab activo -->
+  </div>
+</div>
+
+<!-- KPI RESUMEN -->
+<div class="kpi-grid" id="sireKpis" style="margin-bottom:20px;">
+  <div class="kpi-card" style="--kpi-color:#2196f3;--kpi-bg:rgba(33,150,243,.08)">
+    <div class="kpi-header"><span class="kpi-label">Total Ventas (RVIE)</span>
+      <span class="kpi-icon"><i class="fa-solid fa-arrow-up-right-dots"></i></span></div>
+    <div class="kpi-value" id="ksi-ventas">S/ —</div>
+    <div class="kpi-footer" id="ksi-ventas-n">— registros</div>
+  </div>
+  <div class="kpi-card" style="--kpi-color:#e8a020;--kpi-bg:rgba(232,160,32,.08)">
+    <div class="kpi-header"><span class="kpi-label">IGV Ventas</span>
+      <span class="kpi-icon"><i class="fa-solid fa-percent"></i></span></div>
+    <div class="kpi-value" id="ksi-igv-v">S/ —</div>
+    <div class="kpi-footer">IGV débito fiscal</div>
+  </div>
+  <div class="kpi-card" style="--kpi-color:#e03c3c;--kpi-bg:rgba(224,60,60,.08)">
+    <div class="kpi-header"><span class="kpi-label">Total Compras (RCE)</span>
+      <span class="kpi-icon"><i class="fa-solid fa-arrow-down-right"></i></span></div>
+    <div class="kpi-value" id="ksi-compras">S/ —</div>
+    <div class="kpi-footer" id="ksi-compras-n">— registros</div>
+  </div>
+  <div class="kpi-card" style="--kpi-color:#1aaa6b;--kpi-bg:rgba(26,170,107,.08)">
+    <div class="kpi-header"><span class="kpi-label">IGV Crédito Fiscal</span>
+      <span class="kpi-icon"><i class="fa-solid fa-shield-halved"></i></span></div>
+    <div class="kpi-value" id="ksi-igv-c">S/ —</div>
+    <div class="kpi-footer">Crédito fiscal (compras)</div>
+  </div>
+</div>
+
+<!-- TABS -->
+<div style="display:flex;gap:8px;margin-bottom:16px;border-bottom:2px solid var(--border);padding-bottom:0;">
+  <button class="sire-tab active" id="tab-ventas" onclick="switchTab('ventas')">
+    <i class="fa-solid fa-file-invoice-dollar"></i> Registro de Ventas (RVIE)
+  </button>
+  <button class="sire-tab" id="tab-compras" onclick="switchTab('compras')">
+    <i class="fa-solid fa-receipt"></i> Registro de Compras (RCE)
+  </button>
+</div>
+
+<style>
+.sire-tab {
+  padding:10px 18px;border:none;background:none;cursor:pointer;
+  font-size:13px;font-weight:600;color:var(--text-muted);
+  border-bottom:3px solid transparent;margin-bottom:-2px;
+  display:inline-flex;align-items:center;gap:8px;
+  transition:all var(--transition);font-family:inherit;
+}
+.sire-tab.active { color:var(--primary); border-bottom-color:var(--primary); }
+.sire-tab:hover:not(.active) { color:var(--text); }
+</style>
+
+<!-- FILTROS -->
+<div class="card" style="margin-bottom:16px;padding:14px 20px;">
+  <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+    <div style="flex:1;min-width:200px;position:relative;">
+      <i class="fa-solid fa-magnifying-glass" style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--text-muted);font-size:12px;"></i>
+      <input type="text" id="sireSearch" placeholder="Buscar RUC, razón social, comprobante…"
+        style="width:100%;padding:8px 8px 8px 32px;border:1.5px solid var(--border);border-radius:var(--radius-xs);background:var(--surface2);color:var(--text);font-size:13px;font-family:inherit;box-sizing:border-box;"
+        oninput="filterSire()">
+    </div>
+    <input type="month" id="sirePeriodo"
+      style="padding:8px 12px;border:1.5px solid var(--border);border-radius:var(--radius-xs);background:var(--surface2);color:var(--text);font-size:13px;font-family:inherit;cursor:pointer;"
+      onchange="filterSire()">
+    <button class="btn btn-outline btn-sm" onclick="clearFiltrosSire()">
+      <i class="fa-solid fa-xmark"></i> Limpiar
+    </button>
+    <span id="sireCount" style="font-size:12px;color:var(--text-muted);white-space:nowrap;"></span>
+  </div>
+</div>
+
+<!-- TABLA VENTAS -->
+<div class="card" id="panelVentas">
+  <div class="table-wrap" style="max-height:55vh;overflow-y:auto;">
+    <table class="data-table">
+      <thead style="position:sticky;top:0;z-index:1;background:var(--card);">
+        <tr>
+          <th>Período</th>
+          <th>Fecha Emisión</th>
+          <th style="width:60px;">Tipo</th>
+          <th>Serie</th>
+          <th>Número</th>
+          <th>RUC Cliente</th>
+          <th>Razón Social</th>
+          <th class="text-right">Base Imponible</th>
+          <th class="text-right">IGV</th>
+          <th class="text-right">Total</th>
+          <th style="width:80px;">Moneda</th>
+          <th style="width:60px;">Estado</th>
+          <th style="width:40px;"></th>
+        </tr>
+      </thead>
+      <tbody id="sireVentasBody">
+        <tr class="loading-row"><td colspan="13"><span class="spinner"></span> Cargando…</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- TABLA COMPRAS -->
+<div class="card" id="panelCompras" style="display:none;">
+  <div class="table-wrap" style="max-height:55vh;overflow-y:auto;">
+    <table class="data-table">
+      <thead style="position:sticky;top:0;z-index:1;background:var(--card);">
+        <tr>
+          <th>Período</th>
+          <th>Fecha Emisión</th>
+          <th style="width:60px;">Tipo</th>
+          <th>Serie</th>
+          <th>Número</th>
+          <th>RUC Proveedor</th>
+          <th>Razón Social</th>
+          <th class="text-right">Base Imponible</th>
+          <th class="text-right">IGV</th>
+          <th class="text-right">Crédito Fiscal</th>
+          <th class="text-right">Total</th>
+          <th style="width:80px;">Moneda</th>
+          <th style="width:40px;"></th>
+        </tr>
+      </thead>
+      <tbody id="sireComprasBody">
+        <tr class="loading-row"><td colspan="13"><span class="spinner"></span> Cargando…</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- MODAL: UPLOAD VENTAS -->
+<div class="modal-overlay" id="sireUploadVModal" style="display:none;">
+  <div class="modal" style="max-width:520px;width:95%;">
+    <div class="modal-header">
+      <h3 class="modal-title"><i class="fa-solid fa-upload"></i> Importar RVIE (Ventas)</h3>
+      <button class="modal-close" onclick="closeUploadSire('v')"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div class="modal-body">
+      <div class="upload-zone" id="sireZoneV">
+        <div class="upload-icon"><i class="fa-solid fa-file-excel"></i></div>
+        <h4>Arrastra el archivo Excel RVIE</h4>
+        <p>Desde SUNAT/SIRE o plantilla descargable · .xlsx .xls</p>
+      </div>
+      <input type="file" id="sireFileV" accept=".xlsx,.xls" style="display:none">
+      <div id="sireStatusV" style="margin-top:12px;display:none;">
+        <div style="padding:12px;background:var(--surface2);border-radius:var(--radius-xs);display:flex;align-items:center;gap:10px;">
+          <span class="spinner"></span>
+          <span id="sireMsgV" style="font-size:13px;color:var(--text-muted)">Procesando…</span>
+        </div>
+      </div>
+      <p style="font-size:11px;color:var(--text-muted);margin-top:10px;">
+        <i class="fa-solid fa-circle-info" style="color:var(--info)"></i>
+        Compatible con archivos exportados directamente desde el portal SUNAT/SIRE.
+      </p>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: UPLOAD COMPRAS -->
+<div class="modal-overlay" id="sireUploadCModal" style="display:none;">
+  <div class="modal" style="max-width:520px;width:95%;">
+    <div class="modal-header">
+      <h3 class="modal-title"><i class="fa-solid fa-upload"></i> Importar RCE (Compras)</h3>
+      <button class="modal-close" onclick="closeUploadSire('c')"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div class="modal-body">
+      <div class="upload-zone" id="sireZoneC">
+        <div class="upload-icon"><i class="fa-solid fa-file-excel"></i></div>
+        <h4>Arrastra el archivo Excel RCE</h4>
+        <p>Desde SUNAT/SIRE o plantilla descargable · .xlsx .xls</p>
+      </div>
+      <input type="file" id="sireFileC" accept=".xlsx,.xls" style="display:none">
+      <div id="sireStatusC" style="margin-top:12px;display:none;">
+        <div style="padding:12px;background:var(--surface2);border-radius:var(--radius-xs);display:flex;align-items:center;gap:10px;">
+          <span class="spinner"></span>
+          <span id="sireMsgC" style="font-size:13px;color:var(--text-muted)">Procesando…</span>
+        </div>
+      </div>
+      <p style="font-size:11px;color:var(--text-muted);margin-top:10px;">
+        <i class="fa-solid fa-circle-info" style="color:var(--info)"></i>
+        Compatible con archivos exportados directamente desde el portal SUNAT/SIRE.
+      </p>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let _sireTab     = 'ventas';
+let _sireVentas  = [];
+let _sireCompras = [];
+
+/* ── TAB SWITCH ─────────────────────────────────────── */
+function switchTab(tab) {
+  _sireTab = tab;
+  document.getElementById('tab-ventas').classList.toggle('active',  tab==='ventas');
+  document.getElementById('tab-compras').classList.toggle('active', tab==='compras');
+  document.getElementById('panelVentas').style.display  = tab==='ventas'  ? '' : 'none';
+  document.getElementById('panelCompras').style.display = tab==='compras' ? '' : 'none';
+  updatePageActions();
+  filterSire();
+}
+
+function updatePageActions() {
+  const isV = _sireTab === 'ventas';
+  document.getElementById('sirePageActions').innerHTML = `
+    <a href="/api/sire/${isV?'ventas':'compras'}/template" class="btn btn-outline btn-sm">
+      <i class="fa-solid fa-download"></i> Descargar Plantilla
+    </a>
+    <button class="btn btn-outline btn-sm" onclick="exportarSire('${isV?'ventas':'compras'}')">
+      <i class="fa-solid fa-file-excel"></i> Exportar Excel
+    </button>
+    <button class="btn btn-primary btn-sm" onclick="openUploadSire('${isV?'v':'c'}')">
+      <i class="fa-solid fa-upload"></i> Importar ${isV?'RVIE':'RCE'}
+    </button>`;
+}
+
+/* ── LOAD DATA ──────────────────────────────────────── */
+async function loadSire() {
+  const [v, c] = await Promise.all([
+    apiGet('/api/sire/ventas'),
+    apiGet('/api/sire/compras'),
+  ]);
+  if (v) _sireVentas  = v;
+  if (c) _sireCompras = c;
+
+  // KPI
+  const totV   = _sireVentas.reduce((a,r)  => a + (parseFloat(r.importe_total)||0), 0);
+  const igvV   = _sireVentas.reduce((a,r)  => a + (parseFloat(r.igv)||0), 0);
+  const totC   = _sireCompras.reduce((a,r) => a + (parseFloat(r.importe_total)||0), 0);
+  const credC  = _sireCompras.reduce((a,r) => a + (parseFloat(r.credito_fiscal)||0), 0);
+  document.getElementById('ksi-ventas').textContent   = fmtMoney(totV);
+  document.getElementById('ksi-igv-v').textContent    = fmtMoney(igvV);
+  document.getElementById('ksi-compras').textContent  = fmtMoney(totC);
+  document.getElementById('ksi-igv-c').textContent    = fmtMoney(credC);
+  document.getElementById('ksi-ventas-n').textContent  = _sireVentas.length  + ' registros';
+  document.getElementById('ksi-compras-n').textContent = _sireCompras.length + ' registros';
+
+  filterSire();
+}
+
+/* ── FILTER ─────────────────────────────────────────── */
+function filterSire() {
+  const q   = (document.getElementById('sireSearch').value||'').toLowerCase();
+  const mes = document.getElementById('sirePeriodo').value; // YYYY-MM
+
+  if (_sireTab === 'ventas') {
+    let rows = _sireVentas;
+    if (q)   rows = rows.filter(r =>
+      (r.ruc_cliente||'').includes(q) ||
+      (r.razon_social||'').toLowerCase().includes(q) ||
+      (r.serie||'').toLowerCase().includes(q) ||
+      (r.numero||'').includes(q));
+    if (mes) rows = rows.filter(r => (r.periodo||'').startsWith(mes.replace('-','')));
+    document.getElementById('sireCount').textContent = rows.length + ' registro(s)';
+    renderVentas(rows);
+  } else {
+    let rows = _sireCompras;
+    if (q)   rows = rows.filter(r =>
+      (r.ruc_proveedor||'').includes(q) ||
+      (r.razon_social||'').toLowerCase().includes(q) ||
+      (r.serie||'').toLowerCase().includes(q) ||
+      (r.numero||'').includes(q));
+    if (mes) rows = rows.filter(r => (r.periodo||'').startsWith(mes.replace('-','')));
+    document.getElementById('sireCount').textContent = rows.length + ' registro(s)';
+    renderCompras(rows);
+  }
+}
+
+function clearFiltrosSire() {
+  document.getElementById('sireSearch').value  = '';
+  document.getElementById('sirePeriodo').value = '';
+  filterSire();
+}
+
+/* ── RENDER VENTAS ──────────────────────────────────── */
+function renderVentas(rows) {
+  const tbody = document.getElementById('sireVentasBody');
+  if (!rows.length) {
+    tbody.innerHTML = `<tr><td colspan="13" style="text-align:center;padding:32px;color:var(--text-muted)">
+      Sin datos · ${_sireVentas.length ? 'Ajusta los filtros' : 'Importa el archivo RVIE desde SUNAT'}
+    </td></tr>`;
+    return;
+  }
+  tbody.innerHTML = rows.map(r => {
+    const estadoColor = r.estado==='0' ? '#1aaa6b' : r.estado==='8' ? '#e03c3c' : 'var(--text-muted)';
+    const estadoLabel = r.estado==='0' ? 'Vigente' : r.estado==='8' ? 'Anulado' : (r.estado||'—');
+    return `<tr>
+      <td style="font-size:12px;color:var(--text-muted)">${r.periodo||'—'}</td>
+      <td style="font-size:12px">${r.fecha_emision||'—'}</td>
+      <td style="font-size:12px;color:var(--text-muted)">${r.tipo_comprobante||'—'}</td>
+      <td style="font-family:monospace;font-size:12px">${r.serie||'—'}</td>
+      <td style="font-family:monospace;font-size:12px">${r.numero||'—'}</td>
+      <td style="font-family:monospace;font-size:12px">${r.ruc_cliente||'—'}</td>
+      <td style="font-size:12px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${r.razon_social||''}">${r.razon_social||'—'}</td>
+      <td class="text-right mono" style="font-size:12px">${fmtMoney(r.base_imponible)}</td>
+      <td class="text-right mono" style="font-size:12px">${fmtMoney(r.igv)}</td>
+      <td class="text-right mono" style="font-size:12px;font-weight:700">${fmtMoney(r.importe_total)}</td>
+      <td style="font-size:12px;color:var(--text-muted)">${r.moneda||'PEN'}</td>
+      <td><span style="font-size:11px;font-weight:700;color:${estadoColor}">${estadoLabel}</span></td>
+      <td>
+        <button class="btn btn-ghost btn-sm" onclick="deleteSire('ventas',${r.id})">
+          <i class="fa-solid fa-trash" style="color:var(--danger)"></i>
+        </button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+/* ── RENDER COMPRAS ─────────────────────────────────── */
+function renderCompras(rows) {
+  const tbody = document.getElementById('sireComprasBody');
+  if (!rows.length) {
+    tbody.innerHTML = `<tr><td colspan="13" style="text-align:center;padding:32px;color:var(--text-muted)">
+      Sin datos · ${_sireCompras.length ? 'Ajusta los filtros' : 'Importa el archivo RCE desde SUNAT'}
+    </td></tr>`;
+    return;
+  }
+  tbody.innerHTML = rows.map(r => `<tr>
+    <td style="font-size:12px;color:var(--text-muted)">${r.periodo||'—'}</td>
+    <td style="font-size:12px">${r.fecha_emision||'—'}</td>
+    <td style="font-size:12px;color:var(--text-muted)">${r.tipo_comprobante||'—'}</td>
+    <td style="font-family:monospace;font-size:12px">${r.serie||'—'}</td>
+    <td style="font-family:monospace;font-size:12px">${r.numero||'—'}</td>
+    <td style="font-family:monospace;font-size:12px">${r.ruc_proveedor||'—'}</td>
+    <td style="font-size:12px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${r.razon_social||''}">${r.razon_social||'—'}</td>
+    <td class="text-right mono" style="font-size:12px">${fmtMoney(r.base_imponible)}</td>
+    <td class="text-right mono" style="font-size:12px">${fmtMoney(r.igv)}</td>
+    <td class="text-right mono" style="font-size:12px;color:#1aaa6b">${fmtMoney(r.credito_fiscal)}</td>
+    <td class="text-right mono" style="font-size:12px;font-weight:700">${fmtMoney(r.importe_total)}</td>
+    <td style="font-size:12px;color:var(--text-muted)">${r.moneda||'PEN'}</td>
+    <td>
+      <button class="btn btn-ghost btn-sm" onclick="deleteSire('compras',${r.id})">
+        <i class="fa-solid fa-trash" style="color:var(--danger)"></i>
+      </button>
+    </td>
+  </tr>`).join('');
+}
+
+/* ── CRUD ───────────────────────────────────────────── */
+async function deleteSire(tipo, id) {
+  if (!confirm(`¿Eliminar este registro de ${tipo}?`)) return;
+  const res = await apiDelete(`/api/sire/${tipo}/${id}`);
+  if (res?.success) { showToast('success','Eliminado','Registro eliminado'); loadSire(); }
+}
+
+function exportarSire(tipo) { window.location.href = `/api/sire/${tipo}/exportar`; }
+
+/* ── UPLOAD ─────────────────────────────────────────── */
+function openUploadSire(tipo) {
+  document.getElementById(tipo==='v' ? 'sireUploadVModal' : 'sireUploadCModal').style.display = 'flex';
+}
+function closeUploadSire(tipo) {
+  document.getElementById(tipo==='v' ? 'sireUploadVModal' : 'sireUploadCModal').style.display = 'none';
+}
+
+initUploadZone('sireZoneV','sireFileV', async(file) => {
+  const st = document.getElementById('sireStatusV');
+  const msg = document.getElementById('sireMsgV');
+  st.style.display = 'block'; msg.textContent = `Importando "${file.name}"…`;
+  const fd = new FormData(); fd.append('file', file);
+  try {
+    const res  = await fetch('/api/sire/ventas', { method:'POST', body:fd });
+    const data = await res.json();
+    st.style.display = 'none';
+    if (!res.ok || data.error) { showToast('error','Error', data.error); return; }
+    showToast('success','Importado', `${data.saved} registro(s) de ventas guardados`);
+    closeUploadSire('v'); loadSire();
+  } catch(e) { st.style.display='none'; showToast('error','Error',e.message); }
+});
+
+initUploadZone('sireZoneC','sireFileC', async(file) => {
+  const st = document.getElementById('sireStatusC');
+  const msg = document.getElementById('sireMsgC');
+  st.style.display = 'block'; msg.textContent = `Importando "${file.name}"…`;
+  const fd = new FormData(); fd.append('file', file);
+  try {
+    const res  = await fetch('/api/sire/compras', { method:'POST', body:fd });
+    const data = await res.json();
+    st.style.display = 'none';
+    if (!res.ok || data.error) { showToast('error','Error', data.error); return; }
+    showToast('success','Importado', `${data.saved} registro(s) de compras guardados`);
+    closeUploadSire('c'); loadSire();
+  } catch(e) { st.style.display='none'; showToast('error','Error',e.message); }
+});
+
+/* ── INIT ───────────────────────────────────────────── */
+updatePageActions();
+loadSire();
+</script>
+{% endblock %}

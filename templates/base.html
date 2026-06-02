@@ -107,6 +107,23 @@
     </a>
     {% endif %}
 
+    <div class="nav-section-label">CONTABILIDAD</div>
+
+    <a href="/flujo-caja" class="nav-item {% if request.path == '/flujo-caja' %}active{% endif %}">
+      <span class="nav-icon"><i class="fa-solid fa-water"></i></span>
+      <span class="nav-label">Flujo de Caja</span>
+    </a>
+
+    <a href="/plan-contable" class="nav-item {% if request.path == '/plan-contable' %}active{% endif %}">
+      <span class="nav-icon"><i class="fa-solid fa-list-ol"></i></span>
+      <span class="nav-label">Plan Contable</span>
+    </a>
+
+    <a href="/sire" class="nav-item {% if request.path == '/sire' %}active{% endif %}">
+      <span class="nav-icon"><i class="fa-solid fa-file-waveform"></i></span>
+      <span class="nav-label">SIRE — SUNAT</span>
+    </a>
+
     <div class="nav-section-label">SISTEMA</div>
 
     {% if rol in ('super_admin','admin') %}

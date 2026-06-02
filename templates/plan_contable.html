@@ -1,0 +1,355 @@
+{% extends "base.html" %}
+{% block title %}Plan Contable{% endblock %}
+{% block breadcrumb %}Plan Contable{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="page-title"><i class="fa-solid fa-list-ol" style="color:var(--accent)"></i> Plan Contable</h1>
+    <p class="page-subtitle">Plan Contable General Empresarial (PCGE) — SUNAT Perú</p>
+  </div>
+  <div class="page-actions">
+    <a href="/api/plan-contable/template" class="btn btn-outline btn-sm">
+      <i class="fa-solid fa-download"></i> Descargar Plantilla
+    </a>
+    <button class="btn btn-outline btn-sm" onclick="exportarPC()">
+      <i class="fa-solid fa-file-excel"></i> Exportar Excel
+    </button>
+    <button class="btn btn-outline btn-sm" onclick="openAddCuenta()">
+      <i class="fa-solid fa-plus"></i> Nueva Cuenta
+    </button>
+    <button class="btn btn-primary btn-sm" onclick="openUploadPC()">
+      <i class="fa-solid fa-upload"></i> Importar Excel
+    </button>
+  </div>
+</div>
+
+<!-- KPI RESUMEN -->
+<div class="kpi-grid" id="pcKpis" style="margin-bottom:20px;grid-template-columns:repeat(5,1fr)">
+  <div class="kpi-card" style="--kpi-color:#1aaa6b;--kpi-bg:rgba(26,170,107,.08)">
+    <div class="kpi-header"><span class="kpi-label">Activo</span>
+      <span class="kpi-icon"><i class="fa-solid fa-building"></i></span></div>
+    <div class="kpi-value" id="kpc-activo">—</div>
+    <div class="kpi-footer">Cuentas de Activo</div>
+  </div>
+  <div class="kpi-card" style="--kpi-color:#e03c3c;--kpi-bg:rgba(224,60,60,.08)">
+    <div class="kpi-header"><span class="kpi-label">Pasivo</span>
+      <span class="kpi-icon"><i class="fa-solid fa-hand-holding-dollar"></i></span></div>
+    <div class="kpi-value" id="kpc-pasivo">—</div>
+    <div class="kpi-footer">Cuentas de Pasivo</div>
+  </div>
+  <div class="kpi-card" style="--kpi-color:#7b1fa2;--kpi-bg:rgba(123,31,162,.08)">
+    <div class="kpi-header"><span class="kpi-label">Patrimonio</span>
+      <span class="kpi-icon"><i class="fa-solid fa-landmark"></i></span></div>
+    <div class="kpi-value" id="kpc-patrimonio">—</div>
+    <div class="kpi-footer">Cuentas Patrimoniales</div>
+  </div>
+  <div class="kpi-card" style="--kpi-color:#2196f3;--kpi-bg:rgba(33,150,243,.08)">
+    <div class="kpi-header"><span class="kpi-label">Ingresos</span>
+      <span class="kpi-icon"><i class="fa-solid fa-arrow-trend-up"></i></span></div>
+    <div class="kpi-value" id="kpc-ingresos">—</div>
+    <div class="kpi-footer">Cuentas de Ingresos</div>
+  </div>
+  <div class="kpi-card" style="--kpi-color:#e8a020;--kpi-bg:rgba(232,160,32,.08)">
+    <div class="kpi-header"><span class="kpi-label">Gastos</span>
+      <span class="kpi-icon"><i class="fa-solid fa-arrow-trend-down"></i></span></div>
+    <div class="kpi-value" id="kpc-gastos">—</div>
+    <div class="kpi-footer">Cuentas de Gastos</div>
+  </div>
+</div>
+
+<!-- FILTROS -->
+<div class="card" style="margin-bottom:16px;padding:16px 20px;">
+  <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+    <div style="flex:1;min-width:200px;position:relative;">
+      <i class="fa-solid fa-magnifying-glass" style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--text-muted);font-size:12px;"></i>
+      <input type="text" id="pcSearch" placeholder="Buscar por código o nombre…"
+        style="width:100%;padding:8px 8px 8px 32px;border:1.5px solid var(--border);border-radius:var(--radius-xs);background:var(--surface2);color:var(--text);font-size:13px;font-family:inherit;box-sizing:border-box;"
+        oninput="filterPC()">
+    </div>
+    <select id="pcTipo" onchange="filterPC()"
+      style="padding:8px 12px;border:1.5px solid var(--border);border-radius:var(--radius-xs);background:var(--surface2);color:var(--text);font-size:13px;font-family:inherit;cursor:pointer;">
+      <option value="">Todos los tipos</option>
+      <option value="ACTIVO">Activo</option>
+      <option value="PASIVO">Pasivo</option>
+      <option value="PATRIMONIO">Patrimonio</option>
+      <option value="INGRESOS">Ingresos</option>
+      <option value="GASTOS">Gastos</option>
+      <option value="COSTOS">Costos</option>
+      <option value="ORDEN">Orden</option>
+    </select>
+    <select id="pcNivel" onchange="filterPC()"
+      style="padding:8px 12px;border:1.5px solid var(--border);border-radius:var(--radius-xs);background:var(--surface2);color:var(--text);font-size:13px;font-family:inherit;cursor:pointer;">
+      <option value="">Todos los niveles</option>
+      <option value="1">Elemento (1 dígito)</option>
+      <option value="2">Cuenta (2 dígitos)</option>
+      <option value="3">Subcuenta (3+ dígitos)</option>
+    </select>
+    <span id="pcCount" style="font-size:12px;color:var(--text-muted);white-space:nowrap;"></span>
+  </div>
+</div>
+
+<!-- TABLA -->
+<div class="card">
+  <div class="table-wrap" style="max-height:60vh;overflow-y:auto;">
+    <table class="data-table">
+      <thead style="position:sticky;top:0;z-index:1;background:var(--card);">
+        <tr>
+          <th style="width:120px;">Código</th>
+          <th>Nombre de Cuenta</th>
+          <th style="width:110px;">Tipo</th>
+          <th style="width:80px;">Nivel</th>
+          <th style="width:100px;">Naturaleza</th>
+          <th style="width:60px;text-align:center;">Activo</th>
+          <th style="width:60px;"></th>
+        </tr>
+      </thead>
+      <tbody id="pcBody">
+        <tr class="loading-row"><td colspan="7"><span class="spinner"></span> Cargando…</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- MODAL: AGREGAR / EDITAR CUENTA -->
+<div class="modal-overlay" id="pcEditModal" style="display:none;">
+  <div class="modal" style="max-width:500px;width:95%;">
+    <div class="modal-header">
+      <h3 class="modal-title" id="pcEditTitle"><i class="fa-solid fa-list-ol"></i> Nueva Cuenta</h3>
+      <button class="modal-close" onclick="closePCEdit()"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div class="modal-body">
+      <form id="pcEditForm" onsubmit="saveCuenta(event)" style="display:flex;flex-direction:column;gap:14px;">
+        <input type="hidden" id="pcEditId" value="">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+          <div>
+            <label style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:4px;">Código *</label>
+            <input type="text" id="pcEditCodigo" placeholder="Ej: 10, 101, 1011" required
+              style="width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:var(--radius-xs);background:var(--surface2);color:var(--text);font-size:13px;font-family:inherit;box-sizing:border-box;">
+          </div>
+          <div>
+            <label style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:4px;">Tipo *</label>
+            <select id="pcEditTipo" required
+              style="width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:var(--radius-xs);background:var(--surface2);color:var(--text);font-size:13px;font-family:inherit;cursor:pointer;">
+              <option value="">Seleccionar…</option>
+              <option>ACTIVO</option><option>PASIVO</option><option>PATRIMONIO</option>
+              <option>INGRESOS</option><option>GASTOS</option><option>COSTOS</option><option>ORDEN</option>
+            </select>
+          </div>
+        </div>
+        <div>
+          <label style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:4px;">Nombre *</label>
+          <input type="text" id="pcEditNombre" placeholder="Nombre completo de la cuenta" required
+            style="width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:var(--radius-xs);background:var(--surface2);color:var(--text);font-size:13px;font-family:inherit;box-sizing:border-box;">
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+          <div>
+            <label style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:4px;">Naturaleza</label>
+            <select id="pcEditNaturaleza"
+              style="width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:var(--radius-xs);background:var(--surface2);color:var(--text);font-size:13px;font-family:inherit;cursor:pointer;">
+              <option value="">—</option>
+              <option>DEUDORA</option><option>ACREEDORA</option>
+            </select>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;padding-top:20px;">
+            <input type="checkbox" id="pcEditActivo" checked style="width:16px;height:16px;cursor:pointer;">
+            <label for="pcEditActivo" style="font-size:13px;cursor:pointer;">Cuenta activa</label>
+          </div>
+        </div>
+        <div>
+          <label style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:4px;">Descripción</label>
+          <textarea id="pcEditDesc" placeholder="Descripción opcional…" rows="2"
+            style="width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:var(--radius-xs);background:var(--surface2);color:var(--text);font-size:13px;font-family:inherit;resize:vertical;box-sizing:border-box;"></textarea>
+        </div>
+        <div style="display:flex;gap:10px;justify-content:flex-end;padding-top:4px;">
+          <button type="button" class="btn btn-outline btn-sm" onclick="closePCEdit()">Cancelar</button>
+          <button type="submit" class="btn btn-primary btn-sm"><i class="fa-solid fa-floppy-disk"></i> Guardar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: UPLOAD -->
+<div class="modal-overlay" id="pcUploadModal" style="display:none;">
+  <div class="modal" style="max-width:520px;width:95%;">
+    <div class="modal-header">
+      <h3 class="modal-title"><i class="fa-solid fa-upload"></i> Importar Plan Contable</h3>
+      <button class="modal-close" onclick="closeUploadPC()"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div class="modal-body">
+      <div class="upload-zone" id="pcZone">
+        <div class="upload-icon"><i class="fa-solid fa-file-excel"></i></div>
+        <h4>Arrastra el archivo Excel</h4>
+        <p>Usa la plantilla descargable · .xlsx .xls</p>
+      </div>
+      <input type="file" id="pcFileInput" accept=".xlsx,.xls" style="display:none">
+      <div id="pcUploadStatus" style="margin-top:12px;display:none;">
+        <div style="padding:12px;background:var(--surface2);border-radius:var(--radius-xs);display:flex;align-items:center;gap:10px;">
+          <span class="spinner"></span>
+          <span id="pcUploadMsg" style="font-size:13px;color:var(--text-muted)">Procesando…</span>
+        </div>
+      </div>
+      <p style="font-size:11px;color:var(--text-muted);margin-top:10px;">
+        <i class="fa-solid fa-circle-info" style="color:var(--info)"></i>
+        Si el código ya existe, se actualizará. Nuevos códigos se insertarán.
+      </p>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let _pcAllRows = [];
+
+const TIPO_COLORS = {
+  ACTIVO:     { bg:'rgba(26,170,107,.12)',   color:'#1aaa6b' },
+  PASIVO:     { bg:'rgba(224,60,60,.12)',     color:'#e03c3c' },
+  PATRIMONIO: { bg:'rgba(123,31,162,.12)',    color:'#7b1fa2' },
+  INGRESOS:   { bg:'rgba(33,150,243,.12)',    color:'#2196f3' },
+  GASTOS:     { bg:'rgba(232,160,32,.12)',    color:'#e8a020' },
+  COSTOS:     { bg:'rgba(255,87,34,.12)',     color:'#ff5722' },
+  ORDEN:      { bg:'rgba(96,125,139,.12)',    color:'#607d8b' },
+};
+
+async function loadPC() {
+  const rows = await apiGet('/api/plan-contable');
+  if (!rows) return;
+  _pcAllRows = rows;
+
+  // KPI counts
+  const counts = {};
+  rows.forEach(r => { counts[r.tipo] = (counts[r.tipo]||0) + 1; });
+  document.getElementById('kpc-activo').textContent     = (counts['ACTIVO']||0);
+  document.getElementById('kpc-pasivo').textContent     = (counts['PASIVO']||0);
+  document.getElementById('kpc-patrimonio').textContent = (counts['PATRIMONIO']||0);
+  document.getElementById('kpc-ingresos').textContent   = (counts['INGRESOS']||0);
+  document.getElementById('kpc-gastos').textContent     = (counts['GASTOS']||0);
+
+  filterPC();
+}
+
+function filterPC() {
+  const q    = (document.getElementById('pcSearch').value||'').toLowerCase();
+  const tipo = document.getElementById('pcTipo').value;
+  const niv  = document.getElementById('pcNivel').value;
+
+  let rows = _pcAllRows;
+  if (q)    rows = rows.filter(r => (r.codigo||'').toLowerCase().includes(q) || (r.nombre||'').toLowerCase().includes(q));
+  if (tipo) rows = rows.filter(r => r.tipo === tipo);
+  if (niv) {
+    if (niv === '1') rows = rows.filter(r => String(r.codigo||'').length === 1);
+    else if (niv === '2') rows = rows.filter(r => String(r.codigo||'').length === 2);
+    else rows = rows.filter(r => String(r.codigo||'').length >= 3);
+  }
+
+  document.getElementById('pcCount').textContent = rows.length + ' cuenta(s)';
+  const tbody = document.getElementById('pcBody');
+  if (!rows.length) {
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:32px;color:var(--text-muted)">
+      Sin resultados · ${_pcAllRows.length ? 'Ajusta los filtros' : 'Descarga la plantilla e importa el PCGE'}
+    </td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = rows.map(r => {
+    const tc = TIPO_COLORS[r.tipo] || { bg:'rgba(0,0,0,.06)', color:'var(--text-muted)' };
+    const nivelLabel = String(r.codigo||'').length === 1 ? 'Elemento' : String(r.codigo||'').length === 2 ? 'Cuenta' : 'Subcuenta';
+    const indent = Math.max(0, String(r.codigo||'').length - 1) * 14;
+    return `<tr>
+      <td><span style="font-family:monospace;font-size:13px;font-weight:700;color:var(--primary)">${r.codigo||'—'}</span></td>
+      <td style="padding-left:${indent + 14}px;"><span style="font-size:13px;font-weight:${String(r.codigo||'').length<=2?'600':'400'}">${r.nombre||'—'}</span></td>
+      <td><span style="display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:700;background:${tc.bg};color:${tc.color}">${r.tipo||'—'}</span></td>
+      <td style="font-size:12px;color:var(--text-muted)">${nivelLabel}</td>
+      <td style="font-size:12px;color:var(--text-muted)">${r.naturaleza||'—'}</td>
+      <td style="text-align:center;"><span style="color:${r.activo?'#1aaa6b':'#e03c3c'};font-size:14px"><i class="fa-solid ${r.activo?'fa-circle-check':'fa-circle-xmark'}"></i></span></td>
+      <td>
+        <div style="display:flex;gap:4px;">
+          <button class="btn btn-ghost btn-sm" title="Editar" onclick="editCuenta(${r.id})"><i class="fa-solid fa-pen" style="color:var(--accent)"></i></button>
+          <button class="btn btn-ghost btn-sm" title="Eliminar" onclick="deletePC(${r.id},'${(r.codigo||'').replace(/'/g,"\\'")}')"><i class="fa-solid fa-trash" style="color:var(--danger)"></i></button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function openAddCuenta() {
+  document.getElementById('pcEditTitle').innerHTML = '<i class="fa-solid fa-list-ol"></i> Nueva Cuenta';
+  document.getElementById('pcEditId').value = '';
+  document.getElementById('pcEditCodigo').value = '';
+  document.getElementById('pcEditNombre').value = '';
+  document.getElementById('pcEditTipo').value = '';
+  document.getElementById('pcEditNaturaleza').value = '';
+  document.getElementById('pcEditDesc').value = '';
+  document.getElementById('pcEditActivo').checked = true;
+  document.getElementById('pcEditModal').style.display = 'flex';
+}
+
+function editCuenta(id) {
+  const r = _pcAllRows.find(x => x.id === id);
+  if (!r) return;
+  document.getElementById('pcEditTitle').innerHTML = '<i class="fa-solid fa-pen"></i> Editar Cuenta';
+  document.getElementById('pcEditId').value = r.id;
+  document.getElementById('pcEditCodigo').value = r.codigo||'';
+  document.getElementById('pcEditNombre').value = r.nombre||'';
+  document.getElementById('pcEditTipo').value = r.tipo||'';
+  document.getElementById('pcEditNaturaleza').value = r.naturaleza||'';
+  document.getElementById('pcEditDesc').value = r.descripcion||'';
+  document.getElementById('pcEditActivo').checked = !!r.activo;
+  document.getElementById('pcEditModal').style.display = 'flex';
+}
+
+function closePCEdit() { document.getElementById('pcEditModal').style.display = 'none'; }
+
+async function saveCuenta(e) {
+  e.preventDefault();
+  const id     = document.getElementById('pcEditId').value;
+  const body   = {
+    codigo:      document.getElementById('pcEditCodigo').value.trim(),
+    nombre:      document.getElementById('pcEditNombre').value.trim(),
+    tipo:        document.getElementById('pcEditTipo').value,
+    naturaleza:  document.getElementById('pcEditNaturaleza').value,
+    descripcion: document.getElementById('pcEditDesc').value.trim(),
+    activo:      document.getElementById('pcEditActivo').checked ? 1 : 0,
+  };
+  const url    = id ? `/api/plan-contable/${id}` : '/api/plan-contable';
+  const method = id ? 'PUT' : 'POST';
+  try {
+    const res  = await fetch(url, { method, headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) });
+    const data = await res.json();
+    if (!res.ok || data.error) { showToast('error','Error', data.error||'Error al guardar'); return; }
+    showToast('success', id ? 'Actualizada' : 'Creada', body.codigo + ' — ' + body.nombre);
+    closePCEdit(); loadPC();
+  } catch(err) { showToast('error','Error', err.message); }
+}
+
+async function deletePC(id, codigo) {
+  if (!confirm(`¿Eliminar la cuenta ${codigo}?`)) return;
+  const res = await apiDelete(`/api/plan-contable/${id}`);
+  if (res?.success) { showToast('success','Eliminada', 'Cuenta ' + codigo); loadPC(); }
+}
+
+function exportarPC() { window.location.href = '/api/plan-contable/exportar'; }
+
+function openUploadPC()  { document.getElementById('pcUploadModal').style.display = 'flex'; }
+function closeUploadPC() { document.getElementById('pcUploadModal').style.display = 'none'; }
+
+initUploadZone('pcZone','pcFileInput', async(file) => {
+  const st  = document.getElementById('pcUploadStatus');
+  const msg = document.getElementById('pcUploadMsg');
+  st.style.display = 'block'; msg.textContent = `Importando "${file.name}"…`;
+  const fd = new FormData(); fd.append('file', file);
+  try {
+    const res  = await fetch('/api/plan-contable', { method:'POST', body:fd });
+    const data = await res.json();
+    st.style.display = 'none';
+    if (!res.ok || data.error) { showToast('error','Error', data.error); return; }
+    showToast('success','Importado', `${data.saved} cuenta(s) procesadas`);
+    closeUploadPC(); loadPC();
+  } catch(err) { st.style.display='none'; showToast('error','Error',err.message); }
+});
+
+loadPC();
+</script>
+{% endblock %}

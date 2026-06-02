@@ -843,7 +843,8 @@ def api_ceo_dashboard():
         ).fetchall())
 
         ultimas_facturas = rows_to_list(conn.execute(
-            """SELECT numero_comprobante, razon_social_cliente, total, moneda,
+            """SELECT (serie || '-' || correlativo) AS numero_comprobante,
+                      razon_social_cliente, total, moneda,
                       fecha_emision, estado, sunat_estado
                FROM facturas WHERE cliente_id=?
                ORDER BY created_at DESC LIMIT 6""",

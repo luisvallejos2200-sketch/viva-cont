@@ -747,6 +747,151 @@ def api_kpis():
             except: pass
 
 
+@app.route("/api/dashboard/ceo")
+@login_required
+def api_ceo_dashboard():
+    """KPIs ejecutivos consolidados desde todos los módulos del sistema."""
+    _cid = cid()
+    conn = None
+    _MES_IDX = {"Enero":1,"Febrero":2,"Marzo":3,"Abril":4,"Mayo":5,"Junio":6,
+                "Julio":7,"Agosto":8,"Septiembre":9,"Octubre":10,"Noviembre":11,"Diciembre":12}
+
+    def _yr(f):
+        f = str(f or "").strip()
+        if len(f) >= 10:
+            if f[2] == '/': return f[6:10]
+            if f[4] == '-': return f[0:4]
+            if f[2] == '-': return f[6:10]
+        return f[-4:] if len(f) >= 4 else ""
+
+    try:
+        conn = get_connection()
+
+        # ── 1. BANCARIO ──────────────────────────────────────
+        banco_row = conn.execute("""
+            SELECT
+              COALESCE(SUM(CASE WHEN importe>0 THEN importe ELSE 0 END),0)      AS ingresos,
+              COALESCE(SUM(CASE WHEN importe<0 THEN ABS(importe) ELSE 0 END),0) AS egresos,
+              COUNT(*) AS tx_count
+            FROM transacciones WHERE cliente_id=? AND modulo='banco'
+        """, (_cid,)).fetchone()
+
+        banco_flujo = rows_to_list(conn.execute("""
+            SELECT mes,
+                   MIN(fecha_operacion) AS primera_fecha,
+                   COALESCE(SUM(CASE WHEN importe>0 THEN importe ELSE 0 END),0)      AS ingresos,
+                   COALESCE(SUM(CASE WHEN importe<0 THEN ABS(importe) ELSE 0 END),0) AS egresos
+            FROM transacciones WHERE cliente_id=? AND modulo='banco'
+              AND mes IS NOT NULL AND mes!=''
+            GROUP BY mes
+        """, (_cid,)).fetchall())
+        banco_flujo.sort(key=lambda r: (
+            _yr(r.get("primera_fecha", "")),
+            _MES_IDX.get(r.get("mes", ""), 99)
+        ))
+
+        # ── 2. ERP ───────────────────────────────────────────
+        erp_row = conn.execute("""
+            SELECT
+              COALESCE(SUM(CASE WHEN importe>0 THEN importe ELSE 0 END),0)      AS ingresos,
+              COALESCE(SUM(CASE WHEN importe<0 THEN ABS(importe) ELSE 0 END),0) AS egresos,
+              COUNT(*) AS registros
+            FROM transacciones WHERE cliente_id=? AND modulo='erp'
+        """, (_cid,)).fetchone()
+
+        # ── 3. FACTURAS ──────────────────────────────────────
+        fac_row = conn.execute("""
+            SELECT
+              COALESCE(SUM(CASE WHEN estado='EMITIDA' THEN total ELSE 0 END),0)  AS monto_total,
+              COALESCE(SUM(CASE WHEN estado='EMITIDA'
+                AND strftime('%Y-%m',fecha_emision)=strftime('%Y-%m','now')
+                THEN total ELSE 0 END),0) AS mes_actual,
+              COALESCE(SUM(CASE WHEN estado='EMITIDA'
+                AND strftime('%Y-%m',fecha_emision)=strftime('%Y-%m',date('now','-1 month'))
+                THEN total ELSE 0 END),0) AS mes_anterior,
+              COALESCE(SUM(CASE WHEN estado='EMITIDA' THEN 1 ELSE 0 END),0) AS emitidas,
+              COUNT(DISTINCT CASE WHEN estado='EMITIDA' THEN ruc_cliente ELSE NULL END) AS clientes_unicos
+            FROM facturas WHERE cliente_id=?
+        """, (_cid,)).fetchone()
+
+        fac_mensual = rows_to_list(conn.execute("""
+            SELECT strftime('%Y-%m', fecha_emision) AS mes_key,
+                   COALESCE(SUM(total),0) AS monto, COUNT(*) AS cantidad
+            FROM facturas WHERE cliente_id=? AND estado='EMITIDA'
+              AND fecha_emision >= date('now','-12 months')
+            GROUP BY mes_key ORDER BY mes_key
+        """, (_cid,)).fetchall())
+
+        # ── 4. ESTADO DE RESULTADOS (último período) ─────────
+        er = row_to_dict(conn.execute(
+            "SELECT * FROM estados_resultados WHERE cliente_id=? ORDER BY anio DESC, created_at DESC LIMIT 1",
+            (_cid,)
+        ).fetchone()) or {}
+
+        # ── 5. BALANCE GENERAL (último período) ──────────────
+        bg = row_to_dict(conn.execute(
+            "SELECT * FROM balance_general WHERE cliente_id=? ORDER BY anio DESC, created_at DESC LIMIT 1",
+            (_cid,)
+        ).fetchone()) or {}
+
+        # ── 6. ACTIVIDAD RECIENTE ────────────────────────────
+        ultimas_banco = rows_to_list(conn.execute(
+            """SELECT fecha_operacion, descripcion, tipo, importe, banco
+               FROM transacciones WHERE cliente_id=? AND modulo='banco'
+               ORDER BY created_at DESC LIMIT 8""",
+            (_cid,)
+        ).fetchall())
+
+        ultimas_facturas = rows_to_list(conn.execute(
+            """SELECT numero_comprobante, razon_social_cliente, total, moneda,
+                      fecha_emision, estado, sunat_estado
+               FROM facturas WHERE cliente_id=?
+               ORDER BY created_at DESC LIMIT 6""",
+            (_cid,)
+        ).fetchall())
+
+        br = banco_row or (0, 0, 0)
+        er_ = erp_row  or (0, 0, 0)
+        fr  = fac_row  or (0, 0, 0, 0, 0)
+
+        return jsonify({
+            "banco": {
+                "ingresos":      round(br[0], 2),
+                "egresos":       round(br[1], 2),
+                "balance":       round(br[0] - br[1], 2),
+                "transacciones": int(br[2]),
+                "flujo_mensual": banco_flujo,
+            },
+            "erp": {
+                "ingresos":  round(er_[0], 2),
+                "egresos":   round(er_[1], 2),
+                "balance":   round(er_[0] - er_[1], 2),
+                "registros": int(er_[2]),
+            },
+            "facturas": {
+                "monto_total":     round(fr[0], 2),
+                "mes_actual":      round(fr[1], 2),
+                "mes_anterior":    round(fr[2], 2),
+                "emitidas":        int(fr[3]),
+                "clientes_unicos": int(fr[4]),
+                "mensual":         fac_mensual,
+            },
+            "estado_resultados": er,
+            "balance_general":   bg,
+            "ultimas_banco":     ultimas_banco,
+            "ultimas_facturas":  ultimas_facturas,
+        })
+
+    except Exception as _e:
+        print(f"[CEO-KPIs] error: {_e}", file=sys.stderr)
+        import traceback; traceback.print_exc(file=sys.stderr)
+        return jsonify({"error": str(_e)}), 500
+    finally:
+        if conn:
+            try: conn.close()
+            except: pass
+
+
 # ─────────────────────────────────────────────────────────
 # API: IMPORTACIÓN (Excel / Drive link)
 # ─────────────────────────────────────────────────────────

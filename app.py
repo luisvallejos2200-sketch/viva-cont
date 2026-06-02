@@ -747,6 +747,177 @@ def api_kpis():
             except: pass
 
 
+@app.route("/api/dashboard/gerencia")
+@login_required
+def api_gerencia_dashboard():
+    """KPIs de gerencia: CxC, CxP, top clientes, minibalance, flujo de caja."""
+    _cid = cid()
+    conn = None
+    try:
+        conn = get_connection()
+
+        # ── Balance General compacto (último período) ─────────
+        bg = row_to_dict(conn.execute("""
+            SELECT caja_bancos, cuentas_cobrar, inventarios,
+                   total_activo_corriente, total_activo_no_corriente, total_activo,
+                   cuentas_pagar, total_pasivo_corriente, total_pasivo_no_corriente,
+                   total_pasivo, total_patrimonio, resultado_ejercicio,
+                   capital_social, utilidades_retenidas, periodo_label, anio
+            FROM balance_general WHERE cliente_id=?
+            ORDER BY anio DESC, created_at DESC LIMIT 1
+        """, (_cid,)).fetchone()) or {}
+
+        # ── ER compacto (último período) ──────────────────────
+        er = row_to_dict(conn.execute("""
+            SELECT ventas_netas, otros_ingresos, total_ingresos,
+                   costo_ventas, utilidad_bruta,
+                   gastos_administrativos, gastos_ventas, total_gastos_operativos,
+                   ebitda, ebit, gastos_financieros,
+                   utilidad_antes_impuestos, impuesto_renta, utilidad_neta,
+                   periodo_label, anio
+            FROM estados_resultados WHERE cliente_id=?
+            ORDER BY anio DESC, created_at DESC LIMIT 1
+        """, (_cid,)).fetchone()) or {}
+
+        # ── CxC desde facturas EMITIDAS ───────────────────────
+        cxc_row = conn.execute("""
+            SELECT COALESCE(SUM(total),0) AS monto,
+                   COUNT(*) AS cantidad,
+                   COALESCE(AVG(total),0) AS promedio,
+                   COUNT(DISTINCT ruc_cliente) AS clientes
+            FROM facturas WHERE cliente_id=? AND estado='EMITIDA'
+        """, (_cid,)).fetchone() or (0, 0, 0, 0)
+
+        cxc_top = rows_to_list(conn.execute("""
+            SELECT razon_social_cliente AS cliente, ruc_cliente AS ruc,
+                   COUNT(*) AS facturas, COALESCE(SUM(total),0) AS monto,
+                   MAX(fecha_emision) AS ultima
+            FROM facturas WHERE cliente_id=? AND estado='EMITIDA'
+            GROUP BY ruc_cliente ORDER BY monto DESC LIMIT 8
+        """, (_cid,)).fetchall())
+
+        # ── Top Clientes por período ──────────────────────────
+        def _top_cli(days):
+            if days:
+                return rows_to_list(conn.execute("""
+                    SELECT razon_social_cliente AS cliente, ruc_cliente AS ruc,
+                           COUNT(*) AS facturas, COALESCE(SUM(total),0) AS monto
+                    FROM facturas WHERE cliente_id=? AND estado='EMITIDA'
+                      AND fecha_emision >= date('now',?)
+                    GROUP BY ruc_cliente ORDER BY monto DESC LIMIT 8
+                """, (_cid, f"-{days} days")).fetchall())
+            return rows_to_list(conn.execute("""
+                SELECT razon_social_cliente AS cliente, ruc_cliente AS ruc,
+                       COUNT(*) AS facturas, COALESCE(SUM(total),0) AS monto
+                FROM facturas WHERE cliente_id=? AND estado='EMITIDA'
+                GROUP BY ruc_cliente ORDER BY monto DESC LIMIT 8
+            """, (_cid,)).fetchall())
+
+        # ── Flujo de Caja por mes (bancario) ──────────────────
+        flujo_mes = rows_to_list(conn.execute("""
+            SELECT mes,
+                   MIN(fecha_operacion) AS primera_fecha,
+                   COALESCE(SUM(CASE WHEN importe>0 THEN importe ELSE 0 END),0) AS entradas,
+                   COALESCE(SUM(CASE WHEN importe<0 THEN ABS(importe) ELSE 0 END),0) AS salidas,
+                   COALESCE(SUM(importe),0) AS neto
+            FROM transacciones WHERE cliente_id=? AND modulo='banco'
+              AND mes IS NOT NULL AND mes!=''
+            GROUP BY mes
+        """, (_cid,)).fetchall())
+
+        flujo_total = conn.execute("""
+            SELECT COALESCE(SUM(CASE WHEN importe>0 THEN importe ELSE 0 END),0),
+                   COALESCE(SUM(CASE WHEN importe<0 THEN ABS(importe) ELSE 0 END),0)
+            FROM transacciones WHERE cliente_id=? AND modulo='banco'
+        """, (_cid,)).fetchone() or (0, 0)
+
+        # Ordenar flujo por año/mes
+        _MES = {"Enero":1,"Febrero":2,"Marzo":3,"Abril":4,"Mayo":5,"Junio":6,
+                "Julio":7,"Agosto":8,"Septiembre":9,"Octubre":10,"Noviembre":11,"Diciembre":12}
+        def _yr(f):
+            f = str(f or "").strip()
+            if len(f)>=10:
+                if f[2]=='/': return f[6:10]
+                if f[4]=='-': return f[0:4]
+                if f[2]=='-': return f[6:10]
+            return f[-4:] if len(f)>=4 else ""
+        flujo_mes.sort(key=lambda r: (_yr(r.get("primera_fecha","")), _MES.get(r.get("mes",""),99)))
+
+        return jsonify({
+            "cxc": {
+                "monto":    round(cxc_row[0], 2),
+                "cantidad": int(cxc_row[1]),
+                "promedio": round(cxc_row[2], 2),
+                "clientes": int(cxc_row[3]),
+                "top":      cxc_top,
+                "bg_monto": round(bg.get("cuentas_cobrar") or 0, 2),
+            },
+            "cxp": {
+                "bg_monto": round(bg.get("cuentas_pagar") or 0, 2),
+                "bg_pc":    round(bg.get("total_pasivo_corriente") or 0, 2),
+            },
+            "top_clientes": {
+                "diario":    _top_cli(1),
+                "semanal":   _top_cli(7),
+                "quincenal": _top_cli(15),
+                "mensual":   _top_cli(30),
+                "total":     _top_cli(None),
+            },
+            "minibalance": {
+                "bg": {
+                    "caja_bancos":    round(bg.get("caja_bancos") or 0, 2),
+                    "cuentas_cobrar": round(bg.get("cuentas_cobrar") or 0, 2),
+                    "inventarios":    round(bg.get("inventarios") or 0, 2),
+                    "total_ac":       round(bg.get("total_activo_corriente") or 0, 2),
+                    "total_anc":      round(bg.get("total_activo_no_corriente") or 0, 2),
+                    "total_activo":   round(bg.get("total_activo") or 0, 2),
+                    "cuentas_pagar":  round(bg.get("cuentas_pagar") or 0, 2),
+                    "total_pc":       round(bg.get("total_pasivo_corriente") or 0, 2),
+                    "total_pnc":      round(bg.get("total_pasivo_no_corriente") or 0, 2),
+                    "total_pasivo":   round(bg.get("total_pasivo") or 0, 2),
+                    "capital":        round(bg.get("capital_social") or 0, 2),
+                    "utilidades_ret": round(bg.get("utilidades_retenidas") or 0, 2),
+                    "resultado_ej":   round(bg.get("resultado_ejercicio") or 0, 2),
+                    "total_patrimonio": round(bg.get("total_patrimonio") or 0, 2),
+                    "periodo": bg.get("periodo_label") or str(bg.get("anio","")) or "—",
+                    "tiene_datos": bool(bg),
+                },
+                "er": {
+                    "ventas_netas":   round(er.get("ventas_netas") or 0, 2),
+                    "otros_ingresos": round(er.get("otros_ingresos") or 0, 2),
+                    "total_ingresos": round(er.get("total_ingresos") or 0, 2),
+                    "costo_ventas":   round(er.get("costo_ventas") or 0, 2),
+                    "utilidad_bruta": round(er.get("utilidad_bruta") or 0, 2),
+                    "gastos_adm":     round(er.get("gastos_administrativos") or 0, 2),
+                    "gastos_vta":     round(er.get("gastos_ventas") or 0, 2),
+                    "total_gastos":   round(er.get("total_gastos_operativos") or 0, 2),
+                    "ebitda":         round(er.get("ebitda") or 0, 2),
+                    "gastos_fin":     round(er.get("gastos_financieros") or 0, 2),
+                    "uat":            round(er.get("utilidad_antes_impuestos") or 0, 2),
+                    "impuesto":       round(er.get("impuesto_renta") or 0, 2),
+                    "utilidad_neta":  round(er.get("utilidad_neta") or 0, 2),
+                    "periodo": er.get("periodo_label") or str(er.get("anio","")) or "—",
+                    "tiene_datos": bool(er),
+                },
+            },
+            "flujo": {
+                "por_mes":        flujo_mes,
+                "total_entradas": round(flujo_total[0], 2),
+                "total_salidas":  round(flujo_total[1], 2),
+                "neto":           round(flujo_total[0] - flujo_total[1], 2),
+            },
+        })
+
+    except Exception as _e:
+        print(f"[GERENCIA] error: {_e}", file=sys.stderr)
+        import traceback; traceback.print_exc(file=sys.stderr)
+        return jsonify({"error": str(_e)}), 500
+    finally:
+        if conn:
+            try: conn.close()
+            except: pass
+
+
 @app.route("/api/dashboard/ceo")
 @login_required
 def api_ceo_dashboard():

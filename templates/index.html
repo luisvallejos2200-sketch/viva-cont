@@ -272,6 +272,169 @@
   </div>
 </div>
 
+<!-- ══ CUENTAS POR COBRAR ════════════════════════════════════ -->
+<div class="ceo-section" style="margin-top:32px;">
+  <span class="ceo-section-icon" style="background:#1aaa6b">
+    <i class="fa-solid fa-hand-holding-dollar"></i>
+  </span>
+  <span class="ceo-section-title">Cuentas por Cobrar</span>
+  <span class="ceo-section-badge">Clientes · Facturador</span>
+  <a href="/facturador" class="ceo-section-link">Ver módulo <i class="fa-solid fa-arrow-right"></i></a>
+</div>
+<div class="grid-2" style="gap:20px;margin-bottom:20px;">
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+    <div class="kpi-card" style="--kpi-color:#1aaa6b;--kpi-bg:rgba(26,170,107,.08)">
+      <div class="kpi-header"><span class="kpi-label">Total CxC Facturadas</span>
+        <span class="kpi-icon"><i class="fa-solid fa-sack-dollar"></i></span></div>
+      <div class="kpi-value positive" id="cxc-monto">S/ —</div>
+      <div class="kpi-footer"><span id="cxc-count">—</span> facturas emitidas</div>
+    </div>
+    <div class="kpi-card" style="--kpi-color:#2196f3;--kpi-bg:rgba(33,150,243,.08)">
+      <div class="kpi-header"><span class="kpi-label">Ticket Promedio</span>
+        <span class="kpi-icon"><i class="fa-solid fa-receipt"></i></span></div>
+      <div class="kpi-value" id="cxc-promedio">S/ —</div>
+      <div class="kpi-footer"><span id="cxc-clientes">—</span> clientes activos</div>
+    </div>
+    <div class="kpi-card" style="--kpi-color:#00796b;--kpi-bg:rgba(0,121,107,.08)" style="grid-column:span 2">
+      <div class="kpi-header"><span class="kpi-label">CxC en Balance General</span>
+        <span class="kpi-icon"><i class="fa-solid fa-landmark"></i></span></div>
+      <div class="kpi-value" id="cxc-bg">S/ —</div>
+      <div class="kpi-footer">Saldo registrado en Balance General</div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-header">
+      <h3 class="card-title"><i class="fa-solid fa-ranking-star"></i> Top Deudores</h3>
+    </div>
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead><tr><th>Cliente</th><th>Fact.</th><th class="text-right">Monto</th></tr></thead>
+        <tbody id="cxc-tabla">
+          <tr class="loading-row"><td colspan="3"><span class="spinner"></span> Cargando…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ══ TOP CLIENTES POR PERÍODO ════════════════════════════════ -->
+<div class="ceo-section">
+  <span class="ceo-section-icon" style="background:#e8a020">
+    <i class="fa-solid fa-users"></i>
+  </span>
+  <span class="ceo-section-title">Ventas — Principales Clientes por Período</span>
+  <span class="ceo-section-badge">Facturador</span>
+</div>
+<div class="card" style="margin-bottom:20px;">
+  <div class="card-body" style="padding-top:12px;">
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;" id="topClientesTabs">
+      <button class="period-tab active" data-periodo="diario"   onclick="selectTopPeriodo('diario',this)">Diario</button>
+      <button class="period-tab"        data-periodo="semanal"  onclick="selectTopPeriodo('semanal',this)">Semanal</button>
+      <button class="period-tab"        data-periodo="quincenal" onclick="selectTopPeriodo('quincenal',this)">Quincenal</button>
+      <button class="period-tab"        data-periodo="mensual"  onclick="selectTopPeriodo('mensual',this)">Mensual</button>
+      <button class="period-tab"        data-periodo="total"    onclick="selectTopPeriodo('total',this)">Acumulado</button>
+    </div>
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead><tr><th>#</th><th>Cliente</th><th>RUC</th><th>Facturas</th><th class="text-right">Monto Total</th></tr></thead>
+        <tbody id="topClientesTabla">
+          <tr class="loading-row"><td colspan="5"><span class="spinner"></span> Cargando…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ══ CUENTAS POR PAGAR ══════════════════════════════════════ -->
+<div class="ceo-section">
+  <span class="ceo-section-icon" style="background:#7b1fa2">
+    <i class="fa-solid fa-file-invoice"></i>
+  </span>
+  <span class="ceo-section-title">Cuentas por Pagar</span>
+  <span class="ceo-section-badge">Balance General · Proveedores</span>
+</div>
+<div class="kpi-grid" style="margin-bottom:20px;">
+  <div class="kpi-card" style="--kpi-color:#7b1fa2;--kpi-bg:rgba(123,31,162,.08)">
+    <div class="kpi-header"><span class="kpi-label">CxP en Balance General</span>
+      <span class="kpi-icon"><i class="fa-solid fa-landmark"></i></span></div>
+    <div class="kpi-value" id="cxp-bg">S/ —</div>
+    <div class="kpi-footer">Cuentas por pagar registradas en BG</div>
+  </div>
+  <div class="kpi-card" style="--kpi-color:#e03c3c;--kpi-bg:rgba(224,60,60,.08)">
+    <div class="kpi-header"><span class="kpi-label">Pasivo Corriente Total</span>
+      <span class="kpi-icon"><i class="fa-solid fa-hourglass-half"></i></span></div>
+    <div class="kpi-value" id="cxp-pc">S/ —</div>
+    <div class="kpi-footer">Obligaciones de corto plazo</div>
+  </div>
+</div>
+
+<!-- ══ MINIBALANCE RESUMIDO ════════════════════════════════════ -->
+<div class="ceo-section">
+  <span class="ceo-section-icon" style="background:#37474f">
+    <i class="fa-solid fa-table-columns"></i>
+  </span>
+  <span class="ceo-section-title">Minibalance Resumido</span>
+  <span class="ceo-section-badge" id="mini-bg-periodo">Balance General</span>
+  <span style="font-size:11px;color:var(--text-light);margin-left:6px;">+</span>
+  <span class="ceo-section-badge" id="mini-er-periodo" style="margin-left:4px;">Estado de Resultados</span>
+</div>
+<div class="grid-2" style="gap:20px;margin-bottom:20px;">
+  <!-- Balance General compacto -->
+  <div class="card">
+    <div class="card-header">
+      <h3 class="card-title"><i class="fa-solid fa-landmark" style="color:#1a3c6e"></i> Balance General</h3>
+    </div>
+    <div class="card-body" style="padding:0;">
+      <table class="data-table" id="miniBGTable">
+        <tbody>
+          <tr><td colspan="2" style="text-align:center;padding:24px;color:var(--text-muted)"><span class="spinner"></span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <!-- Estado de Resultados compacto -->
+  <div class="card">
+    <div class="card-header">
+      <h3 class="card-title"><i class="fa-solid fa-chart-line" style="color:#1aaa6b"></i> Ganancias y Pérdidas</h3>
+    </div>
+    <div class="card-body" style="padding:0;">
+      <table class="data-table" id="miniERTable">
+        <tbody>
+          <tr><td colspan="2" style="text-align:center;padding:24px;color:var(--text-muted)"><span class="spinner"></span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ══ RESUMEN FLUJO DE CAJA ══════════════════════════════════ -->
+<div class="ceo-section">
+  <span class="ceo-section-icon" style="background:#1565c0">
+    <i class="fa-solid fa-water"></i>
+  </span>
+  <span class="ceo-section-title">Resumen Flujo de Caja</span>
+  <span class="ceo-section-badge">Estados de Cuenta Bancarios</span>
+  <a href="/estados-cuenta" class="ceo-section-link">Ver bancario <i class="fa-solid fa-arrow-right"></i></a>
+</div>
+<div class="card" style="margin-bottom:20px;">
+  <div class="card-body" style="padding:0;">
+    <table class="data-table" id="flujoTabla">
+      <thead>
+        <tr>
+          <th>Período</th>
+          <th class="text-right" style="color:#1aaa6b">Entradas</th>
+          <th class="text-right" style="color:#e03c3c">Salidas</th>
+          <th class="text-right">Neto</th>
+        </tr>
+      </thead>
+      <tbody id="flujoBody">
+        <tr class="loading-row"><td colspan="4"><span class="spinner"></span> Cargando…</td></tr>
+      </tbody>
+      <tfoot id="flujoFoot" style="font-weight:700;border-top:2px solid var(--border)"></tfoot>
+    </table>
+  </div>
+</div>
+
 <!-- ══ GRÁFICOS ═══════════════════════════════════════════════ -->
 <div class="ceo-section" style="margin-top:32px;">
   <span class="ceo-section-icon" style="background:#546e7a">
@@ -919,8 +1082,146 @@ async function importarDrive() {
   document.getElementById('driveDesc').value='';
 }
 
+/* ══════════════════════════════════════════════════════════════
+   GERENCIA — CxC, Top Clientes, CxP, Minibalance, Flujo Caja
+══════════════════════════════════════════════════════════════ */
+var _gerenciaData = null;
+
+async function loadGerencia() {
+  const data = await apiGet('/api/dashboard/gerencia');
+  if (!data || data.error) return;
+  _gerenciaData = data;
+
+  const fmt = v => fmtMoney(v || 0);
+  const num = v => (v || 0).toLocaleString('es-PE');
+  const noData = '<span style="color:var(--text-muted);font-size:13px">Sin datos</span>';
+
+  /* ── CxC ─────────────────────────────────────────── */
+  const cxc = data.cxc || {};
+  document.getElementById('cxc-monto').textContent   = fmt(cxc.monto);
+  document.getElementById('cxc-count').textContent   = num(cxc.cantidad);
+  document.getElementById('cxc-promedio').textContent= fmt(cxc.promedio);
+  document.getElementById('cxc-clientes').textContent= num(cxc.clientes);
+  document.getElementById('cxc-bg').innerHTML = cxc.bg_monto > 0
+    ? fmt(cxc.bg_monto)
+    : noData;
+
+  const cxcTbody = document.getElementById('cxc-tabla');
+  if (!cxc.top?.length) {
+    cxcTbody.innerHTML = `<tr><td colspan="3" style="text-align:center;color:var(--text-muted);padding:20px">Sin facturas emitidas · <a href="/facturador">Ir al Facturador</a></td></tr>`;
+  } else {
+    cxcTbody.innerHTML = cxc.top.map(r => `<tr>
+      <td style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.cliente||''}">${r.cliente||r.ruc||'—'}</td>
+      <td style="text-align:center">${r.facturas}</td>
+      <td class="text-right amount-pos">${fmt(r.monto)}</td>
+    </tr>`).join('');
+  }
+
+  /* ── CxP ─────────────────────────────────────────── */
+  const cxp = data.cxp || {};
+  document.getElementById('cxp-bg').innerHTML = cxp.bg_monto > 0 ? fmt(cxp.bg_monto) : noData;
+  document.getElementById('cxp-pc').innerHTML = cxp.bg_pc   > 0 ? fmt(cxp.bg_pc)    : noData;
+
+  /* ── Top Clientes (carga el período activo) ──────── */
+  renderTopClientes(_topPeriodo);
+
+  /* ── Minibalance BG ──────────────────────────────── */
+  const bg = data.minibalance?.bg || {};
+  if (bg.periodo) document.getElementById('mini-bg-periodo').textContent = 'BG · ' + bg.periodo;
+  const mkRow = (label, val, bold, cls) =>
+    `<tr${bold?' style="font-weight:700;border-top:1px solid var(--border)"':''}><td style="color:var(--text-muted);font-size:12px;padding:7px 14px">${label}</td><td class="text-right mono${cls?' '+cls:''}" style="font-size:12px;padding:7px 14px">${fmt(val)}</td></tr>`;
+  const bgRows = bg.tiene_datos ? [
+    mkRow('Caja y Bancos',        bg.caja_bancos,    false),
+    mkRow('Cuentas por Cobrar',   bg.cuentas_cobrar, false),
+    mkRow('Inventarios',          bg.inventarios,    false),
+    mkRow('Activo Corriente',     bg.total_ac,       true, 'amount-pos'),
+    mkRow('Activo No Corriente',  bg.total_anc,      false),
+    mkRow('TOTAL ACTIVO',         bg.total_activo,   true, 'amount-pos'),
+    mkRow('Cuentas por Pagar',    bg.cuentas_pagar,  false),
+    mkRow('Pasivo Corriente',     bg.total_pc,       true, 'amount-neg'),
+    mkRow('Pasivo No Corriente',  bg.total_pnc,      false),
+    mkRow('TOTAL PASIVO',         bg.total_pasivo,   true, 'amount-neg'),
+    mkRow('Capital Social',       bg.capital,        false),
+    mkRow('Utilidades Retenidas', bg.utilidades_ret, false),
+    mkRow('Resultado Ejercicio',  bg.resultado_ej,   false, bg.resultado_ej>=0?'amount-pos':'amount-neg'),
+    mkRow('TOTAL PATRIMONIO',     bg.total_patrimonio, true, 'amount-pos'),
+  ] : [`<tr><td colspan="2" style="text-align:center;padding:24px;color:var(--text-muted)">Sin datos · <a href="/balance-general">Cargar Balance General</a></td></tr>`];
+  document.getElementById('miniBGTable').querySelector('tbody').innerHTML = bgRows.join('');
+
+  /* ── Minibalance ER ──────────────────────────────── */
+  const er = data.minibalance?.er || {};
+  if (er.periodo) document.getElementById('mini-er-periodo').textContent = 'E.R. · ' + er.periodo;
+  const erRows = er.tiene_datos ? [
+    mkRow('Ventas Netas',          er.ventas_netas,   false),
+    mkRow('Otros Ingresos',        er.otros_ingresos, false),
+    mkRow('TOTAL INGRESOS',        er.total_ingresos, true, 'amount-pos'),
+    mkRow('(-) Costo de Ventas',   er.costo_ventas,   false, 'amount-neg'),
+    mkRow('UTILIDAD BRUTA',        er.utilidad_bruta, true, er.utilidad_bruta>=0?'amount-pos':'amount-neg'),
+    mkRow('(-) Gastos Administ.',  er.gastos_adm,     false),
+    mkRow('(-) Gastos de Ventas',  er.gastos_vta,     false),
+    mkRow('EBITDA',                er.ebitda,         true, er.ebitda>=0?'amount-pos':'amount-neg'),
+    mkRow('(-) Gastos Financieros',er.gastos_fin,     false),
+    mkRow('Utilidad antes Imp.',   er.uat,            false),
+    mkRow('(-) Impuesto a la Renta',er.impuesto,      false),
+    mkRow('UTILIDAD NETA',         er.utilidad_neta,  true, er.utilidad_neta>=0?'amount-pos':'amount-neg'),
+  ] : [`<tr><td colspan="2" style="text-align:center;padding:24px;color:var(--text-muted)">Sin datos · <a href="/estados-resultados">Cargar Estado de Resultados</a></td></tr>`];
+  document.getElementById('miniERTable').querySelector('tbody').innerHTML = erRows.join('');
+
+  /* ── Flujo de Caja ───────────────────────────────── */
+  const flujo = data.flujo || {};
+  const flujoBody = document.getElementById('flujoBody');
+  const flujoFoot = document.getElementById('flujoFoot');
+  if (!flujo.por_mes?.length) {
+    flujoBody.innerHTML = `<tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:24px">Sin movimientos bancarios cargados · <a href="/estados-cuenta">Subir PDF bancario</a></td></tr>`;
+    flujoFoot.innerHTML = '';
+  } else {
+    flujoBody.innerHTML = flujo.por_mes.map(r => {
+      const neto = (r.neto || 0);
+      return `<tr>
+        <td style="font-weight:600">${r.mes}</td>
+        <td class="text-right amount-pos mono">${fmt(r.entradas)}</td>
+        <td class="text-right amount-neg mono">${fmt(r.salidas)}</td>
+        <td class="text-right mono ${neto>=0?'amount-pos':'amount-neg'}">${neto>=0?'+':''}${fmt(neto)}</td>
+      </tr>`;
+    }).join('');
+    const neto = flujo.neto || 0;
+    flujoFoot.innerHTML = `<tr>
+      <td style="font-weight:800;font-size:12px;padding:10px 14px">TOTAL ACUMULADO</td>
+      <td class="text-right amount-pos mono" style="font-size:12px;padding:10px 14px">${fmt(flujo.total_entradas)}</td>
+      <td class="text-right amount-neg mono" style="font-size:12px;padding:10px 14px">${fmt(flujo.total_salidas)}</td>
+      <td class="text-right mono ${neto>=0?'amount-pos':'amount-neg'}" style="font-size:12px;padding:10px 14px;font-weight:800">${neto>=0?'+':''}${fmt(neto)}</td>
+    </tr>`;
+  }
+}
+
+/* ── Top Clientes — período selector ─────────────── */
+var _topPeriodo = 'diario';
+function selectTopPeriodo(periodo, btn) {
+  _topPeriodo = periodo;
+  document.querySelectorAll('#topClientesTabs .period-tab').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderTopClientes(periodo);
+}
+function renderTopClientes(periodo) {
+  const tbody = document.getElementById('topClientesTabla');
+  if (!_gerenciaData) return;
+  const rows = (_gerenciaData.top_clientes || {})[periodo] || [];
+  if (!rows.length) {
+    tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:20px">Sin ventas en este período</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = rows.map((r, i) => `<tr>
+    <td style="font-weight:700;color:var(--text-muted);text-align:center">${i+1}</td>
+    <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600" title="${r.cliente||''}">${r.cliente||'—'}</td>
+    <td style="font-size:11px;color:var(--text-muted)">${r.ruc||'—'}</td>
+    <td style="text-align:center">${r.facturas}</td>
+    <td class="text-right amount-pos mono" style="font-weight:700">${fmtMoney(r.monto)}</td>
+  </tr>`).join('');
+}
+
 /* ── Init ─────────────────────────────────────────── */
 loadCEO();
+loadGerencia();
 loadPeriodTabsERP();
 </script>
 {% endblock %}

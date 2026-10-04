@@ -36,4 +36,5 @@ env/
 *.swp
 
 # Claude internal
-.claude/
+.claude/*
+!.claude/skills/
